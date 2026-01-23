@@ -1,21 +1,19 @@
-import React from 'react';
+import './globals.css';
+import { AuthProvider } from '@/contexts/AuthContext';
 
-export default function LoginLayout({
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#f5f5f5', // nền xám nhạt cho trang login
-      }}
-    >
-      {children}
-    </div>
+    <html lang="en">
+      <body>
+        {/* AuthProvider bọc toàn bộ app */}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
+      </body>
+    </html>
   );
 }

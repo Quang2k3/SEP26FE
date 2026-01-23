@@ -6,6 +6,10 @@ import { Form, Input, Button, message } from 'antd';
 import { login } from '@/services/auth.service';
 // import hàm login từ service (tách khỏi UI)
 
+import { useAuth } from '@/contexts/AuthContext';
+
+const { login: setAuthUser } = useAuth();
+
 /**
  * LoginForm
  * - UI + validation
@@ -37,10 +41,12 @@ export default function LoginForm() {
     // Login thành công (tạm thời chỉ báo)
     messageApi.success('Login successful');
 
-    // TODO (STEP SAU):
-    // - Lưu token
-    // - Set auth context
-    // - Redirect theo role
+    // Lưu user vào AuthContext (tạm mock)
+    setAuthUser({
+      id: '1',
+      username: values.identifier,
+      role: 'admin',
+    });
   };
 
   return (
