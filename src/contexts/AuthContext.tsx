@@ -1,6 +1,8 @@
 'use client';
 
 import React, { createContext, useContext, useState } from 'react';
+import { useEffect } from 'react';
+import { getToken, removeToken } from '@/utils/token';
 
 /**
  * Kiểu dữ liệu user (tối giản cho login)
@@ -30,7 +32,19 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+ // Khi reload page, nếu còn token thì coi như đã login
+  useEffect(() => {
+    const token = getToken();
 
+    if (token) {
+      // Tạm mock user, STEP SAU sẽ lấy từ API / decode token
+      setUser({
+        id: '1',
+        username: 'admin',
+        role: 'admin',
+      });
+    }
+  }, []);
   /**
    * Lưu user sau khi login
    */
@@ -42,8 +56,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * Clear user khi logout
    */
   const logout = () => {
-    setUser(null);
-  };
+  removeToken();
+  setUser(null);
+};
+
 
   return (
     <AuthContext.Provider value={{ user, login, logout }}>
@@ -64,3 +80,4 @@ export function useAuth() {
 
   return context;
 }
+
