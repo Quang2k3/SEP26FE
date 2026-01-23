@@ -1,104 +1,42 @@
 'use client';
 
-import { Form, Input, Button, message } from 'antd';
-// message: hiển thị thông báo success / error
-
-import { login } from '@/services/auth.service';
-// import hàm login từ service (tách khỏi UI)
-
+import { Form, Input, Button } from 'antd';
 import { useAuth } from '@/contexts/AuthContext';
 
-const { login: setAuthUser } = useAuth();
-
-/**
- * LoginForm
- * - UI + validation
- * - Gọi API login
- * - Chưa lưu token
- * - Chưa redirect
- */
 export default function LoginForm() {
-  // Ant Design message instance
-  const [messageApi, contextHolder] = message.useMessage();
 
-  /**
-   * Hàm submit form khi validate OK
-   * values = { identifier, password }
-   */
-  const onFinish = async (values: {
-    identifier: string;
-    password: string;
-  }) => {
-    // Gọi API login
-    const result = await login(values);
+  const { login } = useAuth(); 
 
-    // Login thất bại
-    if (!result.success) {
-      messageApi.error(result.message || 'Login failed');
-      return;
-    }
-
-    // Login thành công (tạm thời chỉ báo)
-    messageApi.success('Login successful');
-
-    // Lưu user vào AuthContext (tạm mock)
-    setAuthUser({
+  const onFinish = (values: any) => {
+    // tạm fake user để test
+    login({
       id: '1',
-      username: values.identifier,
-      role: 'admin',
+      username: values.username,
+      role: 'ADMIN',
     });
   };
 
   return (
-    <>
-      {/* Context bắt buộc cho antd message */}
-      {contextHolder}
-
-      <Form
-        layout="vertical"
-        onFinish={onFinish}
+    <Form layout="vertical" onFinish={onFinish}>
+      <Form.Item
+        label="Username or Email"
+        name="username"
+        rules={[{ required: true }]}
       >
-        {/* Username hoặc Email */}
-        <Form.Item
-          label="Username or Email"
-          name="identifier"
-          rules={[
-            {
-              required: true,
-              message: 'Please enter your username or email',
-            },
-          ]}
-        >
-          <Input placeholder="Enter your username or email" />
-        </Form.Item>
+        <Input />
+      </Form.Item>
 
-        {/* Password */}
-        <Form.Item
-          label="Password"
-          name="password"
-          rules={[
-            {
-              required: true,
-              message: 'Please enter your password',
-            },
-            {
-              min: 6,
-              message: 'Password must be at least 6 characters',
-            },
-          ]}
-        >
-          <Input.Password placeholder="Enter your password" />
-        </Form.Item>
+      <Form.Item
+        label="Password"
+        name="password"
+        rules={[{ required: true }]}
+      >
+        <Input.Password />
+      </Form.Item>
 
-        {/* Submit */}
-        <Button
-          type="primary"
-          htmlType="submit"
-          block
-        >
-          Login
-        </Button>
-      </Form>
-    </>
+      <Button type="primary" htmlType="submit" block>
+        Login
+      </Button>
+    </Form>
   );
 }
