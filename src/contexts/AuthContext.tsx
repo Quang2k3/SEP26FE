@@ -1,83 +1,68 @@
 'use client';
 
 import React, { createContext, useContext, useState } from 'react';
-import { useEffect } from 'react';
-import { getToken, removeToken } from '@/utils/token';
 
 /**
- * Kiểu dữ liệu user (tối giản cho login)
+ * Kiểu User dùng chung toàn hệ thống
+ * (đủ cho demo + phân quyền)
  */
-interface User {
-    id: string;
-    username: string;
-    role: string;
-}
+export type User = {
+  id: string;
+  name: string;
+  role: 'ADMIN' | 'WAREHOUSE_MANAGER' | 'WAREHOUSE_KEEPER';
+};
 
 /**
- * Kiểu context auth
+ * Kiểu dữ liệu context
  */
-interface AuthContextType {
-    user: User | null;
-    login: (userData: User) => void;
-    logout: () => void;
-}
+type AuthContextType = {
+  user: User | null;
+  login: (userData: User) => void;
+  logout: () => void;
+};
 
-// Tạo context
+/**
+ * Tạo AuthContext
+ */
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 /**
- * AuthProvider
- * - Bọc toàn app
- * - Quản lý state đăng nhập
+ * Provider bọc các trang cần auth
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-    const [user, setUser] = useState<User | null>(null);
-    // Khi reload page, nếu còn token thì coi như đã login
-    useEffect(() => {
-        const token = getToken();
+  // Lưu user trong state (KHÔNG dùng token)
+  const [user, setUser] = useState<User | null>(null);
 
-        if (token) {
-            // Tạm mock user, STEP SAU sẽ lấy từ API / decode token
-            setUser({
-                id: '1',
-                username: 'admin',
-                role: 'admin',
-            });
-        }
-    }, []);
-    /**
-     * Lưu user sau khi login
-     */
-    const login = (userData: User) => {
-        setUser(userData);
-    };
+  /**
+   * Gọi sau khi login thành công
+   */
+  const login = (userData: User) => {
+    setUser(userData);
+  };
 
-    /**
-     * Clear user khi logout
-     */
-    const logout = () => {
-        removeToken();
-        setUser(null);
-    };
+  /**
+   * Logout: xoá user khỏi context
+   */
+  const logout = () => {
+    setUser(null);
+  };
 
-
-    return (
-        <AuthContext.Provider value={{ user, login, logout }}>
-            {children}
-        </AuthContext.Provider>
-    );
+  return (
+    <AuthContext.Provider value={{ user, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 /**
- * Custom hook dùng auth
+ * Custom hook dùng AuthContext
  */
 export function useAuth() {
-    const context = useContext(AuthContext);
+  const context = useContext(AuthContext);
 
-    if (!context) {
-        throw new Error('useAuth must be used inside AuthProvider');
-    }
+  if (!context) {
+    throw new Error('useAuth must be used inside AuthProvider');
+  }
 
-    return context;
+  return context;
 }
-
