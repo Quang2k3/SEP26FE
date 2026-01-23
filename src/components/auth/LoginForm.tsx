@@ -1,45 +1,38 @@
 'use client';
 
-import { Form, Input, Button, message } from 'antd';
-// Form    : quản lý dữ liệu + validation
-// Input   : ô nhập text
-// Button  : nút submit
-// message : hiển thị thông báo nhanh (success / error)
+import { Form, Input, Button } from 'antd';
+// Form  : container quản lý state + validation
+// Input : ô nhập text
+// Button: nút submit
 
+/**
+ * LoginForm
+ * - Chỉ xử lý UI + validation
+ * - Chưa gọi API
+ * - Chưa xử lý auth / token
+ */
 export default function LoginForm() {
-
   /**
-   * Hàm này sẽ được gọi KHI:
-   * - User bấm nút Login
-   * - Và toàn bộ validation đều hợp lệ
-   *
-   * values là object chứa dữ liệu form
-   * ví dụ:
-   * {
-   *   account: 'admin',
-   *   password: '123456'
-   * }
+   * Hàm được gọi khi form validate OK
+   * values = { identifier, password }
    */
-  const onFinish = (values: { account: string; password: string }) => {
+  const onFinish = (values: {
+    identifier: string;
+    password: string;
+  }) => {
+    // Tạm thời log ra để kiểm tra luồng submit
     console.log('Login form values:', values);
-    message.success('Form submit thành công (chưa gọi API)');
-  };
-
-
-  const onFinishFailed = () => {
-    message.error('Vui lòng nhập đầy đủ thông tin');
   };
 
   return (
     <Form
       layout="vertical"
-      onFinish={onFinish}
-      onFinishFailed={onFinishFailed}
+      onFinish={onFinish} // Chỉ chạy khi validate pass
     >
-      {/* Field: Username hoặc Email */}
+      {/* Username hoặc Email */}
       <Form.Item
         label="Username or Email"
-        name="account" // key để Form quản lý dữ liệu
+        name="identifier" // key trong values
         rules={[
           {
             required: true,
@@ -50,7 +43,7 @@ export default function LoginForm() {
         <Input placeholder="Enter your username or email" />
       </Form.Item>
 
-      {/* Field: Password */}
+      {/* Password */}
       <Form.Item
         label="Password"
         name="password"
@@ -59,15 +52,19 @@ export default function LoginForm() {
             required: true,
             message: 'Please enter your password',
           },
+          {
+            min: 6,
+            message: 'Password must be at least 6 characters',
+          },
         ]}
       >
         <Input.Password placeholder="Enter your password" />
       </Form.Item>
 
-      {/* Button submit form */}
+      {/* Submit button */}
       <Button
         type="primary"
-        htmlType="submit" // QUAN TRỌNG: để Form biết đây là nút submit
+        htmlType="submit" // Bắt buộc để Form submit
         block
       >
         Login
