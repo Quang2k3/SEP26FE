@@ -7,9 +7,19 @@ export default function LoginPage() {
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // Mock redirect - không validate, chỉ chuyển trang
+
+    // Mock token
+    const mockToken = 'mock-token-' + Date.now();
+
+    // Lưu vào localStorage
+    localStorage.setItem('auth_token', mockToken);
+
+    // Lưu vào cookie (cho middleware)
+    document.cookie = `auth_token=${mockToken}; path=/; max-age=86400`;
+
+    // Redirect
     router.push('/verify-email');
-  };
+  };  
 
   return (
     <div className="flex items-center justify-center min-h-screen p-4">
