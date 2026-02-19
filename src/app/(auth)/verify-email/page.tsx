@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function VerifyEmailPage() {
+  const router = useRouter();
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -39,6 +41,9 @@ export default function VerifyEmailPage() {
     // TODO: Gửi OTP lên server để verify
     console.log('OTP:', otp.join(''));
     alert('OTP verified! (Mock)');
+
+    // Mock: Redirect to dashboard after verify
+    router.push('/dashboard');
   };
 
   return (
