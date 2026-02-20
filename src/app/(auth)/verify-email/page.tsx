@@ -105,11 +105,6 @@ export default function VerifyEmailPage() {
             </a>
           </div>
         </div>
-
-        {/* Footer */}
-        <div className="mt-12 text-center text-xs text-gray-500 italic">
-          [ Page ID: OTP_VERIFY_V1 ]
-        </div>
       </div>
     </div>
   );

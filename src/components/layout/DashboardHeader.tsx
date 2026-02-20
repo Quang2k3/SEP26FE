@@ -41,7 +41,6 @@ export default function DashboardHeader() {
         </div>
         <h1 className="text-2xl font-bold tracking-tight uppercase">
           WMS DASHBOARD{' '}
-          <span className="text-sm font-normal">(v.1.0_Draft)</span>
         </h1>
       </Link>
 

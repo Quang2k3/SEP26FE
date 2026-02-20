@@ -29,7 +29,7 @@ export default function LoginPage() {
             <span className="material-symbols-outlined text-4xl">inventory_2</span>
           </div>
           <h1 className="text-3xl font-bold italic tracking-tight">WMS Login</h1>
-          <p className="text-sm">Warehouse Management System v4.2.0</p>
+          <p className="text-sm">Warehouse Management System</p>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -78,11 +78,6 @@ export default function LoginPage() {
             </div>
           </div>
         </form>
-
-        <div className="mt-12 flex justify-between text-xs text-gray-500 italic">
-          <span>[ Wireframe v1.0 ]</span>
-          <span>Confidential - Internal Use Only</span>
-        </div>
       </div>
     </div>
   );
