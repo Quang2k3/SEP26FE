@@ -4,7 +4,7 @@ export interface NavAction {
 }
 
 export const CATEGORY_ACTIONS: NavAction[] = [
-  { label: 'Create Category', path: '/category/create' },
+  { label: 'Create Category', path: '/category?action=create' }, 
   { label: 'Edit Category', path: '/category/edit' },
   { label: 'Category Detail', path: '/category/detail' },
   { label: 'Category Tree View', path: '/category/tree' },
