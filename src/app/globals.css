@@ -1,51 +1,61 @@
-@import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@300;400;700&display=swap');
+/* Import Tailwind CSS v4 */
 @import "tailwindcss";
 
+@theme {
+  /* Định nghĩa các biến global nếu cần ở đây */
+  --font-sans: "Inter", "ui-sans-serif", "system-ui", "sans-serif";
+}
+
 :root {
-  --sketch-border: 2px;
+  --foreground-rgb: 17, 24, 39;
+  --background-start-rgb: 249, 250, 251;
+  --background-end-rgb: 255, 255, 255;
 }
 
 body {
-  font-family: 'Comic Neue', cursive;
-  background-color: #f0f0f0;
-  background-image: radial-gradient(#d1d1d1 1px, transparent 1px);
-  background-size: 20px 20px;
+  color: rgb(var(--foreground-rgb));
+  background: white;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-.sketch-box {
-  border: var(--sketch-border) solid #000000;
-  background: #ffffff;
-  box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 0.1);
+/* Trong Tailwind v4, bạn nên sử dụng @utility thay cho @layer components 
+   để định nghĩa các class tùy chỉnh mà vẫn dùng được @apply
+*/
+@utility sketch-box {
+  @apply bg-white border border-gray-200 rounded-lg shadow-sm transition-all;
 }
 
-.sketch-input {
-  border: var(--sketch-border) solid #000000;
-  border-radius: 0;
-  padding: 8px;
-  background: #ffffff;
+@utility sketch-input {
+  @apply px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all bg-white;
 }
 
-.sketch-input:focus {
-  outline: none;
-  border-color: #000000;
-  box-shadow: none;
+@utility sketch-button {
+  @apply px-4 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 active:scale-95 transition-all shadow-sm flex items-center justify-center gap-2 outline-none;
 }
 
-.sketch-button {
-  border: 3px solid #000000;
-  background: #eeeeee;
-  padding: 10px 20px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 0.1s;
+/* Custom Scrollbar */
+@layer base {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400;
+  }
 }
 
-.sketch-button:active {
-  transform: translate(2px, 2px);
-}
-
-.material-symbols-outlined {
-  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-  display: inline-block;
-  vertical-align: middle;
+/* Backdrop blur cho Modals */
+.backdrop-blur-sm {
+  backdrop-filter: blur(4px);
 }

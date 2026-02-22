@@ -18,7 +18,10 @@ export default function SecondaryNav() {
   }
 
   // Nếu không có menu phụ thì ẩn luôn
-  if (actions.length === 0) return null;
+  // Trong SecondaryNav.tsx
+  // Nếu chỉ có 1 hành động (ví dụ: Zone List),
+  // việc hiện menu là thừa thãi -> Trả về null để sạch như Dashboard.
+  if (actions.length <= 1) return null;
 
   return (
     // Dính ngay dưới thanh Header chính (top-16)
