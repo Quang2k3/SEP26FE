@@ -4,7 +4,6 @@ import React from 'react';
 
 interface EditCategoryModalProps {
   onClose: () => void;
-  // Khai báo kiểu dữ liệu nhận vào
   categoryData: {
     code: string;
     name: string;
@@ -20,56 +19,80 @@ export default function EditCategoryModal({ onClose, categoryData }: EditCategor
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-[1px]">
-      <div className="sketch-box bg-white w-full max-w-lg p-6 relative animate-in fade-in zoom-in duration-200 shadow-[4px_4px_0px_#00000040]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm font-sans">
+      <div className="bg-white w-full max-w-lg p-6 md:p-8 relative animate-in fade-in zoom-in-95 duration-200 rounded-xl shadow-2xl">
         
-        <button onClick={onClose} className="absolute top-4 right-4 p-1 hover:bg-gray-100 border-2 border-transparent hover:border-black transition-all rounded-full">
-          <span className="material-symbols-outlined font-bold text-xl">close</span>
+        {/* Nút X đóng Modal */}
+        <button 
+          onClick={onClose} 
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 hover:bg-gray-100 p-1.5 rounded-full transition-colors flex items-center justify-center"
+        >
+          <span className="material-symbols-outlined text-[20px]">close</span>
         </button>
 
-        <h2 className="text-xl font-bold mb-4 border-b-[3px] border-black pb-2 uppercase tracking-tight flex items-center gap-2">
-          <span className="material-symbols-outlined">edit</span>
+        <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+          <span className="material-symbols-outlined text-blue-600">edit_square</span>
           Edit Category
         </h2>
 
-        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+        <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
           
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-bold italic">Category Code</label>
-            <div className="sketch-input w-full text-sm h-9 bg-gray-100 text-gray-500 flex items-center cursor-not-allowed">
-              {categoryData.code} (Read Only)
-            </div>
+          {/* Field: Category Code (Disabled) */}
+          <div className="flex flex-col">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Category Code</label>
+            <input 
+              type="text"
+              className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-500 cursor-not-allowed text-sm" 
+              value={categoryData.code} 
+              disabled 
+            />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-bold italic">Category Name *</label>
+          {/* Field: Category Name */}
+          <div className="flex flex-col">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Category Name <span className="text-red-500">*</span>
+            </label>
             <input 
-              className="sketch-input w-full text-sm h-9" 
-              type="text" 
-              defaultValue={categoryData.name} // <--- Hiển thị đúng tên của dòng được click
+              type="text"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all" 
+              defaultValue={categoryData.name} 
               required 
             />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-bold italic">Description</label>
+          {/* Field: Description */}
+          <div className="flex flex-col">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
             <textarea 
-              className="sketch-input w-full text-sm resize-none p-2" 
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-none transition-all" 
               rows={4}
               defaultValue={`Description for ${categoryData.name}...`}
             ></textarea>
           </div>
 
-          <div className="italic text-gray-500 text-xs border-l-2 border-black pl-3 mt-2">
-            * Changes will be logged for auditing purposes. 
-            Category code cannot be modified once created.
+          {/* Info Callout */}
+          <div className="bg-blue-50 border border-blue-100 rounded-md p-3 flex items-start gap-2 mt-1">
+            <span className="material-symbols-outlined text-blue-500 text-lg shrink-0">info</span>
+            <p className="text-xs text-blue-800 leading-relaxed">
+              Changes to this category will be logged for auditing purposes. 
+              The category code cannot be modified once created.
+            </p>
           </div>
 
-          <div className="flex justify-end items-center gap-4 pt-4 border-t-[3px] border-black border-dashed mt-2">
-            <button onClick={onClose} className="text-sm font-bold underline hover:text-red-600 cursor-pointer" type="button">
+          {/* Action Buttons */}
+          <div className="flex justify-end items-center gap-3 pt-6 border-t border-gray-200 mt-2">
+            <button 
+              onClick={onClose} 
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors shadow-sm" 
+              type="button"
+            >
               Cancel
             </button>
-            <button className="sketch-button bg-black text-white hover:bg-gray-800 px-6 py-1.5 text-sm font-bold shadow-[2px_2px_0px_#000] flex items-center gap-2" type="submit">
+            <button 
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-2" 
+              type="submit"
+            >
               <span className="material-symbols-outlined text-sm">save</span>
               Save Changes
             </button>

@@ -17,10 +17,12 @@ export default function SecondaryNav() {
     actions = BIN_ACTIONS;
   }
 
+  // Nếu không có menu phụ thì ẩn luôn
   if (actions.length === 0) return null;
 
   return (
-    <div className="sticky top-16 z-40 bg-white sketch-box border-t-0 py-3 px-6 flex flex-wrap gap-2">
+    // Dính ngay dưới thanh Header chính (top-16)
+    <div className="sticky top-16 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200 py-2.5 px-4 md:px-8 flex flex-wrap gap-1.5 md:gap-2 shadow-sm w-full">
       {actions.map((action) => {
         const isActive = pathname === action.path;
         
@@ -28,10 +30,10 @@ export default function SecondaryNav() {
           <Link
             key={action.path}
             href={action.path}
-            className={`text-sm px-4 py-1.5 transition-all ${
+            className={`text-sm font-medium px-4 py-1.5 rounded-md transition-colors ${
               isActive 
-                ? 'font-bold border-2 border-black bg-black text-white shadow-[2px_2px_0px_#000]' // Highlight hộp đen giống Header
-                : 'font-bold text-gray-600 hover:text-black hover:bg-gray-100 border-2 border-transparent' // Bình thường (không gạch chân)
+                ? 'bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-100' // Tab đang chọn: Nền xanh, viền siêu mỏng xanh, chữ xanh
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/80' // Tab bình thường: Chữ xám, hover lên nền xám nhạt
             }`}
           >
             {action.label}

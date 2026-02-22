@@ -20,74 +20,89 @@ const MOCK_SKUS = [
 
 export default function CategoryDetailModal({ onClose, categoryData }: CategoryDetailModalProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-[1px]" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm font-sans" onClick={onClose}>
       <div 
-        className="sketch-box bg-white w-full max-w-3xl p-6 md:p-8 relative animate-in fade-in zoom-in duration-200 shadow-[4px_4px_0px_#00000040] max-h-[90vh] overflow-y-auto"
+        className="bg-white w-full max-w-3xl rounded-xl shadow-2xl relative animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()} 
       >
         
-        <button onClick={onClose} className="absolute top-4 right-4 p-1 hover:bg-gray-100 border-2 border-transparent hover:border-black transition-all rounded-full">
-          <span className="material-symbols-outlined font-bold text-xl">close</span>
-        </button>
+        {/* Header Modal - Cố định */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2 tracking-tight">
+            <span className="material-symbols-outlined text-blue-600">visibility</span>
+            Category Detail
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 hover:bg-gray-100 p-1.5 rounded-full transition-colors flex items-center justify-center">
+            <span className="material-symbols-outlined text-[20px]">close</span>
+          </button>
+        </div>
 
-        <h2 className="text-2xl font-bold mb-6 border-b-[3px] border-black pb-2 uppercase tracking-tight flex items-center gap-2">
-          <span className="material-symbols-outlined">visibility</span>
-          Category Detail
-        </h2>
-
-        {/* --- Dữ liệu động dựa vào dòng click --- */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="flex flex-col gap-1">
-            <span className="text-sm font-bold uppercase text-gray-500">Category Code</span>
-            <span className="text-xl font-bold border-b-2 border-dashed border-gray-400 pb-1">
-              {categoryData.code}
-            </span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-sm font-bold uppercase text-gray-500">Category Name</span>
-            <span className="text-xl font-bold border-b-2 border-dashed border-gray-400 pb-1">
-              {categoryData.name}
-            </span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-sm font-bold uppercase text-gray-500">Status</span>
-            <div className={`text-xl font-bold flex items-center gap-2 border-b-2 border-dashed border-gray-400 pb-1`}>
-              {/* Hiển thị màu chấm tròn tương ứng với status */}
-              <div className={`w-3 h-3 rounded-full border-2 border-black ${categoryData.color}`}></div>
-              {categoryData.status}
+        {/* Nội dung Modal - Cho phép cuộn dọc */}
+        <div className="p-6 overflow-y-auto">
+          
+          {/* Box thông tin Category */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 bg-gray-50 p-5 rounded-lg border border-gray-200">
+            <div>
+              <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Category Code</span>
+              <span className="text-lg font-bold text-gray-900">
+                {categoryData.code}
+              </span>
+            </div>
+            <div>
+              <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Category Name</span>
+              <span className="text-lg font-medium text-gray-900">
+                {categoryData.name}
+              </span>
+            </div>
+            <div>
+              <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Status</span>
+              <div className="mt-1">
+                {/* Thẻ Status kiểu Pill đồng bộ với bảng Category List */}
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  categoryData.status === 'Active' ? 'bg-green-100 text-green-800' :
+                  categoryData.status === 'Inactive' ? 'bg-gray-100 text-gray-800' :
+                  'bg-amber-100 text-amber-800'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${categoryData.color}`}></span>
+                  {categoryData.status}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Bảng SKU (Giữ nguyên) */}
-        <div className="border-[3px] border-black p-4 bg-gray-50">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-bold uppercase tracking-tight">Assigned SKUs</h3>
-          </div>
-          <div className="bg-white border-2 border-black overflow-hidden">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="border-b-[3px] border-black bg-gray-100">
-                  <th className="text-left py-2 px-4 border-r-2 border-black font-bold text-sm">SKU Code</th>
-                  <th className="text-left py-2 px-4 border-r-2 border-black font-bold text-sm">Description</th>
-                  <th className="text-right py-2 px-4 font-bold text-sm">Stock</th>
-                </tr>
-              </thead>
-              <tbody>
-                {MOCK_SKUS.map((sku, index) => (
-                  <tr key={index} className="border-b-2 border-black hover:bg-gray-50">
-                    <td className="py-2 px-4 border-r-2 border-black font-bold">{sku.code}</td>
-                    <td className="py-2 px-4 border-r-2 border-black">{sku.desc}</td>
-                    <td className="py-2 px-4 text-right font-bold">{sku.stock}</td>
+          {/* Bảng SKU */}
+          <div>
+            <h3 className="text-sm font-bold text-gray-900 mb-3">Assigned SKUs</h3>
+            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">SKU Code</th>
+                    <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
+                    <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Stock</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {MOCK_SKUS.map((sku, index) => (
+                    <tr key={index} className="hover:bg-gray-50 transition-colors">
+                      <td className="py-3 px-4 text-sm font-medium text-blue-600 hover:underline cursor-pointer">{sku.code}</td>
+                      <td className="py-3 px-4 text-sm text-gray-700">{sku.desc}</td>
+                      <td className="py-3 px-4 text-sm font-bold text-gray-900 text-right">{sku.stock}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
+          
         </div>
 
-        <div className="flex justify-end pt-6 mt-6">
-          <button onClick={onClose} className="sketch-button bg-black text-white hover:bg-gray-800 px-8 py-2 text-sm font-bold shadow-[2px_2px_0px_#000]">
+        {/* Footer Modal - Cố định */}
+        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end rounded-b-xl">
+          <button 
+            onClick={onClose} 
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors shadow-sm flex items-center gap-2"
+          >
             Close Detail
           </button>
         </div>

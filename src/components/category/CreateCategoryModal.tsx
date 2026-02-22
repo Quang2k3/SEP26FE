@@ -15,79 +15,97 @@ export default function CreateCategoryModal({ onClose }: CreateCategoryModalProp
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-[1px]"
-      // ĐÃ XÓA: onClick={onClose} ở đây để tránh việc click nhầm ra ngoài làm tắt form
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm font-sans"
     >
       {/* Box Form */}
       <div 
-        className="sketch-box bg-white w-full max-w-lg p-6 relative animate-in fade-in zoom-in duration-200 shadow-[4px_4px_0px_#00000040]"
-        // ĐÃ XÓA: onClick={(e) => e.stopPropagation()} vì không còn cần thiết nữa
+        className="bg-white w-full max-w-lg p-6 md:p-8 relative animate-in fade-in zoom-in-95 duration-200 rounded-xl shadow-2xl"
       >
         
         {/* Nút X đóng Modal */}
         <button 
           onClick={onClose}
-          className="absolute top-4 right-4 p-1 hover:bg-gray-100 border-2 border-transparent hover:border-black transition-all rounded-full"
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 hover:bg-gray-100 p-1.5 rounded-full transition-colors flex items-center justify-center"
         >
-          <span className="material-symbols-outlined font-bold text-xl">close</span>
+          <span className="material-symbols-outlined text-[20px]">close</span>
         </button>
 
-        <h2 className="text-xl font-bold mb-4 border-b-[3px] border-black pb-2 uppercase tracking-tight">
+        <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+          <span className="material-symbols-outlined text-blue-600">category</span>
           Create Category
         </h2>
 
-        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+        <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
           {/* Hàng 1: Code & Name (Layout 2 cột) */}
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 flex flex-col gap-1">
-              <label className="text-sm font-bold italic">Category Code *</label>
-              <input className="sketch-input w-full text-sm h-9" placeholder="[e.g. ELEC-01]" type="text" required />
-              <p className="text-xs text-gray-500 font-bold leading-tight">(Unique for barcode)</p>
+          <div className="flex flex-col md:flex-row gap-5">
+            <div className="flex-1 flex flex-col">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Category Code <span className="text-red-500">*</span>
+              </label>
+              <input 
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all" 
+                placeholder="e.g. ELEC-01" 
+                type="text" 
+                required 
+              />
+              <p className="text-xs text-gray-500 mt-1.5">Unique identifier for barcode</p>
             </div>
 
-            <div className="flex-1 flex flex-col gap-1">
-              <label className="text-sm font-bold italic">Category Name *</label>
-              <input className="sketch-input w-full text-sm h-9" placeholder="[e.g. Electronics]" type="text" required />
+            <div className="flex-1 flex flex-col">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Category Name <span className="text-red-500">*</span>
+              </label>
+              <input 
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all" 
+                placeholder="e.g. Electronics" 
+                type="text" 
+                required 
+              />
             </div>
           </div>
 
           {/* Hàng 2: Parent Category */}
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-bold italic">Parent Category</label>
+          <div className="flex flex-col">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Parent Category</label>
             <div className="relative">
-              <select className="sketch-input w-full text-sm h-9 appearance-none cursor-pointer bg-white pl-3 pr-8">
-                <option value="">[Select Parent Category]</option>
-                <option>Hardware</option>
-                <option>Software</option>
-                <option>Peripherals</option>
+              <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm appearance-none cursor-pointer bg-white transition-all">
+                <option value="">Select Parent Category</option>
+                <option value="hardware">Hardware</option>
+                <option value="software">Software</option>
+                <option value="peripherals">Peripherals</option>
               </select>
-              <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-base">
+              <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-lg">
                 expand_more
               </span>
             </div>
-            <p className="text-xs text-gray-500 font-bold italic leading-tight">Leave empty for top-level</p>
+            <p className="text-xs text-gray-500 mt-1.5">Leave empty to create a top-level category.</p>
           </div>
 
           {/* Hàng 3: Description */}
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-bold italic">Description</label>
-            <textarea className="sketch-input w-full text-sm resize-none p-2" placeholder="[Type category notes here...]" rows={3}></textarea>
+          <div className="flex flex-col">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea 
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-none transition-all" 
+              placeholder="Type category notes here..." 
+              rows={3}
+            ></textarea>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex justify-end gap-3 pt-4 border-t-[3px] border-black border-dashed mt-2">
+          <div className="flex justify-end gap-3 pt-6 mt-2 border-t border-gray-200">
             <button 
               onClick={onClose} 
-              className="sketch-button px-4 py-1.5 text-sm hover:bg-gray-100" 
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors shadow-sm" 
               type="button"
             >
               Cancel
             </button>
             <button 
-              className="sketch-button bg-black text-white hover:bg-gray-800 px-6 py-1.5 text-sm font-bold shadow-[2px_2px_0px_#000]" 
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-2" 
               type="submit"
             >
-              SAVE
+              <span className="material-symbols-outlined text-sm">save</span>
+              Save Category
             </button>
           </div>
         </form>
