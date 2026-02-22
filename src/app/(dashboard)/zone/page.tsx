@@ -2,8 +2,9 @@
 
 import React, { Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import ZoneFormModal, { ZoneData } from '@/components/zone/ZoneFormModal'; // Đảm bảo import đúng đường dẫn Modal của bạn
 
-// Dữ liệu tĩnh mô phỏng
+// Dữ liệu tĩnh mô phỏng (Mock Data)
 const MOCK_ZONES = [
   { code: 'ZN-101', name: 'North Wing Cold', type: 'Cold Storage', capacity: 45, status: 'Active' },
   { code: 'ZN-102', name: 'South Dry Goods', type: 'Dry Storage', capacity: 90, status: 'Full' },
@@ -15,40 +16,50 @@ function ZoneListContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  const currentAction = searchParams.get('action');
+  // Bắt URL param để biết đang mở Modal Tạo hay Sửa
+  const currentAction = searchParams.get('action'); // 'create' hoặc 'edit'
+  const currentId = searchParams.get('id'); // VD: 'ZN-101'
 
+  // Đóng Modal bằng cách xóa query params, trở về URL sạch
   const closeModal = () => {
     router.push('/zone');
   };
 
+  // Xử lý khi bấm nút Save trong Modal
+  const handleSaveZone = (data: ZoneData) => {
+    console.log(`API Call: ${currentAction === 'edit' ? 'Cập nhật' : 'Tạo mới'} Zone với dữ liệu:`, data);
+    // Sau này bạn gọi API ở đây
+    closeModal();
+  };
+
   return (
-    // Đổi background nền tổng thể sang màu xám thật nhạt để làm nổi bật các Box trắng
-    <div className="max-w-7xl mx-auto w-full flex flex-col gap-6 p-4 md:p-8 bg-gray-50/50 min-h-screen font-sans">
+    <div className="max-w-7xl mx-auto w-full flex flex-col gap-6 p-4 md:p-8 bg-gray-50/50 min-h-screen font-sans relative">
       
-      <div className={`flex flex-col gap-6 transition-all duration-300 ${currentAction ? 'opacity-20 blur-[2px] pointer-events-none' : 'opacity-100'}`}>
+      {/* Khối nền nội dung - Sẽ bị mờ (blur) đi khi Modal mở */}
+      <div className={`flex flex-col gap-6 transition-all duration-300 ${currentAction ? 'opacity-30 blur-[2px] pointer-events-none' : 'opacity-100'}`}>
         
-        {/* Page Header - Tối giản, chuyên nghiệp */}
+        {/* Page Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Zone Management</h1>
             <p className="mt-1 text-sm text-gray-500">Configure and monitor all warehouse sections.</p>
           </div>
-          {/* Nút Create Zone chuẩn Enterprise */}
+          {/* Nút Create Zone chuyển hướng URL */}
           <button 
             onClick={() => router.push('/zone?action=create')}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 shadow-sm outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           >
             <span className="material-symbols-outlined text-sm">add</span>
             Create Zone
           </button>
         </div>
 
-        {/* Filters & Search - Bo góc, viền xám nhạt, focus ring xanh */}
+        {/* Filters & Search */}
         <div className="flex flex-wrap gap-3 items-center bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-          <div className="flex flex-1 max-w-md items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all">
+          <div className="flex flex-1 max-w-md items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500 transition-all">
             <span className="material-symbols-outlined text-gray-400 text-xl">search</span>
             <input 
-              className="w-full bg-transparent border-none p-0 text-sm text-gray-900 focus:outline-none focus:ring-0 placeholder-gray-400" 
+              className="w-full bg-transparent border-none p-0 text-sm text-gray-900 focus:outline-none placeholder-gray-400" 
               placeholder="Search zones by code or name..." 
               type="text"
             />
@@ -63,7 +74,7 @@ function ZoneListContent() {
           </button>
         </div>
 
-        {/* Stats Summary - Sạch sẽ, số liệu nổi bật */}
+        {/* Stats Summary */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-center">
             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Zones</span>
@@ -83,7 +94,7 @@ function ZoneListContent() {
           </div>
         </div>
 
-        {/* Main Table - Không còn viền đen, dùng màu xám dịu mắt */}
+        {/* Main Table */}
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -100,14 +111,14 @@ function ZoneListContent() {
               <tbody className="divide-y divide-gray-200">
                 {MOCK_ZONES.map((zone, index) => (
                   <tr key={index} className="hover:bg-gray-50 transition-colors group">
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{zone.code}</td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{zone.name}</td>
+                    <td className="px-6 py-4 text-sm font-bold text-blue-600 hover:underline cursor-pointer">{zone.code}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{zone.name}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{zone.type}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div 
-                            className={`h-2 rounded-full ${zone.capacity > 85 ? 'bg-red-500' : 'bg-blue-600'}`} 
+                            className={`h-2 rounded-full ${zone.capacity > 85 ? 'bg-red-500' : zone.capacity > 60 ? 'bg-amber-500' : 'bg-blue-600'}`} 
                             style={{ width: `${zone.capacity}%` }}
                           ></div>
                         </div>
@@ -115,7 +126,6 @@ function ZoneListContent() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      {/* Thẻ Status kiểu Pill hiện đại */}
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         zone.status === 'Full' ? 'bg-red-100 text-red-800' :
                         zone.status === 'Active' ? 'bg-green-100 text-green-800' :
@@ -126,13 +136,16 @@ function ZoneListContent() {
                     </td>
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                        <button 
+                        {/* Nút View (Sau này sẽ đưa sang trang chi tiết Zone, xem danh sách Bin bên trong) */}
+                        <button
                           onClick={() => router.push(`/zone/${zone.code}`)}
                           className="text-gray-400 hover:text-blue-600 transition-colors"
                           title="View Details"
                         >
                           <span className="material-symbols-outlined text-lg">visibility</span>
                         </button>
+                        
+                        {/* Nút Edit - Chuyển URL sang chế độ edit */}
                         <button 
                           onClick={() => router.push(`/zone?action=edit&id=${zone.code}`)}
                           className="text-gray-400 hover:text-blue-600 transition-colors"
@@ -150,40 +163,40 @@ function ZoneListContent() {
         </div>
       </div>
 
-      {/* Placeholder Modal giữ nguyên logic */}
-      {currentAction === 'create' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
-           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg">
-             <h2 className="text-xl font-bold text-gray-900 mb-4">Create Zone</h2>
-             <p className="text-sm text-gray-500 mb-6">Form fields will be generated here.</p>
-             <div className="flex justify-end gap-3">
-               <button onClick={closeModal} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">Cancel</button>
-               <button onClick={closeModal} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">Save Zone</button>
-             </div>
-           </div>
-        </div>
-      )}
-
-      {currentAction === 'edit' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
-           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg">
-             <h2 className="text-xl font-bold text-gray-900 mb-4">Edit Zone ({searchParams.get('id')})</h2>
-             <p className="text-sm text-gray-500 mb-6">Form fields will be generated here.</p>
-             <div className="flex justify-end gap-3">
-               <button onClick={closeModal} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">Cancel</button>
-               <button onClick={closeModal} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">Save Changes</button>
-             </div>
-           </div>
-        </div>
-      )}
+      {/* TÍCH HỢP MODAL 2-TRONG-1 (CREATE & EDIT) */}
+      <ZoneFormModal 
+        isOpen={currentAction === 'create' || currentAction === 'edit'} 
+        mode={currentAction === 'edit' ? 'edit' : 'create'}
+        initialData={
+          currentAction === 'edit' 
+            ? { 
+                code: currentId || '', 
+                name: 'High-Density Storage A', // Demo data
+                type: 'Bulk Storage', 
+                description: 'Main bulk storage area...', 
+                isActive: true 
+              } 
+            : null
+        }
+        onClose={closeModal} 
+        onSubmit={handleSaveZone}
+      />
 
     </div>
   );
 }
 
+// Bọc Suspense cho Next.js Server Components
 export default function ZonePage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading Zones...</div>}>
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50/50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div className="text-sm font-medium text-gray-500">Loading Zones...</div>
+        </div>
+      </div>
+    }>
       <ZoneListContent />
     </Suspense>
   );
