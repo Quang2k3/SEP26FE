@@ -1,25 +1,41 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { login as loginService } from '@/services/authService';
+import toast from 'react-hot-toast';
 
 export default function LoginPage() {
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    // Mock token (GIỮ NGUYÊN LOGIC CỦA BẠN)
-    const mockToken = 'mock-token-' + Date.now();
+    const formData = new FormData(e.currentTarget);
+    const username = formData.get('username') as string;
+    const password = formData.get('password') as string;
 
-    // Lưu vào localStorage
-    localStorage.setItem('auth_token', mockToken);
+    setLoading(true);
 
-    // Lưu vào cookie (cho middleware)
-    document.cookie = `auth_token=${mockToken}; path=/; max-age=86400`;
+    try {
+      const result = await loginService({ username, password });
 
-    // Redirect
-    router.push('/verify-email');
-  };  
+      toast.success('Đăng nhập thành công!');
+
+      if (result.raw.data.requiresVerification) {
+        router.push('/verify-email');
+      } else {
+        router.push('/dashboard');
+      }
+    } catch (err: unknown) {
+      // Lỗi đã được xử lý bởi axios interceptor và hiển thị toast
+      // Không cần xử lý thêm ở đây, chỉ để catch để không throw error
+      console.error('Login error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 font-sans p-4">
@@ -77,11 +93,14 @@ export default function LoginPage() {
 
           <div className="pt-2">
             <button
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold py-2.5 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
               type="submit"
+              disabled={loading}
             >
-              Secure Login
-              <span className="material-symbols-outlined text-sm">login</span>
+              {loading ? 'Signing in...' : 'Secure Login'}
+              <span className="material-symbols-outlined text-sm">
+                {loading ? 'hourglass_top' : 'login'}
+              </span>
             </button>
           </div>
         </form>
