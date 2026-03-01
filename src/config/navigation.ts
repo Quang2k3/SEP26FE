@@ -21,3 +21,11 @@ export const BIN_ACTIONS: NavAction[] = [
   { label: 'Bin Occupancy', path: '/bin/occupancy' },
   { label: 'Configure Capacity', path: '/bin/configure' },
 ];
+
+export const INBOUND_ACTIONS: NavAction[] = [
+  { label: 'Receipt List', path: '/inbound' },
+];
+
+export const OUTBOUND_ACTIONS: NavAction[] = [
+  { label: 'Shipment List', path: '/outbound' },
+];

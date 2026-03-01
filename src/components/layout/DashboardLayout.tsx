@@ -8,6 +8,8 @@ import {
   CATEGORY_ACTIONS,
   ZONE_ACTIONS,
   BIN_ACTIONS,
+  INBOUND_ACTIONS,
+  OUTBOUND_ACTIONS,
   type NavAction,
 } from '@/config/navigation';
 
@@ -60,6 +62,18 @@ export default function DashboardLayout({
       name: 'Bin',
       icon: 'inventory_2',
       children: BIN_ACTIONS,
+    },
+    {
+      key: 'inbound',
+      name: 'Inbound',
+      icon: 'input_circle',
+      children: INBOUND_ACTIONS,
+    },
+    {
+      key: 'outbound',
+      name: 'Outbound',
+      icon: 'output_circle',
+      children: OUTBOUND_ACTIONS,
     },
   ];
 
