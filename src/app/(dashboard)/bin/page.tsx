@@ -170,7 +170,7 @@ function BinListContent() {
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         <button
-                          onClick={() => router.push(`/bin/${bin.code}`)}
+                          onClick={() => router.push(`/bin/detail/${bin.code}`)}
                           className="text-gray-400 hover:text-blue-600 transition-colors outline-none"
                           title="View Details"
                         >
