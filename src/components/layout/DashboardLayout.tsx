@@ -31,12 +31,12 @@ export default function DashboardLayout({
   const [collapsed, setCollapsed] = useState(false);
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    const token = localStorage.getItem('auth_token');
-    if (!token) {
-      router.push('/login');
-    }
-  }, [router]);
+  // useEffect(() => {
+  //   const token = localStorage.getItem('auth_token');
+  //   if (!token) {
+  //     router.push('/login');
+  //   }
+  // }, [router]);
 
   const sections: SidebarSection[] = [
     {
