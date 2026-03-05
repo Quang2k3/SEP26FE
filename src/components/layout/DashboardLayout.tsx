@@ -11,6 +11,7 @@ import {
   INBOUND_ACTIONS,
   OUTBOUND_ACTIONS,
   type NavAction,
+  USER_MANAGEMENT_ACTIONS,
 } from '@/config/navigation';
 
 type SidebarSection = {
@@ -74,6 +75,12 @@ export default function DashboardLayout({
       name: 'Outbound',
       icon: 'output_circle',
       children: OUTBOUND_ACTIONS,
+    },
+    {
+      key: 'user-management',
+      name: 'User Management',
+      icon: 'person',
+      path: '/user-management',
     },
   ];
 

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import CreateOutboundModal, { OutboundFormData } from '@/components/outbound/CreateOutboundModal';
 import EditOutboundModal from '@/components/outbound/EditOutboundModal';
+import { AdminPage } from '@/components/layout/AdminPage';
 
 // Mock data tương tự inbound nhưng cho outbound shipments
 const MOCK_SHIPMENTS = [
@@ -113,20 +114,11 @@ function OutboundShipmentListContent() {
   };
 
   return (
-    <div className="w-full flex flex-col gap-6 font-sans">
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-            Outbound Shipment List
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Manage outgoing warehouse shipments and deliveries.
-          </p>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center gap-3">
+    <AdminPage
+      title="Outbound Shipment List"
+      description="Manage outgoing warehouse shipments and deliveries."
+      actions={
+        <>
           <Button
             variant="outline"
             size="sm"
@@ -142,9 +134,9 @@ function OutboundShipmentListContent() {
           >
             New Shipment
           </Button>
-        </div>
-      </div>
-
+        </>
+      }
+    >
       {/* Filters & Search */}
       <Card className="flex flex-wrap gap-3 items-center">
         <div className="flex flex-1 max-w-md items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500 transition-all">
@@ -295,7 +287,7 @@ function OutboundShipmentListContent() {
           onSubmit={handleSubmitEdit}
         />
       )}
-    </div>
+    </AdminPage>
   );
 }
 
