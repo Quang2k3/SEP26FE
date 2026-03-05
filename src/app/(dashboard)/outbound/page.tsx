@@ -1,7 +1,11 @@
 'use client';
 
-import React, { Suspense } from 'react';
+import React, { Suspense, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import CreateOutboundModal, { OutboundFormData } from '@/components/outbound/CreateOutboundModal';
+import EditOutboundModal from '@/components/outbound/EditOutboundModal';
 
 // Mock data tương tự inbound nhưng cho outbound shipments
 const MOCK_SHIPMENTS = [
@@ -59,6 +63,9 @@ const STATUS_COLORS: Record<string, string> = {
 
 function OutboundShipmentListContent() {
   const router = useRouter();
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedShipment, setSelectedShipment] = useState<OutboundFormData | null>(null);
 
   const handleViewDetail = (shipmentCode: string) => {
     router.push(`/outbound/${shipmentCode}`);
@@ -69,11 +76,44 @@ function OutboundShipmentListContent() {
   };
 
   const handleNewShipment = () => {
-    router.push('/outbound/new');
+    setShowCreateModal(true);
+  };
+
+  const handleCreateOutbound = (data: OutboundFormData) => {
+    console.log('API Call: Tạo Outbound:', data);
+    setShowCreateModal(false);
+  };
+
+  const handleCloseModal = () => {
+    setShowCreateModal(false);
+  };
+
+  const handleEditFromList = (shipment: (typeof MOCK_SHIPMENTS)[number]) => {
+    const initialData: OutboundFormData = {
+      shipmentCode: shipment.shipmentCode,
+      customer: shipment.customer,
+      binCode: 'N/A',
+      expectedDate: shipment.date,
+      quantity: '0',
+      notes: '',
+    };
+    setSelectedShipment(initialData);
+    setShowEditModal(true);
+  };
+
+  const handleSubmitEdit = (updated: OutboundFormData) => {
+    console.log('API Call: Update outbound from list', updated);
+    setShowEditModal(false);
+  };
+
+  const handleDeleteFromList = (shipmentCode: string) => {
+    if (window.confirm(`Delete outbound shipment ${shipmentCode}?`)) {
+      console.log('API Call: Delete outbound from list', shipmentCode);
+    }
   };
 
   return (
-    <div className="max-w-7xl mx-auto w-full flex flex-col gap-6 p-4 md:p-8 bg-gray-50/50 min-h-screen font-sans">
+    <div className="w-full flex flex-col gap-6 font-sans">
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
@@ -87,25 +127,26 @@ function OutboundShipmentListContent() {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-3">
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={handleExport}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-sm"
+            leftIcon={<span className="material-symbols-outlined text-lg">download</span>}
           >
-            <span className="material-symbols-outlined text-lg">download</span>
             Export
-          </button>
-          <button
+          </Button>
+          <Button
+            size="sm"
             onClick={handleNewShipment}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 shadow-sm outline-none focus:ring-2 focus:ring-blue-500"
+            leftIcon={<span className="material-symbols-outlined text-sm">add</span>}
           >
-            <span className="material-symbols-outlined text-sm">add</span>
             New Shipment
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Filters & Search */}
-      <div className="flex flex-wrap gap-3 items-center bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+      <Card className="flex flex-wrap gap-3 items-center">
         <div className="flex flex-1 max-w-md items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500 transition-all">
           <span className="material-symbols-outlined text-gray-400 text-xl">search</span>
           <input
@@ -122,30 +163,30 @@ function OutboundShipmentListContent() {
           <span className="text-gray-500 font-normal">Date:</span> All Time
           <span className="material-symbols-outlined text-gray-400 text-lg">expand_more</span>
         </button>
-      </div>
+      </Card>
 
       {/* Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-center">
+        <Card className="flex flex-col justify-center">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Shipments</span>
           <span className="text-3xl font-bold text-gray-900 mt-1">142</span>
-        </div>
-        <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-center">
+        </Card>
+        <Card className="flex flex-col justify-center">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Shipped</span>
           <span className="text-3xl font-bold text-green-600 mt-1">89</span>
-        </div>
-        <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-center">
+        </Card>
+        <Card className="flex flex-col justify-center">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Pending</span>
           <span className="text-3xl font-bold text-amber-500 mt-1">28</span>
-        </div>
-        <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-center">
+        </Card>
+        <Card className="flex flex-col justify-center">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">In Transit</span>
           <span className="text-3xl font-bold text-blue-600 mt-1">25</span>
-        </div>
+        </Card>
       </div>
 
       {/* Main Table */}
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+      <Card className="overflow-hidden" padded={false}>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -204,6 +245,20 @@ function OutboundShipmentListContent() {
                       >
                         <span className="material-symbols-outlined text-lg">visibility</span>
                       </button>
+                      <button
+                        onClick={() => handleEditFromList(shipment)}
+                        className="text-gray-400 hover:text-blue-600 transition-colors outline-none"
+                        title="Edit Outbound"
+                      >
+                        <span className="material-symbols-outlined text-lg">edit</span>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteFromList(shipment.shipmentCode)}
+                        className="text-gray-400 hover:text-red-600 transition-colors outline-none"
+                        title="Delete Outbound"
+                      >
+                        <span className="material-symbols-outlined text-lg">delete</span>
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -224,7 +279,22 @@ function OutboundShipmentListContent() {
             <button className="px-3 py-1 border border-gray-200 rounded text-sm text-gray-500 hover:bg-gray-50">Next</button>
           </div>
         </div>
-      </div>
+      </Card>
+
+      <CreateOutboundModal
+        isOpen={showCreateModal}
+        onClose={handleCloseModal}
+        onSubmit={handleCreateOutbound}
+      />
+
+      {selectedShipment && (
+        <EditOutboundModal
+          isOpen={showEditModal}
+          initialData={selectedShipment}
+          onClose={() => setShowEditModal(false)}
+          onSubmit={handleSubmitEdit}
+        />
+      )}
     </div>
   );
 }
