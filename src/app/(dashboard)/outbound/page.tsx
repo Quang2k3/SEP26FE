@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import CreateOutboundModal, { OutboundFormData } from '@/components/outbound/CreateOutboundModal';
+import EditOutboundModal from '@/components/outbound/EditOutboundModal';
 
 // Mock data tương tự inbound nhưng cho outbound shipments
 const MOCK_SHIPMENTS = [
@@ -63,6 +64,8 @@ const STATUS_COLORS: Record<string, string> = {
 function OutboundShipmentListContent() {
   const router = useRouter();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedShipment, setSelectedShipment] = useState<OutboundFormData | null>(null);
 
   const handleViewDetail = (shipmentCode: string) => {
     router.push(`/outbound/${shipmentCode}`);
@@ -83,6 +86,30 @@ function OutboundShipmentListContent() {
 
   const handleCloseModal = () => {
     setShowCreateModal(false);
+  };
+
+  const handleEditFromList = (shipment: (typeof MOCK_SHIPMENTS)[number]) => {
+    const initialData: OutboundFormData = {
+      shipmentCode: shipment.shipmentCode,
+      customer: shipment.customer,
+      binCode: 'N/A',
+      expectedDate: shipment.date,
+      quantity: '0',
+      notes: '',
+    };
+    setSelectedShipment(initialData);
+    setShowEditModal(true);
+  };
+
+  const handleSubmitEdit = (updated: OutboundFormData) => {
+    console.log('API Call: Update outbound from list', updated);
+    setShowEditModal(false);
+  };
+
+  const handleDeleteFromList = (shipmentCode: string) => {
+    if (window.confirm(`Delete outbound shipment ${shipmentCode}?`)) {
+      console.log('API Call: Delete outbound from list', shipmentCode);
+    }
   };
 
   return (
@@ -218,6 +245,20 @@ function OutboundShipmentListContent() {
                       >
                         <span className="material-symbols-outlined text-lg">visibility</span>
                       </button>
+                      <button
+                        onClick={() => handleEditFromList(shipment)}
+                        className="text-gray-400 hover:text-blue-600 transition-colors outline-none"
+                        title="Edit Outbound"
+                      >
+                        <span className="material-symbols-outlined text-lg">edit</span>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteFromList(shipment.shipmentCode)}
+                        className="text-gray-400 hover:text-red-600 transition-colors outline-none"
+                        title="Delete Outbound"
+                      >
+                        <span className="material-symbols-outlined text-lg">delete</span>
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -245,6 +286,15 @@ function OutboundShipmentListContent() {
         onClose={handleCloseModal}
         onSubmit={handleCreateOutbound}
       />
+
+      {selectedShipment && (
+        <EditOutboundModal
+          isOpen={showEditModal}
+          initialData={selectedShipment}
+          onClose={() => setShowEditModal(false)}
+          onSubmit={handleSubmitEdit}
+        />
+      )}
     </div>
   );
 }
