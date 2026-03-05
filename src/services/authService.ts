@@ -8,8 +8,9 @@ export type ApiResponse<T> = {
 };
 
 export interface LoginPayload {
-  username: string;
+  email: string;
   password: string;
+  rememberMe: boolean;
 }
 
 export type RoleCode = 'ADMIN' | 'MANAGER' | 'STAFF' | (string & {});
