@@ -1,20 +1,57 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import api from '@/config/axios';
+import type { ApiResponse } from '@/interfaces/common';
+import type { MeUser, ProfileFormData } from '@/interfaces/profile';
 
 export default function ProfilePage() {
-  const [formData, setFormData] = useState({
-    fullName: 'John Doe Warehouse Mgr',
-    email: 'john.doe@wms-logistics.com',
-    employeeId: 'WMS-9921',
-    department: 'Logistics Ops',
-    warehouse: 'North Central Hub',
+  const [formData, setFormData] = useState<ProfileFormData>({
+    fullName: '',
+    email: '',
+    employeeId: '',
+    department: '',
+    warehouse: '',
   });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const fetchProfile = async () => {
+      try {
+        const res = await api.get<ApiResponse<MeUser>>('/auth/me');
+        if (ignore) return;
+
+        const user = res.data.data;
+        if (!user) return;
+
+        setFormData({
+          fullName: user.fullName ?? '',
+          email: user.email ?? '',
+          employeeId: String(user.userId ?? ''),
+          department: user.roleCodes?.join(', ') ?? '',
+          warehouse: user.address ?? '',
+        });
+      } catch (error) {
+        console.error('Failed to load profile:', error);
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchProfile();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Profile saved:', formData);
-    alert('Profile changes saved! (Mock)');
+    console.log('Profile saved (not implemented API yet):', formData);
   };
 
   return (
@@ -32,7 +69,7 @@ export default function ProfilePage() {
         <div className="text-sm text-blue-800">
           <p className="font-semibold mb-1">Profile Edit Rules</p>
           <p className="opacity-90">
-            You must have <strong>'Admin'</strong> rights to edit the 'Department' and 'Employee ID' fields. 
+            You must have <strong>&apos;Admin&apos;</strong> rights to edit the &apos;Department&apos; and &apos;Employee ID&apos; fields. 
             Photo uploads should be in PNG or JPG format, up to 2MB in size.
           </p>
         </div>
@@ -80,6 +117,7 @@ export default function ProfilePage() {
                   onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                   placeholder="Enter your name"
                   required
+                  disabled={loading}
                 />
               </div>
 
@@ -95,6 +133,7 @@ export default function ProfilePage() {
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="email@example.com"
                     required
+                    disabled={loading}
                   />
                 </div>
               </div>

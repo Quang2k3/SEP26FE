@@ -1,22 +1,7 @@
- 'use client';
+'use client';
 
- import React, { useState, useEffect } from 'react';
-
- export interface OutboundFormData {
-   binCode: string;
-   shipmentCode: string;
-   customer: string;
-   expectedDate: string;
-   quantity: string;
-   notes: string;
- }
-
- interface CreateOutboundModalProps {
-   isOpen: boolean;
-   binCode?: string;
-   onClose: () => void;
-   onSubmit: (data: OutboundFormData) => void;
- }
+import React, { useState, useEffect } from 'react';
+import type { OutboundFormData, CreateOutboundModalProps } from '@/interfaces/modals';
 
  export default function CreateOutboundModal({
    isOpen,

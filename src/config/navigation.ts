@@ -1,7 +1,4 @@
-export interface NavAction {
-  label: string;
-  path: string;
-}
+import type { NavAction } from '@/interfaces/navigation';
 
 export const CATEGORY_ACTIONS: NavAction[] = [
   { label: 'Category List', path: '/category' }, 

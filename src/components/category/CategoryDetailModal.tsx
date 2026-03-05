@@ -1,16 +1,7 @@
 'use client';
 
 import React from 'react';
-
-interface CategoryDetailModalProps {
-  onClose: () => void;
-  categoryData: {
-    code: string;
-    name: string;
-    status: string;
-    color: string;
-  };
-}
+import type { CategoryDetailModalProps } from '@/interfaces/modals';
 
 const MOCK_SKUS = [
   { code: 'SKU-8821', desc: 'Industrial Power Drill v4', stock: 20 },

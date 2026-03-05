@@ -1,15 +1,6 @@
- "use client";
+"use client";
 
- import type { HTMLAttributes, ReactNode } from "react";
-
- export interface CardProps extends HTMLAttributes<HTMLDivElement> {
-   header?: ReactNode;
-   footer?: ReactNode;
-   title?: string;
-   description?: string;
-   padded?: boolean;
-   hoverable?: boolean;
- }
+ import type { CardProps } from "@/interfaces/ui";
 
  export function Card({
    header,

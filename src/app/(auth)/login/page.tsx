@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { login as loginService } from '@/services/authService';
-import toast from 'react-hot-toast';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,16 +20,12 @@ export default function LoginPage() {
     try {
       const result = await loginService({ email, password, rememberMe: false });
 
-      toast.success('Đăng nhập thành công!');
-
       if (result.raw.data.requiresVerification) {
         router.push('/verify-email');
       } else {
         router.push('/dashboard');
       }
     } catch (err: unknown) {
-      // Lỗi đã được xử lý bởi axios interceptor và hiển thị toast
-      // Không cần xử lý thêm ở đây, chỉ để catch để không throw error
       console.error('Login error:', err);
     } finally {
       setLoading(false);
