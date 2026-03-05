@@ -107,7 +107,7 @@ function UserManagementContent() {
     currentStatus: UserStatus,
   ) => {
     const nextStatus: UserStatus =
-      currentStatus === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
+      currentStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
     setStatusLoadingId(userId);
     try {
       await changeUserStatus(userId, {
@@ -125,7 +125,7 @@ function UserManagementContent() {
     if (hasRole) return;
     setAssignLoadingId(userId);
     try {
-      await assignUserRole(userId, [FIXED_ROLE_CODE]);
+      await assignUserRole(userId, FIXED_ROLE_CODE);
       loadUsers(currentPage);
     } finally {
       setAssignLoadingId(null);
@@ -273,9 +273,6 @@ function UserManagementContent() {
                             }`}
                           />
                         </button>
-                        <div className="mt-1 text-xs text-gray-500">
-                          {u.status}
-                        </div>
                       </td>
                       <td className="px-6 py-3 text-center text-xs text-gray-700">
                         {u.isPermanent ? "Permanent" : u.expireDate || "-"}
