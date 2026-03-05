@@ -1,9 +1,10 @@
 'use client';
 
-import React, { Suspense } from 'react';
+import React, { Suspense, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import CreateOutboundModal, { OutboundFormData } from '@/components/outbound/CreateOutboundModal';
 
 // Mock data tương tự inbound nhưng cho outbound shipments
 const MOCK_SHIPMENTS = [
@@ -61,6 +62,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 function OutboundShipmentListContent() {
   const router = useRouter();
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const handleViewDetail = (shipmentCode: string) => {
     router.push(`/outbound/${shipmentCode}`);
@@ -71,7 +73,16 @@ function OutboundShipmentListContent() {
   };
 
   const handleNewShipment = () => {
-    router.push('/outbound/new');
+    setShowCreateModal(true);
+  };
+
+  const handleCreateOutbound = (data: OutboundFormData) => {
+    console.log('API Call: Tạo Outbound:', data);
+    setShowCreateModal(false);
+  };
+
+  const handleCloseModal = () => {
+    setShowCreateModal(false);
   };
 
   return (
@@ -228,6 +239,12 @@ function OutboundShipmentListContent() {
           </div>
         </div>
       </Card>
+
+      <CreateOutboundModal
+        isOpen={showCreateModal}
+        onClose={handleCloseModal}
+        onSubmit={handleCreateOutbound}
+      />
     </div>
   );
 }
