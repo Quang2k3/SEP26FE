@@ -73,31 +73,31 @@
    params: UserListQuery,
  ): Promise<UserListPage> {
    const { data } = await api.get<ApiResponse<UserListPage>>(
-     '/v1/users/list-users',
+     '/users/list-users',
      { params },
    );
    return data.data;
  }
 
  export async function createUser(payload: CreateUserPayload): Promise<void> {
-   await api.post('/v1/users/create-user', payload);
+   await api.post('/users/create-user', payload);
  }
 
  export async function changeUserStatus(
    userId: number,
    payload: ChangeStatusPayload,
  ): Promise<void> {
-   await api.put(`/v1/users/${userId}/change-status`, payload);
+   await api.put(`/users/${userId}/change-status`, payload);
  }
 
  export async function assignUserRole(
    userId: number,
-   roleCodes: string[],
+   role: string,
  ): Promise<AssignRoleResponseUser> {
    const { data } = await api.put<
      ApiResponse<AssignRoleResponseUser>
-   >(`/v1/users/${userId}/assign-role`, {
-     roleCodes,
+   >(`/users/${userId}/assign-role`, {
+    role,
    });
    return data.data;
  }
