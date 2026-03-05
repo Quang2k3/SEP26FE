@@ -13,13 +13,13 @@ export default function LoginPage() {
     e.preventDefault();
 
     const formData = new FormData(e.currentTarget);
-    const username = formData.get('username') as string;
+    const email = formData.get('username') as string;
     const password = formData.get('password') as string;
 
     setLoading(true);
 
     try {
-      const result = await loginService({ username, password });
+      const result = await loginService({ email, password, rememberMe: false });
 
       toast.success('Đăng nhập thành công!');
 
