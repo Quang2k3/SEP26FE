@@ -126,3 +126,41 @@ export async function login(payload: LoginPayload): Promise<LoginResult> {
     raw: body,
   };
 }
+
+export interface UpdateProfilePayload {
+  fullName: string;
+  phone: string;
+  gender?: string | null;
+  dateOfBirth?: string | null;
+  address?: string | null;
+  avatar?: File | null;
+}
+
+export async function updateProfile(payload: UpdateProfilePayload): Promise<ApiResponse<unknown>> {
+  const formData = new FormData();
+  
+  // Required fields
+  formData.append('fullName', payload.fullName);
+  formData.append('phone', payload.phone);
+  
+  // Optional fields - always send, use empty string if not provided
+  // Format: yyyy-MM-dd for dateOfBirth
+  formData.append('gender', payload.gender || '');
+  formData.append('dateOfBirth', payload.dateOfBirth || '');
+  formData.append('address', payload.address || '');
+  
+  // Avatar - only append if file is provided, otherwise send empty string
+  if (payload.avatar) {
+    formData.append('avatar', payload.avatar);
+  } else {
+    formData.append('avatar', '');
+  }
+
+  const response = await api.post<ApiResponse<unknown>>('/profile/update-profile', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+
+  return response.data;
+}

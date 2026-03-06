@@ -13,6 +13,7 @@ export interface MeUser {
   roleCodes: string[];
   status: UserStatus;
   isPermanent: boolean;
+  expireDate: string | null;
   lastLoginAt: string | null;
   createdAt: string;
 }
@@ -20,9 +21,10 @@ export interface MeUser {
 export interface ProfileFormData {
   fullName: string;
   email: string;
-  employeeId: string;
-  department: string;
-  warehouse: string;
+  phone: string;
+  gender: string;
+  dateOfBirth: string;
+  address: string;
 }
 
 

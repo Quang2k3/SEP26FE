@@ -1,12 +1,23 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { login as loginService } from '@/services/authService';
+import { login as loginService, getValidSession } from '@/services/authService';
 
 export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
+
+  // Check token khi vào trang login - nếu còn hạn thì redirect về dashboard
+  useEffect(() => {
+    const session = getValidSession();
+    if (session) {
+      router.replace('/dashboard');
+    } else {
+      setChecking(false);
+    }
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -31,6 +42,18 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  // Hiển thị loading khi đang check token
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 font-sans">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div className="text-sm font-medium text-gray-500">Checking authentication...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 font-sans p-4">
