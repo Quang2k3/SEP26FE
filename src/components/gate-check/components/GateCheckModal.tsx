@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createIncident } from "@/services/incidentService";
 import { Modal, Button, Input, Space } from "antd";
+import toast from 'react-hot-toast';
 
 const { TextArea } = Input;
 
@@ -34,11 +35,11 @@ export default function GateCheckModal({
 
       await createIncident({
         warehouseId,
-        incidentType: "SEAL_BROKEN",
+        incidentType: "SEAL_BROKEN", // chưa biết truyền gì ( post xong trạng thái không update)
         description,
         receivingId,
       });
-
+      toast.success('Gửi thành công!');
       onClose();
     } finally {
       setLoading(false);

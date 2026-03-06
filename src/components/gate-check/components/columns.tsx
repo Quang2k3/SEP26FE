@@ -39,20 +39,23 @@ export function getReceivingColumns(
       align: "center",
       render: (r) => new Date(r.createdAt).toLocaleString(),
     },
-
     {
       key: "action",
       title: "Action",
       align: "center",
-      render: (r) => (
-        <Button
-          type="primary"
-          onClick={() => onStartUnload(r)}
-          className="px-3 py-1.5 text-sm rounded-md font-medium bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
-        >
-          Bắt đầu dỡ hàng
-        </Button>
-      ),
+      render: (r) => {
+        const disabled = r.status === "POSTED";
+
+        return (
+          <Button
+            type="primary"
+            disabled={disabled}
+            onClick={() => onStartUnload(r)}
+          >
+            Bắt đầu dỡ hàng
+          </Button>
+        );
+      },
     },
   ];
 }
