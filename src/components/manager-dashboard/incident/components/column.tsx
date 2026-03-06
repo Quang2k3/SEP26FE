@@ -29,24 +29,26 @@ export function getIncidentColumns(
       key: "action",
       title: "Action",
       align: "center",
-      render: (r) => (
-        <Space>
-          <Button
-            type="primary"
-            onClick={() => onApprove(r)}
-            className="bg-green-600 hover:bg-green-700"
-          >
-            Duyệt
-          </Button>
+      render: (r) => {
+        const disabled = r.status === "APPROVED" || r.status === "REJECTED";
 
-          <Button
-            danger
-            onClick={() => onReject(r)}
-          >
-            Từ chối
-          </Button>
-        </Space>
-      ),
+        return (
+          <Space>
+            <Button
+              type="primary"
+              disabled={disabled}
+              onClick={() => onApprove(r)}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              Duyệt
+            </Button>
+
+            <Button danger disabled={disabled} onClick={() => onReject(r)}>
+              Từ chối
+            </Button>
+          </Space>
+        );
+      },
     },
   ];
 }

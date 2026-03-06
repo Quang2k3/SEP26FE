@@ -8,21 +8,34 @@ import {
   rejectIncident,
 } from "@/services/incidentService";
 import { getIncidentColumns } from "./components/column";
+import IncidentFilter from "./components/IncidentFilter";
 import type { Incident } from "@/interfaces/incident";
-import { message, Modal, Input } from "antd";
+import { Modal, Input } from "antd";
 import toast from "react-hot-toast";
+
+type IncidentStatus = "OPEN" | "APPROVED" | "REJECTED" | "ALL";
 
 export default function IncidentListPage() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const [statusFilter, setStatusFilter] =
+    useState<IncidentStatus>("OPEN");
+
   async function loadIncidents() {
     try {
       setLoading(true);
-      const data = await fetchIncidents({ status: "OPEN" });
+
+      const params =
+        statusFilter === "ALL"
+          ? {}
+          : { status: statusFilter };
+
+      const data = await fetchIncidents(params);
+
       setIncidents(data);
     } catch {
-        toast.error("Không tải được danh sách Incident");
+      toast.error("Không tải được danh sách Incident");
     } finally {
       setLoading(false);
     }
@@ -30,7 +43,7 @@ export default function IncidentListPage() {
 
   useEffect(() => {
     loadIncidents();
-  }, []);
+  }, [statusFilter]);
 
   async function handleApprove(incident: Incident) {
     try {
@@ -38,7 +51,7 @@ export default function IncidentListPage() {
       toast.success("Duyệt Incident thành công");
       loadIncidents();
     } catch {
-        toast.error("Duyệt thất bại");
+      toast.error("Duyệt thất bại");
     }
   }
 
@@ -66,15 +79,20 @@ export default function IncidentListPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-4">
+    <div className="p-6 space-y-4">
+      <div>
         <h1 className="text-xl font-semibold text-gray-900">
           Incident List
         </h1>
         <p className="text-gray-500 text-sm">
-          Danh sách Incident đang OPEN
+          Danh sách Incident
         </p>
       </div>
+
+      <IncidentFilter
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
+      />
 
       <DataTable
         data={incidents}
