@@ -1,66 +1,58 @@
 import { Column } from "@/components/ui/Table";
-import type { Incident } from "@/interface/incident";
+import type { ReceivingOrder } from "@/interface/receiving";
 
-export function getIncidentColumns(): Column<Incident>[] {
+export function getReceivingColumns(
+  onStartUnload: (receiving: ReceivingOrder) => void
+): Column<ReceivingOrder>[] {
   return [
     {
-      key: "incidentCode",
-      title: "Incident Code",
-      render: (i) => (
+      key: "receivingCode",
+      title: "Receiving Code",
+      render: (r) => (
         <span className="font-medium text-gray-900">
-          {i.incidentCode}
+          {r.receivingCode}
         </span>
       ),
     },
+
     {
       key: "warehouse",
       title: "Warehouse",
-      render: (i) => i.warehouseId ?? "-",
+      render: (r) => r.warehouseName,
     },
-    {
-      key: "severity",
-      title: "Severity",
-      align: "center",
-      render: (i) => (
-        <span className="px-2 py-0.5 text-xs bg-orange-50 text-orange-700 rounded-full">
-          {i.severity}
-        </span>
-      ),
-    },
-    {
-      key: "status",
-      title: "Status",
-      align: "center",
-      render: (i) => {
-        const color =
-          i.status === "APPROVED"
-            ? "bg-green-50 text-green-700"
-            : i.status === "REJECTED"
-            ? "bg-red-50 text-red-700"
-            : "bg-yellow-50 text-yellow-700";
 
-        return (
-          <span
-            className={`px-2 py-0.5 text-xs rounded-full ${color}`}
-          >
-            {i.status}
-          </span>
-        );
-      },
-    },
     {
-      key: "reportedBy",
-      title: "Reported By",
-      render: (i) => i.reportedByName || "-",
+      key: "supplier",
+      title: "Supplier",
+      render: (r) => r.supplierName,
     },
+
+    {
+      key: "totalQty",
+      title: "Total Qty",
+      align: "center",
+      render: (r) => r.totalQty,
+    },
+
     {
       key: "createdAt",
       title: "Created At",
       align: "center",
-      render: (i) => (
-        <span className="text-xs text-gray-700">
-          {new Date(i.createdAt).toLocaleString()}
-        </span>
+      render: (r) =>
+        new Date(r.createdAt).toLocaleString(),
+    },
+
+    {
+      key: "action",
+      title: "Action",
+      align: "center",
+      render: (r) => (
+        <button
+          onClick={() => onStartUnload(r)}
+          className="px-3 py-1.5 text-sm rounded-md font-medium bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+        >
+          Bắt đầu dỡ hàng
+        </button>
       ),
     },
   ];
