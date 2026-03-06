@@ -11,7 +11,7 @@ export async function fetchIncidents(
   params?: IncidentListQuery,
 ): Promise<Incident[]> {
   const { data } = await api.get<ApiResponse<Incident[]>>(
-    "/v1/incidents",
+    "/incidents",
     { params },
   );
 
