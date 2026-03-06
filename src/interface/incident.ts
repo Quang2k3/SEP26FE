@@ -27,3 +27,11 @@ export interface ApiResponse<T> {
   data: T;
   timestamp: number;
 }
+
+export interface CreateIncidentPayload {
+  warehouseId: number;
+  incidentType: string;
+  description: string;
+  receivingId: number;
+  attachmentId?: number;
+}
