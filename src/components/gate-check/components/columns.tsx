@@ -1,5 +1,6 @@
 import { Column } from "@/components/ui/Table";
 import type { ReceivingOrder } from "@/interface/receiving";
+import { Button } from "antd";
 
 export function getReceivingColumns(
   onStartUnload: (receiving: ReceivingOrder) => void
@@ -47,12 +48,13 @@ export function getReceivingColumns(
       title: "Action",
       align: "center",
       render: (r) => (
-        <button
+        <Button
+        type="primary"
           onClick={() => onStartUnload(r)}
           className="px-3 py-1.5 text-sm rounded-md font-medium bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
         >
           Bắt đầu dỡ hàng
-        </button>
+        </Button>
       ),
     },
   ];

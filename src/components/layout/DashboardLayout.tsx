@@ -83,10 +83,10 @@ export default function DashboardLayout({
       path: '/user-management',
     },
     {
-      key: "incident",
-      name: "Incident",
+      key: "gate-check",
+      name: "GateCheck",
       icon: "qr_code_scanner",
-      path: "/incident",
+      path: "/gate-check",
     },
   ];
 

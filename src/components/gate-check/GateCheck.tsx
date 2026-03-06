@@ -4,11 +4,12 @@ import React, { useEffect, useMemo, useState } from "react";
 import { AdminPage } from "@/components/layout/AdminPage";
 import { Card } from "@/components/ui/Card";
 import { DataTable } from "@/components/ui/Table";
-import IncidentFilter from "./components/IncidentFilter";
 import { fetchReceivingOrders } from "@/services/receivingOrdersService";
 import type { ReceivingOrder } from "@/interface/receiving";
 import { getReceivingColumns } from "./components/columns";
 import GateCheckModal from "./components/GateCheckModal";
+import GateCheckFilter from "./components/GateCheckFilter";
+import type { ReceivingStatus } from "@/interface/receiving";
 
 export default function GateCheckContent() {
   const [receivings, setReceivings] = useState<ReceivingOrder[]>([]);
@@ -18,7 +19,10 @@ export default function GateCheckContent() {
 
   const [selectedReceiving, setSelectedReceiving] =
     useState<ReceivingOrder | null>(null);
+    type FilterStatus = ReceivingStatus | "ALL";
 
+    const [statusFilter, setStatusFilter] =
+      useState<FilterStatus>("SUBMITTED");
   const [openGateCheck, setOpenGateCheck] = useState(false);
 
   const loadReceivings = async () => {
@@ -43,12 +47,8 @@ export default function GateCheckContent() {
 
     return receivings.filter(
       (r) =>
-        r.receivingCode
-          ?.toLowerCase()
-          .includes(search.toLowerCase()) ||
-        r.supplierName
-          ?.toLowerCase()
-          .includes(search.toLowerCase())
+        r.receivingCode?.toLowerCase().includes(search.toLowerCase()) ||
+        r.supplierName?.toLowerCase().includes(search.toLowerCase()),
     );
   }, [receivings, search]);
 
@@ -60,14 +60,13 @@ export default function GateCheckContent() {
   const columns = getReceivingColumns(handleStartUnload);
 
   return (
-    <AdminPage
-      title="Gate Check"
-      description="Danh sách xe chờ nhận hàng"
-    >
+    <AdminPage title="Gate Check" description="Danh sách xe chờ nhận hàng">
       <Card className="flex flex-col gap-3">
-        <IncidentFilter
+        <GateCheckFilter
           search={search}
+          statusFilter={statusFilter}
           setSearch={setSearch}
+          setStatusFilter={setStatusFilter}
           onSubmit={(e) => e.preventDefault()}
         />
       </Card>

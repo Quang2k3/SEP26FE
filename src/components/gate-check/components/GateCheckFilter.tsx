@@ -2,9 +2,9 @@
 
 import React from "react";
 import SearchFilter from "@/components/ui/SearchFilter";
-import type { IncidentStatus } from "@/interface/incident";
+import type { ReceivingStatus } from "@/interface/receiving";
 
-type FilterStatus = IncidentStatus | "ALL";
+type FilterStatus = ReceivingStatus | "ALL";
 
 interface Props {
   search: string;
@@ -14,7 +14,7 @@ interface Props {
   onSubmit: (e: React.FormEvent) => void;
 }
 
-export default function IncidentFilter({
+export default function GateCheckFilter({
   search,
   statusFilter,
   setSearch,
@@ -28,12 +28,12 @@ export default function IncidentFilter({
       setSearch={setSearch}
       setStatus={(v) => setStatusFilter(v as FilterStatus)}
       onSubmit={onSubmit}
-      placeholder="Search incident code..."
+      placeholder="Search receiving code..."
       options={[
         { value: "ALL", label: "All" },
         { value: "SUBMITTED", label: "Submitted" },
         { value: "APPROVED", label: "Approved" },
-        { value: "REJECTED", label: "Rejected" },
+        { value: "POSTED", label: "Posted" },
       ]}
     />
   );
