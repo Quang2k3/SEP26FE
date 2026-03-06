@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { createIncident } from "@/services/incidentService";
 import { Modal, Button, Input, Space } from "antd";
-import toast from 'react-hot-toast';
+import toast from "react-hot-toast";
+import ScanQRCode from "@/components/inbound/ScanQRCode";
+import { useModal } from "@/components/ui/ModalProvider";
 
 const { TextArea } = Input;
 
@@ -21,6 +23,7 @@ export default function GateCheckModal({
   const [step, setStep] = useState<"check" | "incident">("check");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
+  const { openModal } = useModal();
 
   useEffect(() => {
     if (open) {
@@ -39,7 +42,7 @@ export default function GateCheckModal({
         description,
         receivingId,
       });
-      toast.success('Gửi thành công!');
+      toast.success("Gửi thành công!");
       onClose();
     } finally {
       setLoading(false);
@@ -51,11 +54,7 @@ export default function GateCheckModal({
       open={open}
       onCancel={onClose}
       footer={null}
-      title={
-        step === "check"
-          ? "Seal xe có nguyên vẹn không?"
-          : "Tạo Incident"
-      }
+      title={step === "check" ? "Seal xe có nguyên vẹn không?" : "Tạo Incident"}
     >
       {step === "check" && (
         <Space direction="vertical" className="w-full">
@@ -64,17 +63,21 @@ export default function GateCheckModal({
             block
             onClick={() => {
               onClose();
-              // TODO: navigate scan screen
+              openModal({
+                title: "Nhập hàng vào kho",
+                content: (
+                  <div className="p-4">
+                    <ScanQRCode />
+                  </div>
+                ),
+                footer: null,
+              });
             }}
           >
             Có - OK
           </Button>
 
-          <Button
-            danger
-            block
-            onClick={() => setStep("incident")}
-          >
+          <Button danger block onClick={() => setStep("incident")}>
             Báo cáo sự cố
           </Button>
         </Space>
