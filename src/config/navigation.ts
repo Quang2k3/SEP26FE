@@ -26,3 +26,8 @@ export const INBOUND_ACTIONS: NavAction[] = [
 export const OUTBOUND_ACTIONS: NavAction[] = [
   { label: 'Shipment List', path: '/outbound' },
 ];
+
+export const MANAGER_DASHBOARD: NavAction[] = [
+  { label: 'Pending Incidents', path: '/manager-dashboard/incident' },
+  { label: 'QC Reports', path: '/manager-dashboard/qc-report' },
+];
