@@ -1,14 +1,7 @@
- 'use client';
+'use client';
 
  import React, { useState, useEffect } from 'react';
- import type { OutboundFormData } from './CreateOutboundModal';
-
- interface EditOutboundModalProps {
-   isOpen: boolean;
-   initialData: OutboundFormData;
-   onClose: () => void;
-   onSubmit: (data: OutboundFormData) => void;
- }
+ import type { OutboundFormData, EditOutboundModalProps } from '@/interfaces/modals';
 
  export default function EditOutboundModal({
    isOpen,

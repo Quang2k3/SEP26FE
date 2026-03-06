@@ -1,34 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-
-export interface EditBinData {
-  code: string;
-  status: 'Active' | 'Inactive' | 'Maintenance';
-  zoneId: string;
-  type: 'Standard Rack' | 'Floor Location' | 'Pallet Position';
-  maxWeight: string;
-  maxVolume: string;
-  stackLimit: string;
-  length: string;
-  width: string;
-  height: string;
-  // Dữ liệu thống kê (Thường do API trả về, chỉ để xem)
-  stats: {
-    occupancy: number;
-    occupancyTrend: string;
-    skuCount: number;
-    lastPicking: string;
-  };
-}
-
-interface EditBinModalProps {
-  isOpen: boolean;
-  initialData: EditBinData | null;
-  zones: { id: string; name: string }[];
-  onClose: () => void;
-  onSubmit: (data: EditBinData) => void;
-}
+import type { EditBinData, EditBinModalProps } from '@/interfaces/modals';
 
 export default function EditBinModal({ isOpen, initialData, zones, onClose, onSubmit }: EditBinModalProps) {
   const [formData, setFormData] = useState<EditBinData | null>(null);

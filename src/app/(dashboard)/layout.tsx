@@ -1,6 +1,10 @@
 import DashboardLayout from '@/components/layout/DashboardLayout';
+import ProtectedDashboardLayout from '@/components/auth/ProtectedDashboardLayout';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  // Bọc Component DashboardLayout (có chứa Header và SecondaryNav) ra ngoài children
-  return <DashboardLayout>{children}</DashboardLayout>;
+  return (
+    <ProtectedDashboardLayout>
+      <DashboardLayout>{children}</DashboardLayout>
+    </ProtectedDashboardLayout>
+  );
 }

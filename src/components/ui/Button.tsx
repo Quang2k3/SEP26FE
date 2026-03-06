@@ -1,18 +1,10 @@
- "use client";
+"use client";
 
- import type { ButtonHTMLAttributes, ReactNode } from "react";
+ import type { ReactNode } from "react";
+ import type { ButtonProps } from "@/interfaces/ui";
 
  type ButtonVariant = "primary" | "secondary" | "outline" | "danger";
  type ButtonSize = "sm" | "md" | "lg";
-
- export interface ButtonProps
-   extends ButtonHTMLAttributes<HTMLButtonElement> {
-   variant?: ButtonVariant;
-   size?: ButtonSize;
-   isLoading?: boolean;
-   leftIcon?: ReactNode;
-   rightIcon?: ReactNode;
- }
 
  const baseClasses =
    "inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed gap-2";
