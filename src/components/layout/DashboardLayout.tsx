@@ -82,6 +82,12 @@ export default function DashboardLayout({
       icon: 'person',
       path: '/user-management',
     },
+    {
+      key: "gate-check",
+      name: "Gate-Check",
+      icon: "qr_code_scanner",
+      path: "/gate-check",
+    },
   ];
 
   const toggleSection = (key: string) => {
