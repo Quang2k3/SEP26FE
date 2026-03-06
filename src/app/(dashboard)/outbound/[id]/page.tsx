@@ -5,7 +5,7 @@
  import { Button } from '@/components/ui/Button';
  import { Card } from '@/components/ui/Card';
  import EditOutboundModal from '@/components/outbound/EditOutboundModal';
- import type { OutboundFormData } from '@/components/outbound/CreateOutboundModal';
+ import type { OutboundFormData, OutboundDetailPageProps } from '@/interfaces/dashboard';
 
  const MOCK_OUTBOUND_DETAILS: OutboundFormData[] = [
    {
@@ -42,12 +42,6 @@
    Processing: 'bg-purple-100 text-purple-800',
    Cancelled: 'bg-red-100 text-red-800',
  };
-
- interface OutboundDetailPageProps {
-   params: {
-     id: string;
-   };
- }
 
  export default function OutboundDetailPage({ params }: OutboundDetailPageProps) {
    const router = useRouter();

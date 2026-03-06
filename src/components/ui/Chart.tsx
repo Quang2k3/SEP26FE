@@ -1,4 +1,4 @@
- "use client";
+"use client";
 
  import {
    LineChart,
@@ -11,21 +11,9 @@
    ResponsiveContainer,
    CartesianGrid,
  } from "recharts";
+ import type { ChartProps } from "@/interfaces/ui";
 
  type ChartType = "line" | "bar";
-
- export interface ChartProps<T extends object> {
-   type?: ChartType;
-   data: T[];
-   dataKeyX: keyof T;
-   series: {
-     dataKey: keyof T;
-     color?: string;
-     name?: string;
-   }[];
-   height?: number;
-   showGrid?: boolean;
- }
 
  export function Chart<T extends object>({
    type = "line",

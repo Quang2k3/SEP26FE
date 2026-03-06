@@ -1,17 +1,8 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link'; // <--- Import thêm Link của Next.js
-
-interface StatsCardProps {
-  title: string;
-  value: string | number;
-  unit?: string;
-  hasAlert?: boolean;
-  showProgress?: boolean;
-  progressValue?: number;
-  href?: string; // <--- THÊM prop href (không bắt buộc)
-}
+import Link from 'next/link';
+import type { StatsCardProps } from '@/interfaces/dashboard';
 
 export default function StatsCard({
   title,

@@ -1,15 +1,7 @@
 'use client';
 
 import React from 'react';
-
-interface EditCategoryModalProps {
-  onClose: () => void;
-  categoryData: {
-    code: string;
-    name: string;
-    status: string;
-  };
-}
+import type { EditCategoryModalProps } from '@/interfaces/modals';
 
 export default function EditCategoryModal({ onClose, categoryData }: EditCategoryModalProps) {
   const handleSubmit = (e: React.FormEvent) => {

@@ -1,52 +1,63 @@
 import api from '@/config/axios';
-
-export type ApiResponse<T> = {
-  success: boolean;
-  message: string;
-  data: T;
-  timestamp: number;
-};
-
-export interface LoginPayload {
-  email: string;
-  password: string;
-  rememberMe: boolean;
-}
-
-export type RoleCode = 'ADMIN' | 'MANAGER' | 'STAFF' | (string & {});
-
-export interface AuthUser {
-  userId: number;
-  email: string;
-  fullName: string;
-  roleCodes: RoleCode[];
-  avatarUrl?: string | null;
-}
-
-export interface LoginResponseData {
-  token: string;
-  tokenType: string;
-  expiresIn: number;
-  requiresVerification: boolean;
-  user: AuthUser;
-}
-
-export interface AuthSession {
-  token: string;
-  tokenType: string;
-  expiresAt: number;
-  user: AuthUser;
-}
-
-export interface LoginResult {
-  session: AuthSession;
-  raw: ApiResponse<LoginResponseData>;
-}
+import type { ApiResponse } from '@/interfaces/common';
+import type { AuthSession, AuthUser, LoginPayload, LoginResponseData, LoginResult } from '@/interfaces/auth';
 
 const STORAGE_TOKEN = 'auth_token';
 const STORAGE_TOKEN_TYPE = 'auth_token_type';
 const STORAGE_EXPIRES_AT = 'auth_expires_at';
 const STORAGE_USER = 'auth_user';
+
+export function getStoredSession(): AuthSession | null {
+  if (typeof window === 'undefined') return null;
+
+  const token = localStorage.getItem(STORAGE_TOKEN);
+  const tokenType = localStorage.getItem(STORAGE_TOKEN_TYPE) || 'Bearer';
+  const expiresAtStr = localStorage.getItem(STORAGE_EXPIRES_AT);
+  const userStr = localStorage.getItem(STORAGE_USER);
+
+  if (!token || !expiresAtStr || !userStr) {
+    return null;
+  }
+
+  const expiresAt = Number(expiresAtStr);
+  if (!expiresAt || Number.isNaN(expiresAt)) {
+    return null;
+  }
+
+  try {
+    const user: AuthUser = JSON.parse(userStr);
+    return { token, tokenType, expiresAt, user };
+  } catch {
+    return null;
+  }
+}
+
+export function isTokenExpired(): boolean {
+  if (typeof window === 'undefined') return true;
+
+  const session = getStoredSession();
+  if (!session) return true;
+
+  return session.expiresAt <= Date.now();
+}
+
+export function getValidSession(): AuthSession | null {
+  if (typeof window === 'undefined') return null;
+
+  const session = getStoredSession();
+  if (!session) return null;
+
+  if (session.expiresAt <= Date.now()) {
+    clearAuthToken();
+    return null;
+  }
+
+  return session;
+}
+
+export function isAuthenticated(): boolean {
+  return !!getValidSession();
+}
 
 export function saveAuthSession(session: AuthSession) {
   if (typeof window === 'undefined') return;
@@ -81,11 +92,10 @@ export function getTokenType(): string | null {
 }
 
 export function getAuthorizationHeaderValue(): string | null {
-  const token = getAuthToken();
-  if (!token) return null;
+  const session = getValidSession();
+  if (!session) return null;
 
-  const tokenType = getTokenType() || 'Bearer';
-  return `${tokenType} ${token}`;
+  return `${session.tokenType} ${session.token}`;
 }
 
 export async function login(payload: LoginPayload): Promise<LoginResult> {
@@ -115,4 +125,42 @@ export async function login(payload: LoginPayload): Promise<LoginResult> {
     session,
     raw: body,
   };
+}
+
+export interface UpdateProfilePayload {
+  fullName: string;
+  phone: string;
+  gender?: string | null;
+  dateOfBirth?: string | null;
+  address?: string | null;
+  avatar?: File | null;
+}
+
+export async function updateProfile(payload: UpdateProfilePayload): Promise<ApiResponse<unknown>> {
+  const formData = new FormData();
+  
+  // Required fields
+  formData.append('fullName', payload.fullName);
+  formData.append('phone', payload.phone);
+  
+  // Optional fields - always send, use empty string if not provided
+  // Format: yyyy-MM-dd for dateOfBirth
+  formData.append('gender', payload.gender || '');
+  formData.append('dateOfBirth', payload.dateOfBirth || '');
+  formData.append('address', payload.address || '');
+  
+  // Avatar - only append if file is provided, otherwise send empty string
+  if (payload.avatar) {
+    formData.append('avatar', payload.avatar);
+  } else {
+    formData.append('avatar', '');
+  }
+
+  const response = await api.post<ApiResponse<unknown>>('/profile/update-profile', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+
+  return response.data;
 }
