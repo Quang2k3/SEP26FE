@@ -5,11 +5,11 @@ import { AdminPage } from "@/components/layout/AdminPage";
 import { Card } from "@/components/ui/Card";
 import { DataTable } from "@/components/ui/Table";
 import { fetchReceivingOrders } from "@/services/receivingOrdersService";
-import type { ReceivingOrder } from "@/interface/receiving";
+import type { ReceivingOrder } from "@/interfaces/receiving";
 import { getReceivingColumns } from "./components/columns";
 import GateCheckModal from "./components/GateCheckModal";
 import GateCheckFilter from "./components/GateCheckFilter";
-import type { ReceivingStatus } from "@/interface/receiving";
+import type { ReceivingStatus } from "@/interfaces/receiving";
 
 export default function GateCheckContent() {
   const [receivings, setReceivings] = useState<ReceivingOrder[]>([]);
@@ -19,10 +19,9 @@ export default function GateCheckContent() {
 
   const [selectedReceiving, setSelectedReceiving] =
     useState<ReceivingOrder | null>(null);
-    type FilterStatus = ReceivingStatus | "ALL";
+  type FilterStatus = ReceivingStatus | "ALL";
 
-    const [statusFilter, setStatusFilter] =
-      useState<FilterStatus>("SUBMITTED");
+  const [statusFilter, setStatusFilter] = useState<FilterStatus>("SUBMITTED");
   const [openGateCheck, setOpenGateCheck] = useState(false);
 
   const loadReceivings = async () => {

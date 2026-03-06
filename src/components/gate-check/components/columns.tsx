@@ -1,18 +1,16 @@
 import { Column } from "@/components/ui/Table";
-import type { ReceivingOrder } from "@/interface/receiving";
+import type { ReceivingOrder } from "@/interfaces/receiving";
 import { Button } from "antd";
 
 export function getReceivingColumns(
-  onStartUnload: (receiving: ReceivingOrder) => void
+  onStartUnload: (receiving: ReceivingOrder) => void,
 ): Column<ReceivingOrder>[] {
   return [
     {
       key: "receivingCode",
       title: "Receiving Code",
       render: (r) => (
-        <span className="font-medium text-gray-900">
-          {r.receivingCode}
-        </span>
+        <span className="font-medium text-gray-900">{r.receivingCode}</span>
       ),
     },
 
@@ -39,8 +37,7 @@ export function getReceivingColumns(
       key: "createdAt",
       title: "Created At",
       align: "center",
-      render: (r) =>
-        new Date(r.createdAt).toLocaleString(),
+      render: (r) => new Date(r.createdAt).toLocaleString(),
     },
 
     {
@@ -49,7 +46,7 @@ export function getReceivingColumns(
       align: "center",
       render: (r) => (
         <Button
-        type="primary"
+          type="primary"
           onClick={() => onStartUnload(r)}
           className="px-3 py-1.5 text-sm rounded-md font-medium bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
         >

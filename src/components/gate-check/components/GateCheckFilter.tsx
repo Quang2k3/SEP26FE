@@ -2,7 +2,7 @@
 
 import React from "react";
 import SearchFilter from "@/components/ui/SearchFilter";
-import type { ReceivingStatus } from "@/interface/receiving";
+import type { ReceivingStatus } from "@/interfaces/receiving";
 
 type FilterStatus = ReceivingStatus | "ALL";
 

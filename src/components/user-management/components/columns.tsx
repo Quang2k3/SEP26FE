@@ -1,9 +1,9 @@
 import { Column } from "@/components/ui/Table";
-import { UserSummary, UserStatus } from "@/interface/user";
+import { UserSummary, UserStatus } from "@/interfaces/user";
 
 export function getUserColumns(
   handleToggleStatus: (userId: number, status: UserStatus) => void,
-  statusLoadingId: number | null
+  statusLoadingId: number | null,
 ): Column<UserSummary>[] {
   return [
     {

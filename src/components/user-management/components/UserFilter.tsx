@@ -2,7 +2,7 @@
 
 import React from "react";
 import SearchFilter from "@/components/ui/SearchFilter";
-import type { UserStatus } from "@/interface/user";
+import type { UserStatus } from "@/interfaces/user";
 
 type FilterStatus = UserStatus | "ALL";
 

@@ -5,14 +5,14 @@ import {
   ReceivingOrder,
   ReceivingListQuery,
   ApiResponse,
-} from "@/interface/receiving";
+} from "@/interfaces/receiving";
 
 export async function fetchReceivingOrders(
-  params?: ReceivingListQuery
+  params?: ReceivingListQuery,
 ): Promise<ReceivingOrder[]> {
   const { data } = await api.get<ApiResponse<ReceivingOrder[]>>(
     "/receiving-orders",
-    { params }
+    { params },
   );
 
   return data.data;
