@@ -12,7 +12,7 @@ import {
   createUser,
   fetchUsers,
 } from "@/services/userService";
-import type { UserSummary, UserListPage, UserStatus } from "@/interface/user";
+import type { UserSummary, UserListPage, UserStatus } from "@/interfaces/user";
 import { getUserColumns } from "./components/columns";
 import UserFilter from "./components/UserFilter";
 

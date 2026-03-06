@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import api from '@/config/axios';
+import api from "@/config/axios";
 import {
   UserStatus,
   UserListPage,
@@ -9,22 +9,18 @@ import {
   ChangeStatusPayload,
   AssignRoleResponseUser,
   ApiResponse,
-} from '@/interface/user';
+} from "@/interfaces/user";
 
-export async function fetchUsers(
-  params: UserListQuery,
-): Promise<UserListPage> {
+export async function fetchUsers(params: UserListQuery): Promise<UserListPage> {
   const { data } = await api.get<ApiResponse<UserListPage>>(
-    '/users/list-users',
+    "/users/list-users",
     { params },
   );
   return data.data;
 }
 
-export async function createUser(
-  payload: CreateUserPayload,
-): Promise<void> {
-  await api.post('/users/create-user', payload);
+export async function createUser(payload: CreateUserPayload): Promise<void> {
+  await api.post("/users/create-user", payload);
 }
 
 export async function changeUserStatus(
