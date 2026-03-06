@@ -3,12 +3,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { TbPackageImport } from 'react-icons/tb';
 import { clearAuthToken } from '@/services/authService';
+import { useModal } from '@/components/ui/ModalProvider';
+import ScanQRCode from '../inbound/ScanQRCode';
 
 export default function DashboardHeader() {
   const router = useRouter();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const { openModal } = useModal();
 
   const handleLogout = () => {
     clearAuthToken();
@@ -45,8 +49,46 @@ export default function DashboardHeader() {
           </h1>
         </Link>
 
-        {/* Right side - User Icon Dropdown */}
         <div className="flex items-center gap-2 sm:gap-4">
+          <button
+            type="button"
+            onClick={() =>
+              openModal({
+                title: 'Nhập hàng vào kho',
+                content: (
+                  <div className="p-4">
+                    <ScanQRCode />
+                  </div>
+                ),
+                footer: null,
+              })
+            }
+            className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-50 text-green-700 border border-green-200 text-xs font-semibold hover:bg-green-100 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+          >
+            <TbPackageImport className="text-base" />
+            <span>New Inbound</span>
+          </button>
+
+          {/* Icon-only on mobile */}
+          <button
+            type="button"
+            onClick={() =>
+              openModal({
+                title: 'Nhập hàng vào kho',
+                content: (
+                  <div className="p-4">
+                    <ScanQRCode />
+                  </div>
+                ),
+                footer: null,
+              })
+            }
+            className="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-full bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+            aria-label="Create inbound receipt"
+          >
+            <TbPackageImport className="text-lg" />
+          </button>
+
           <div className="relative" ref={userMenuRef}>
             <button
               className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 border border-transparent hover:border-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
@@ -83,6 +125,7 @@ export default function DashboardHeader() {
               </div>
             )}
           </div>
+
         </div>
       </div>
     </header>
