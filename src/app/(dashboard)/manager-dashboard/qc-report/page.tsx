@@ -1,5 +1,5 @@
-import QCReport from "@/components/qc-report/QCReport";
+import QCReportContent from "@/components/manager-dashboard/qc-report/QCReport";
 
 export default function Page() {
-  return <QCReport />;
+  return <QCReportContent />;
 }
