@@ -12,6 +12,7 @@ import {
   OUTBOUND_ACTIONS,
   type NavAction,
   USER_MANAGEMENT_ACTIONS,
+  MANAGER_DASHBOARD,
 } from '@/config/navigation';
 
 type SidebarSection = {
@@ -93,6 +94,12 @@ export default function DashboardLayout({
       name: "QC Inspections",
       icon: "verified",
       path: "/qc-inspections",
+    },
+    {
+      key: "manager-dashboard",
+      name: "Manager Dashboard",
+      icon: "qr_code_scanner",
+      children: MANAGER_DASHBOARD,
     },
   ];
 
