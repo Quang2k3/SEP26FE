@@ -1,72 +1,80 @@
- 'use client';
+"use client";
 
- import api from '@/config/axios';
+import api from "@/config/axios";
+import { ApiResponse } from "@/interfaces/common";
+import {
+  Location,
+  LocationPage,
+  LocationQueryParams,
+  CreateLocationRequest,
+  UpdateLocationRequest,
+} from "@/interfaces/location";
 
- type LocationType = 'AISLE' | 'RACK' | 'BIN' | 'STAGING';
+/**
+ * GET locations (pagination + filters)
+ */
+export async function fetchLocations(
+  params: LocationQueryParams,
+): Promise<LocationPage> {
+  const { data } = await api.get<ApiResponse<LocationPage>>("/locations", {
+    params,
+  });
 
- export interface Location {
-   locationId: number;
-   warehouseId: number;
-   zoneId: number;
-   zoneCode: string;
-   locationCode: string;
-   locationType: LocationType;
-   parentLocationId: number | null;
-   parentLocationCode: string | null;
-   maxWeightKg: number;
-   maxVolumeM3: number;
-   isPickingFace: boolean;
-   isStaging: boolean;
-   active: boolean;
-   createdAt: string;
-   updatedAt: string;
- }
+  if (!data.success || !data.data) {
+    return {
+      content: [],
+      page: params.page ?? 0,
+      size: params.size ?? 20,
+      totalElements: 0,
+      totalPages: 0,
+      last: true,
+    };
+  }
 
- export interface LocationPage {
-   content: Location[];
-   page: number;
-   size: number;
-   totalElements: number;
-   totalPages: number;
-   last: boolean;
- }
+  return data.data;
+}
 
- interface ApiResponse<T> {
-   success: boolean;
-   message: string;
-   data: T;
-   timestamp: number;
- }
+/**
+ * GET location detail
+ */
+export async function fetchLocationById(
+  locationId: number,
+): Promise<Location | null> {
+  const { data } = await api.get<ApiResponse<Location>>(
+    `/locations/${locationId}`,
+  );
 
- export interface LocationQueryParams {
-   warehouseId: number;
-   zoneId?: number;
-   locationType?: LocationType;
-   active?: boolean;
-   keyword?: string;
-   page?: number;
-   size?: number;
- }
+  if (!data.success || !data.data) {
+    return null;
+  }
 
- export async function fetchLocations(
-   params: LocationQueryParams,
- ): Promise<LocationPage> {
-   const { data } = await api.get<ApiResponse<LocationPage>>('/v1/locations', {
-     params,
-   });
+  return data.data;
+}
 
-   // Phòng trường hợp API trả về khác kỳ vọng
-   if (!data.success || !data.data) {
-     return {
-       content: [],
-       page: params.page ?? 0,
-       size: params.size ?? 20,
-       totalElements: 0,
-       totalPages: 0,
-       last: true,
-     };
-   }
+/**
+ * CREATE location
+ */
+export async function createLocation(payload: CreateLocationRequest) {
+  const { data } = await api.post("/locations", payload);
 
-   return data.data;
- }
+  return data.data;
+}
 
+/**
+ * UPDATE location
+ */
+export async function updateLocation(
+  locationId: number,
+  payload: UpdateLocationRequest,
+) {
+  const { data } = await api.put(`/locations/${locationId}`, payload);
+
+  return data.data;
+}
+
+/**
+ * DEACTIVATE location
+ */
+export async function deactivateLocation(locationId: number) {
+  await api.patch(`/locations/${locationId}/deactivate`);
+}

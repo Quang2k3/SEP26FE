@@ -101,6 +101,13 @@ export default function DashboardLayout({
       icon: "qr_code_scanner",
       children: MANAGER_DASHBOARD,
     },
+    {
+      key: "location",
+      name: "Location Management",
+      icon: "location_on",
+      path: "/location",
+    },
+
   ];
 
   const toggleSection = (key: string) => {
