@@ -90,6 +90,12 @@ export default function DashboardLayout({
       path: "/gate-check",
     },
     {
+      key: "qc-inspections",
+      name: "QC Inspections",
+      icon: "verified",
+      path: "/qc-inspections",
+    },
+    {
       key: "manager-dashboard",
       name: "Manager Dashboard",
       icon: "qr_code_scanner",
