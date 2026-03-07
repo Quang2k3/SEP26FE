@@ -88,6 +88,12 @@ export default function DashboardLayout({
       icon: "qr_code_scanner",
       path: "/gate-check",
     },
+    {
+      key: "qc-inspections",
+      name: "QC Inspections",
+      icon: "verified",
+      path: "/qc-inspections",
+    },
   ];
 
   const toggleSection = (key: string) => {
