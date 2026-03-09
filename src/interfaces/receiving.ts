@@ -1,7 +1,4 @@
-export type ReceivingStatus =
-  | "SUBMITTED"
-  | "APPROVED"
-  | "POSTED";
+export type ReceivingStatus = "SUBMITTED" | "APPROVED" | "POSTED";
 
 export interface ReceivingItem {
   receivingItemId: number;
@@ -16,6 +13,14 @@ export interface ReceivingItem {
   note: string;
   condition: string;
   reasonCode: string;
+}
+
+export interface ReceivingOrderPagePayload {
+  content: ReceivingOrder[];
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+  pageSize: number;
 }
 
 export interface ReceivingOrder {
@@ -48,4 +53,6 @@ export interface ReceivingOrder {
 
 export interface ReceivingListQuery {
   status?: ReceivingStatus;
+  page: number;
+  size: number;
 }
