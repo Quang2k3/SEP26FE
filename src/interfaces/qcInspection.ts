@@ -28,3 +28,13 @@ export interface QCInspectionListResponse {
 
 export type QCInspectionStatus = 'PENDING' | 'INSPECTED' | 'DECIDED' | 'ALL';
 
+
+
+export interface QCInspectionPagePayload  {
+  content: QCInspection[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  last: boolean;
+};

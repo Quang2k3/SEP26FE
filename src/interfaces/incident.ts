@@ -17,6 +17,14 @@ export interface Incident {
   createdAt: string;
 }
 
+export interface IncidentPagePayload {
+  content: Incident[];
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+  pageSize: number;
+}
+
 export interface IncidentListQuery {
   status?: IncidentStatus;
 }

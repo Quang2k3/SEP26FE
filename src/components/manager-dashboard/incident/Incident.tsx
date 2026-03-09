@@ -9,18 +9,22 @@ import {
 } from "@/services/incidentService";
 import { getIncidentColumns } from "./components/column";
 import IncidentFilter from "./components/IncidentFilter";
-import type { Incident } from "@/interfaces/incident";
+import type { Incident, IncidentPagePayload } from "@/interfaces/incident";
 import { Modal, Input } from "antd";
 import toast from "react-hot-toast";
 
 type IncidentStatus = "OPEN" | "APPROVED" | "REJECTED" | "ALL";
 
 export default function IncidentListPage() {
-  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [incidentPage, setIncidentPage] = useState<IncidentPagePayload | null>(
+    null,
+  );
+
+  const [page, setPage] = useState(0);
+  const [pageSize] = useState(10);
   const [loading, setLoading] = useState(false);
 
-  const [statusFilter, setStatusFilter] =
-    useState<IncidentStatus>("OPEN");
+  const [statusFilter, setStatusFilter] = useState<IncidentStatus>("OPEN");
 
   async function loadIncidents() {
     try {
@@ -28,12 +32,12 @@ export default function IncidentListPage() {
 
       const params =
         statusFilter === "ALL"
-          ? {}
-          : { status: statusFilter };
+          ? { page, size: pageSize }
+          : { status: statusFilter, page, size: pageSize };
 
       const data = await fetchIncidents(params);
 
-      setIncidents(data.content);
+      setIncidentPage(data);
     } catch {
       toast.error("Không tải được danh sách Incident");
     } finally {
@@ -43,8 +47,18 @@ export default function IncidentListPage() {
 
   useEffect(() => {
     loadIncidents();
+  }, [statusFilter, page]);
+
+  useEffect(() => {
+    setPage(0);
   }, [statusFilter]);
 
+  const handleChangePage = (newPage: number) => {
+    if (!incidentPage) return;
+    if (newPage < 0 || newPage >= incidentPage.totalPages) return;
+
+    setPage(newPage);
+  };
   async function handleApprove(incident: Incident) {
     try {
       await approveIncident(incident.incidentId);
@@ -81,12 +95,8 @@ export default function IncidentListPage() {
   return (
     <div className="p-6 space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-gray-900">
-          Incident List
-        </h1>
-        <p className="text-gray-500 text-sm">
-          Danh sách Incident
-        </p>
+        <h1 className="text-xl font-semibold text-gray-900">Incident List</h1>
+        <p className="text-gray-500 text-sm">Danh sách Incident</p>
       </div>
 
       <IncidentFilter
@@ -95,9 +105,15 @@ export default function IncidentListPage() {
       />
 
       <DataTable
-        data={incidents}
+        data={incidentPage?.content ?? []}
         columns={getIncidentColumns(handleApprove, handleReject)}
         loading={loading}
+        page={page}
+        pageSize={incidentPage?.pageSize ?? 10}
+        totalPages={incidentPage?.totalPages ?? 0}
+        totalElements={incidentPage?.totalElements ?? 0}
+        onPrev={() => handleChangePage(page - 1)}
+        onNext={() => handleChangePage(page + 1)}
       />
     </div>
   );

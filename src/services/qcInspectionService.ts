@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import api from '@/config/axios';
-import { ApiResponse } from '@/interfaces/common';
-import { QCInspection } from '@/interfaces/qcInspection';
+import api from "@/config/axios";
+import { ApiResponse } from "@/interfaces/common";
+import { QCInspection, QCInspectionPagePayload } from "@/interfaces/qcInspection";
 
 export interface GetQCInspectionsParams {
   status?: string;
@@ -23,27 +23,15 @@ export interface GetQCInspectionsParams {
 //   timestamp: number
 // }
 
-type QCInspectionPagePayload = {
-  content: QCInspection[];
-  page: number;
-  size: number;
-  totalElements: number;
-  totalPages: number;
-  last: boolean;
-};
-
 export async function getQCInspections(
-  params?: GetQCInspectionsParams,
-): Promise<QCInspection[]> {
+  params?: GetQCInspectionsParams & { page?: number; size?: number },
+): Promise<QCInspectionPagePayload> {
   const { data } = await api.get<ApiResponse<QCInspectionPagePayload>>(
-    '/qc-inspections',
+    "/qc-inspections",
     {
       params,
     },
   );
 
-  // For now, keep the function contract as `QCInspection[]`
-  // so that existing components continue to work.
-  return data.data.content ?? [];
+  return data.data;
 }
-

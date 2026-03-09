@@ -1,15 +1,21 @@
 "use client";
 
 import api from "@/config/axios";
-import { Incident, IncidentListQuery, CreateIncidentPayload } from "@/interfaces/incident";
+import {
+  Incident,
+  IncidentListQuery,
+  CreateIncidentPayload,
+  IncidentPagePayload,
+} from "@/interfaces/incident";
 import type { ApiResponse } from "@/interfaces/common";
 
 export async function fetchIncidents(
-  params?: IncidentListQuery,
-): Promise<Incident[]> {
-  const { data } = await api.get<ApiResponse<Incident[]>>("/incidents", {
-    params,
-  });
+  params?: IncidentListQuery & { page?: number; size?: number },
+): Promise<IncidentPagePayload> {
+  const { data } = await api.get<ApiResponse<IncidentPagePayload>>(
+    "/incidents",
+    { params },
+  );
 
   return data.data;
 }
