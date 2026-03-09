@@ -63,12 +63,12 @@ export default function LocationListPage() {
   });
 
   const loadLocations = async (override?: Partial<LocationQueryParams>) => {
-    // Assuming user has access to at least one warehouse
-
     const params = {
       ...filters,
       ...override,
     };
+
+    setFilters(params);
 
     setLoading(true);
 
