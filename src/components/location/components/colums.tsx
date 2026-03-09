@@ -1,8 +1,10 @@
-import { Tag } from "antd";
+import { Switch, Tag } from "antd";
 import type { Location } from "@/interfaces/location";
 import { ColumnsType } from "antd/es/table";
+import toast from "react-hot-toast";
+import { deactivateLocation } from "@/services/locationService";
 
-export function getLocationColumns(): ColumnsType<Location> {
+export function getLocationColumns(reload: () => void): ColumnsType<Location> {
   return [
     {
       title: "Location Code",
@@ -46,13 +48,30 @@ export function getLocationColumns(): ColumnsType<Location> {
     },
     {
       title: "Active",
-      key: "active",
-      render: (_, r) =>
-        r.active ? (
-          <Tag color="green">Active</Tag>
-        ) : (
-          <Tag color="red">Inactive</Tag>
-        ),
+      dataIndex: "active",
+      render: (value: boolean, record: Location) => (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+        >
+          <Switch
+            checked={value}
+            disabled={!value}
+            onChange={async (checked) => {
+              if (!checked) {
+                try {
+                  await deactivateLocation(record.locationId);
+                  toast.success("Location deactivated");
+                  reload();
+                } catch {
+                  toast.error("Deactivate failed");
+                }
+              }
+            }}
+          />
+        </div>
+      ),
     },
     {
       title: "Updated",

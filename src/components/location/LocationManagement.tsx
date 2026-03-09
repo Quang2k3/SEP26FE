@@ -32,7 +32,6 @@ import { getLocationColumns } from "./components/colums";
 import { AdminPage } from "../layout/AdminPage";
 import toast from "react-hot-toast";
 
-
 import { getStoredSession } from "@/services/authService";
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -44,7 +43,8 @@ export default function LocationListPage() {
 
   const session = getStoredSession();
 
-  const warehouseId = session?.user?.warehouseIds[0]; 
+  const warehouseId = session?.user?.warehouseIds[0];
+  const [allLocations, setAllLocations] = useState<Location[]>([]);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(
     null,
@@ -62,7 +62,8 @@ export default function LocationListPage() {
     size: DEFAULT_PAGE_SIZE,
   });
 
-  const loadLocations = async (override?: Partial<LocationQueryParams>) => {// Assuming user has access to at least one warehouse
+  const loadLocations = async (override?: Partial<LocationQueryParams>) => {
+    // Assuming user has access to at least one warehouse
 
     const params = {
       ...filters,
@@ -120,10 +121,16 @@ export default function LocationListPage() {
 
   useEffect(() => {
     loadLocations();
-    fetchZones({activeOnly: true, warehouseId: warehouseId }).then(data => setZones(data.content));
-  }, []);
 
-  const columns = getLocationColumns();
+    fetchZones({ activeOnly: true, warehouseId }).then((data) =>
+      setZones(data.content),
+    );
+
+    fetchLocations({ page: 0, size: 1000 }).then((data) =>
+      setAllLocations(data.content),
+    );
+  }, []);
+  const columns = getLocationColumns(loadLocations);
 
   return (
     <AdminPage
@@ -201,7 +208,15 @@ export default function LocationListPage() {
           </Form.Item>
 
           <Form.Item label="Parent Location" name="parentLocationId">
-            <InputNumber style={{ width: "100%" }} />
+            <Select
+              allowClear
+              showSearch
+              placeholder="Select parent location"
+              options={allLocations.map((l) => ({
+                value: l.locationId,
+                label: l.locationCode,
+              }))}
+            />
           </Form.Item>
 
           <Form.Item label="Max Weight (Kg)" name="maxWeightKg">
