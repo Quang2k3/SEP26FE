@@ -38,7 +38,7 @@ export default function GateCheckModal({
 
       await createIncident({
         warehouseId,
-        incidentType: "SEAL_BROKEN", // chưa biết truyền gì ( post xong trạng thái không update)
+        incidentType: "DAMAGE",
         description,
         receivingId,
       });

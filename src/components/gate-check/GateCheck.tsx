@@ -28,7 +28,7 @@ export default function GateCheckContent() {
     setLoading(true);
     try {
       const data = await fetchReceivingOrders({
-        status: "SUBMITTED",
+        status: statusFilter === "ALL" ? undefined : statusFilter,
       });
 
       setReceivings(data);
@@ -39,7 +39,7 @@ export default function GateCheckContent() {
 
   useEffect(() => {
     loadReceivings();
-  }, []);
+  }, [statusFilter]);
 
   const filteredReceivings = useMemo(() => {
     if (!search) return receivings;
