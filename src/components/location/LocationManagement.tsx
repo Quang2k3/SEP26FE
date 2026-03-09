@@ -32,6 +32,9 @@ import { getLocationColumns } from "./components/colums";
 import { AdminPage } from "../layout/AdminPage";
 import toast from "react-hot-toast";
 
+
+import { getStoredSession } from "@/services/authService";
+
 const DEFAULT_PAGE_SIZE = 20;
 
 export default function LocationListPage() {
@@ -39,6 +42,9 @@ export default function LocationListPage() {
   const [zones, setZones] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const session = getStoredSession();
+
+  const warehouseId = session?.user?.warehouseIds[0]; 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(
     null,
@@ -56,8 +62,12 @@ export default function LocationListPage() {
     size: DEFAULT_PAGE_SIZE,
   });
 
-  const loadLocations = async (override?: Partial<LocationQueryParams>) => {
-    const params = { ...filters, ...override };
+  const loadLocations = async (override?: Partial<LocationQueryParams>) => {// Assuming user has access to at least one warehouse
+
+    const params = {
+      ...filters,
+      ...override,
+    };
 
     setLoading(true);
 
@@ -110,7 +120,7 @@ export default function LocationListPage() {
 
   useEffect(() => {
     loadLocations();
-    fetchZones(true).then(setZones);
+    fetchZones({activeOnly: true, warehouseId: warehouseId }).then(data => setZones(data.content));
   }, []);
 
   const columns = getLocationColumns();
@@ -231,7 +241,6 @@ export default function LocationListPage() {
             initialValues={selectedLocation}
             onFinish={handleUpdate}
           >
-
             <Form.Item label="Location Code">
               <Input value={selectedLocation.locationCode} disabled />
             </Form.Item>

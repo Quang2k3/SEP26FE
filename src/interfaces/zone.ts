@@ -10,4 +10,5 @@ export interface Zone {
 
 export interface ZoneQueryParams {
   activeOnly?: boolean;
+  warehouseId ?: number;
 }
