@@ -33,7 +33,7 @@ export default function IncidentListPage() {
 
       const data = await fetchIncidents(params);
 
-      setIncidents(data);
+      setIncidents(data.content);
     } catch {
       toast.error("Không tải được danh sách Incident");
     } finally {
