@@ -8,6 +8,7 @@ export interface AuthUser {
   fullName: string;
   roleCodes: RoleCode[];
   avatarUrl?: string | null;
+  warehouseIds?: number[] | null;
 }
 
 export interface LoginPayload {
