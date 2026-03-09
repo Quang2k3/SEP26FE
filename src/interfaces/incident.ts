@@ -21,13 +21,6 @@ export interface IncidentListQuery {
   status?: IncidentStatus;
 }
 
-export interface ApiResponse<T> {
-  success: boolean;
-  message: string;
-  data: T;
-  timestamp: number;
-}
-
 export interface CreateIncidentPayload {
   warehouseId: number;
   incidentType: string;

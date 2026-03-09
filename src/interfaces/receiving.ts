@@ -49,10 +49,3 @@ export interface ReceivingOrder {
 export interface ReceivingListQuery {
   status?: ReceivingStatus;
 }
-
-export interface ApiResponse<T> {
-  success: boolean;
-  message: string;
-  data: T;
-  timestamp: number;
-}
