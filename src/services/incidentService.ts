@@ -1,12 +1,8 @@
 "use client";
 
 import api from "@/config/axios";
-import {
-  Incident,
-  IncidentListQuery,
-  ApiResponse,
-  CreateIncidentPayload,
-} from "@/interfaces/incident";
+import { Incident, IncidentListQuery, CreateIncidentPayload } from "@/interfaces/incident";
+import type { ApiResponse } from "@/interfaces/common";
 
 export async function fetchIncidents(
   params?: IncidentListQuery,

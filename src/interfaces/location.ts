@@ -27,13 +27,6 @@ export interface LocationPage {
   last: boolean;
 }
 
-interface ApiResponse<T> {
-  success: boolean;
-  message: string;
-  data: T;
-  timestamp: number;
-}
-
 export interface LocationQueryParams {
   zoneId?: number;
   locationType?: LocationType;

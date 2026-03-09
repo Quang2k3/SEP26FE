@@ -1,12 +1,6 @@
 import api from "@/config/axios";
 import { Zone } from "@/interfaces/zone";
-
-interface ApiResponse<T> {
-  success: boolean;
-  message: string;
-  data: T;
-  timestamp: number;
-}
+import type { ApiResponse } from "@/interfaces/common";
 
 export async function fetchZones(activeOnly?: boolean): Promise<Zone[]> {
   const { data } = await api.get<ApiResponse<Zone[]>>("/zones", {

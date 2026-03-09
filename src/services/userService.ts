@@ -8,8 +8,8 @@ import {
   CreateUserPayload,
   ChangeStatusPayload,
   AssignRoleResponseUser,
-  ApiResponse,
 } from "@/interfaces/user";
+import type { ApiResponse } from "@/interfaces/common";
 
 export async function fetchUsers(params: UserListQuery): Promise<UserListPage> {
   const { data } = await api.get<ApiResponse<UserListPage>>(
