@@ -1,7 +1,4 @@
-export interface NavAction {
-  label: string;
-  path: string;
-}
+import type { NavAction } from '@/interfaces/navigation';
 
 export const CATEGORY_ACTIONS: NavAction[] = [
   { label: 'Category List', path: '/category' }, 
@@ -21,4 +18,18 @@ export const BIN_ACTIONS: NavAction[] = [
   { label: 'Bin Occupancy', path: '/bin/occupancy' },
   { label: 'Search Empty Bins', path: '/bin/search' },
   { label: 'Configure Capacity', path: '/bin/configure' },
+];
+
+export const INBOUND_ACTIONS: NavAction[] = [
+  { label: 'Receipt List', path: '/inbound' },
+  { label: 'Gate-Check', path: '/inbound/gate-check' },
+];
+
+export const OUTBOUND_ACTIONS: NavAction[] = [
+  { label: 'Shipment List', path: '/outbound' },
+];
+
+export const MANAGER_DASHBOARD: NavAction[] = [
+  { label: 'Pending Incidents', path: '/manager-dashboard/incident' },
+  { label: 'QC Reports', path: '/manager-dashboard/qc-report' },
 ];

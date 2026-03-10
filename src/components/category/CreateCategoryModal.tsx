@@ -1,10 +1,7 @@
 'use client';
 
 import React from 'react';
-
-interface CreateCategoryModalProps {
-  onClose: () => void;
-}
+import type { CreateCategoryModalProps } from '@/interfaces/modals';
 
 export default function CreateCategoryModal({ onClose }: CreateCategoryModalProps) {
   const handleSubmit = (e: React.FormEvent) => {

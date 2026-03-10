@@ -1,26 +1,59 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link'; // 1. Bổ sung import Link từ next/link
+import { login as loginService, getValidSession } from '@/services/authService';
 
 export default function LoginPage() {
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  // Check token khi vào trang login - nếu còn hạn thì redirect về dashboard
+  useEffect(() => {
+    const session = getValidSession();
+    if (session) {
+      router.replace('/dashboard');
+    } else {
+      setChecking(false);
+    }
+  }, [router]);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    // Mock token
-    const mockToken = 'mock-token-' + Date.now();
+    const formData = new FormData(e.currentTarget);
+    const email = formData.get('username') as string;
+    const password = formData.get('password') as string;
 
-    // Lưu vào localStorage
-    localStorage.setItem('auth_token', mockToken);
+    setLoading(true);
 
-    // Lưu vào cookie (cho middleware)
-    document.cookie = `auth_token=${mockToken}; path=/; max-age=86400`;
+    try {
+      const result = await loginService({ email, password, rememberMe: false });
 
-    // Redirect
-    router.push('/verify-email');
-  };  
+      if (result.raw.data.requiresVerification) {
+        router.push('/verify-email');
+      } else {
+        router.push('/dashboard');
+      }
+    } catch (err: unknown) {
+      console.error('Login error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Hiển thị loading khi đang check token
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 font-sans">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div className="text-sm font-medium text-gray-500">Checking authentication...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 font-sans p-4">
@@ -81,11 +114,14 @@ export default function LoginPage() {
 
           <div className="pt-2">
             <button
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold py-2.5 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
               type="submit"
+              disabled={loading}
             >
-              Secure Login
-              <span className="material-symbols-outlined text-sm">login</span>
+              {loading ? 'Signing in...' : 'Secure Login'}
+              <span className="material-symbols-outlined text-sm">
+                {loading ? 'hourglass_top' : 'login'}
+              </span>
             </button>
           </div>
         </form>

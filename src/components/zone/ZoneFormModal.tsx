@@ -1,24 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-
-// 1. Export type rõ ràng để bên Page gọi vào không bị lỗi
-export interface ZoneData {
-  code: string;
-  name: string;
-  type: string;
-  description: string;
-  isActive: boolean;
-}
-
-// 2. Định nghĩa Props chuẩn xác
-export interface ZoneFormModalProps {
-  isOpen: boolean;
-  mode: 'create' | 'edit';
-  initialData?: ZoneData | null;
-  onClose: () => void;
-  onSubmit: (data: ZoneData) => void;
-}
+import type { ZoneData, ZoneFormModalProps } from '@/interfaces/modals';
 
 export default function ZoneFormModal({ isOpen, mode, initialData, onClose, onSubmit }: ZoneFormModalProps) {
   const [formData, setFormData] = useState<ZoneData>({

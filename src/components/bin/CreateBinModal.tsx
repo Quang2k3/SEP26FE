@@ -1,22 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-
-export interface BinFormData {
-  code: string;
-  zoneId: string;
-  capacity: string;
-  length: string;
-  width: string;
-  height: string;
-}
-
-interface CreateBinModalProps {
-  isOpen: boolean;
-  zones: { id: string; name: string }[];
-  onClose: () => void;
-  onSubmit: (data: BinFormData) => void;
-}
+import type { BinFormData, CreateBinModalProps } from '@/interfaces/modals';
 
 export default function CreateBinModal({ isOpen, zones, onClose, onSubmit }: CreateBinModalProps) {
   const [formData, setFormData] = useState<BinFormData>({

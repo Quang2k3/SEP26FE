@@ -2,19 +2,7 @@
 
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
-
-// 1. CHUẨN BỊ SẴN INTERFACE CHO API
-interface Task {
-  id: string;
-  type: 'Putaway' | 'Picking' | 'Internal';
-  status: 'Unassigned' | 'In Progress' | 'Exceptions';
-  priority: 'URGENT' | 'Medium' | 'Low';
-  sku: string;
-  desc: string;
-  location: string;
-  assigned: string | null;
-  etc: string;
-}
+import type { Task } from '@/interfaces/dashboard';
 
 // Mock Data gốc
 const MOCK_TASKS: Task[] = [
