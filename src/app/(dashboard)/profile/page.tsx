@@ -153,7 +153,7 @@ export default function ProfilePage() {
         <p className="mt-1 text-sm text-gray-500">Manage your account settings and preferences.</p>
       </div>
 
-      {/* Info Callout (Thay cho Note nét đứt ở dưới cùng) */}
+      {/* Info Callout */}
       <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 flex items-start gap-3">
         <span className="material-symbols-outlined text-blue-500 text-xl shrink-0 mt-0.5">info</span>
         <div className="text-sm text-blue-800">
@@ -165,7 +165,7 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Profile Card Container */}
+      {/* Khối 1: Identity Data (Thông tin định danh của bạn) */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         
         {/* Profile Photo Section */}
@@ -314,7 +314,6 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Submit Button Area */}
           <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex justify-end">
             <button
               className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white text-sm font-medium rounded-md shadow-sm transition-colors flex items-center gap-2"
@@ -335,8 +334,103 @@ export default function ProfilePage() {
             </button>
           </div>
         </form>
-
       </div>
+
+      {/* Khối 2: Security Settings (Chứa nút Change Password) */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-amber-600">lock</span>
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Account Security</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Ensure your account is using a long, random password to stay secure.
+              </p>
+            </div>
+          </div>
+          
+          <button
+            type="button"
+            onClick={() => setIsPasswordModalOpen(true)}
+            className="shrink-0 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm flex items-center gap-2 outline-none focus:ring-2 focus:ring-gray-200"
+          >
+            <span className="material-symbols-outlined text-sm">key</span>
+            Change Password
+          </button>
+        </div>
+      </div>
+
+      {/* --- MODAL: CHANGE PASSWORD --- */}
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col border border-gray-100">
+            
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-white">
+              <h2 className="text-lg font-bold text-gray-900">Change Password</h2>
+              <button 
+                onClick={() => setIsPasswordModalOpen(false)} 
+                className="text-gray-400 hover:text-gray-700 p-1 rounded-full transition-colors outline-none"
+              >
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              alert('Password changed successfully! (Mock)');
+              setIsPasswordModalOpen(false);
+            }} className="p-6 space-y-4">
+              
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700">Current Password</label>
+                <input 
+                  type="password" required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 text-sm"
+                  placeholder="••••••••"
+                />
+              </div>
+              
+              <div className="flex flex-col gap-1.5 pt-2">
+                <label className="text-sm font-medium text-gray-700">New Password</label>
+                <input 
+                  type="password" required minLength={8}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 text-sm"
+                  placeholder="••••••••"
+                />
+                <p className="text-xs text-gray-500">Must be at least 8 characters long.</p>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700">Confirm New Password</label>
+                <input 
+                  type="password" required minLength={8}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 text-sm"
+                  placeholder="••••••••"
+                />
+              </div>
+
+              <div className="pt-4 flex justify-end gap-3">
+                <button 
+                  type="button" 
+                  onClick={() => setIsPasswordModalOpen(false)}
+                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="px-4 py-2 bg-gray-900 hover:bg-black text-white rounded-md text-sm font-medium shadow-sm"
+                >
+                  Update Password
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

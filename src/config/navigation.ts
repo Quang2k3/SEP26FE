@@ -16,6 +16,7 @@ export const ZONE_ACTIONS: NavAction[] = [
 export const BIN_ACTIONS: NavAction[] = [
   { label: 'Bin List', path: '/bin' },
   { label: 'Bin Occupancy', path: '/bin/occupancy' },
+  { label: 'Search Empty Bins', path: '/bin/search' },
   { label: 'Configure Capacity', path: '/bin/configure' },
 ];
 

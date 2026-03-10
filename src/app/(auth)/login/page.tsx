@@ -59,7 +59,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 font-sans p-4">
       <div className="w-full max-w-md bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
         
-        {/* Header / Branding (Mới) */}
+        {/* Header / Branding */}
         <div className="bg-blue-600 p-8 text-center">
           <div className="w-16 h-16 bg-white rounded-2xl mx-auto flex items-center justify-center shadow-inner mb-4">
             <span className="material-symbols-outlined text-4xl text-blue-600">inventory_2</span>
@@ -91,10 +91,13 @@ export default function LoginPage() {
               <label className="block text-sm font-semibold text-gray-700" htmlFor="password">
                 Password
               </label>
-              {/* Di chuyển nút Forgot Password lên ngang hàng với Label để tiết kiệm diện tích */}
-              <a className="text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline" href="#">
+              {/* 2. Sửa thẻ <a> thành thẻ <Link> và trỏ href về đúng trang */}
+              <Link 
+                href="/forgot-password"
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline" 
+              >
                 Forgot Password?
-              </a>
+              </Link>
             </div>
             <div className="relative">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-lg">lock</span>
