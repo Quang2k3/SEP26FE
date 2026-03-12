@@ -231,3 +231,14 @@ export async function updateProfile(payload: UpdateProfilePayload): Promise<ApiR
 
   return response.data;
 }
+
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export async function changePassword(payload: ChangePasswordPayload): Promise<ApiResponse<unknown>> {
+  const response = await api.post<ApiResponse<unknown>>('/profile/change-password', payload);
+  return response.data;
+}

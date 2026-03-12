@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import api from '@/config/axios';
 import type { ApiResponse } from '@/interfaces/common';
 import type { MeUser, ProfileFormData } from '@/interfaces/profile';
-import { updateProfile } from '@/services/authService';
+import { changePassword, updateProfile } from '@/services/authService';
 import toast from 'react-hot-toast';
 
 export default function ProfilePage() {
@@ -22,6 +22,12 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -378,37 +384,91 @@ export default function ProfilePage() {
               </button>
             </div>
 
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              alert('Password changed successfully! (Mock)');
-              setIsPasswordModalOpen(false);
-            }} className="p-6 space-y-4">
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+
+                if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+                  toast.error('Please fill in all password fields');
+                  return;
+                }
+
+                if (passwordForm.newPassword.length < 8) {
+                  toast.error('New password must be at least 8 characters');
+                  return;
+                }
+
+                if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+                  toast.error('New password and confirmation do not match');
+                  return;
+                }
+
+                setChangingPassword(true);
+                try {
+                  const res = await changePassword({
+                    currentPassword: passwordForm.currentPassword,
+                    newPassword: passwordForm.newPassword,
+                    confirmPassword: passwordForm.confirmPassword,
+                  });
+
+                  toast.success(res.message || 'Password changed successfully');
+                  setIsPasswordModalOpen(false);
+                  setPasswordForm({
+                    currentPassword: '',
+                    newPassword: '',
+                    confirmPassword: '',
+                  });
+                } catch (error: unknown) {
+                  console.error('Failed to change password:', error);
+                  const err = error as { response?: { data?: { message?: string } }; message?: string };
+                  const apiMessage =
+                    err?.response?.data?.message ||
+                    err?.message ||
+                    'Failed to change password. Please try again.';
+                  toast.error(apiMessage);
+                } finally {
+                  setChangingPassword(false);
+                }
+              }}
+              className="p-6 space-y-4"
+            >
               
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-gray-700">Current Password</label>
-                <input 
-                  type="password" required
+                <input
+                  type="password"
+                  required
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 text-sm"
                   placeholder="••••••••"
+                  value={passwordForm.currentPassword}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
                 />
               </div>
               
               <div className="flex flex-col gap-1.5 pt-2">
                 <label className="text-sm font-medium text-gray-700">New Password</label>
-                <input 
-                  type="password" required minLength={8}
+                <input
+                  type="password"
+                  required
+                  minLength={8}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 text-sm"
                   placeholder="••••••••"
+                  value={passwordForm.newPassword}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
                 />
                 <p className="text-xs text-gray-500">Must be at least 8 characters long.</p>
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-gray-700">Confirm New Password</label>
-                <input 
-                  type="password" required minLength={8}
+                <input
+                  type="password"
+                  required
+                  minLength={8}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 text-sm"
                   placeholder="••••••••"
+                  value={passwordForm.confirmPassword}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
                 />
               </div>
 
@@ -422,9 +482,17 @@ export default function ProfilePage() {
                 </button>
                 <button 
                   type="submit"
-                  className="px-4 py-2 bg-gray-900 hover:bg-black text-white rounded-md text-sm font-medium shadow-sm"
+                  className="px-4 py-2 bg-gray-900 hover:bg-black disabled:bg-gray-500 text-white rounded-md text-sm font-medium shadow-sm flex items-center gap-2"
+                  disabled={changingPassword}
                 >
-                  Update Password
+                  {changingPassword ? (
+                    <>
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-transparent" />
+                      Updating...
+                    </>
+                  ) : (
+                    'Update Password'
+                  )}
                 </button>
               </div>
             </form>
