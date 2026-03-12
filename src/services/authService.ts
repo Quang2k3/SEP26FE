@@ -218,14 +218,12 @@ export async function updateProfile(payload: UpdateProfilePayload): Promise<ApiR
   formData.append('dateOfBirth', payload.dateOfBirth || '');
   formData.append('address', payload.address || '');
   
-  // Avatar - only append if file is provided, otherwise send empty string
+  // Avatar - chỉ append nếu có file, còn không thì bỏ trống field này
   if (payload.avatar) {
     formData.append('avatar', payload.avatar);
-  } else {
-    formData.append('avatar', '');
   }
 
-  const response = await api.post<ApiResponse<unknown>>('/profile/update-profile', formData, {
+  const response = await api.put<ApiResponse<unknown>>('/profile/update-profile', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
