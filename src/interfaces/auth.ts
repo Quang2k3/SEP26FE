@@ -18,10 +18,11 @@ export interface LoginPayload {
 }
 
 export interface LoginResponseData {
-  token: string;
-  tokenType: string;
-  expiresIn: number;
+  token?: string;
+  tokenType?: string;
+  expiresIn?: number;
   requiresVerification: boolean;
+  pendingToken?: string;
   user: AuthUser;
 }
 
@@ -33,7 +34,7 @@ export interface AuthSession {
 }
 
 export interface LoginResult {
-  session: AuthSession;
+  session: AuthSession | null;
   raw: ApiResponse<LoginResponseData>;
 }
 

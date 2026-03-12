@@ -101,6 +101,75 @@ export function getAuthorizationHeaderValue(): string | null {
 export async function login(payload: LoginPayload): Promise<LoginResult> {
   const response = await api.post<ApiResponse<LoginResponseData>>('/auth/login', payload);
   const body = response.data;
+  const data = body?.data;
+
+  if (!data) {
+    throw new Error('Không nhận được dữ liệu đăng nhập từ server');
+  }
+
+  // Trường hợp yêu cầu xác minh OTP lần đầu: không có token, chỉ có pendingToken
+  if (data.requiresVerification) {
+    return {
+      session: null,
+      raw: body,
+    };
+  }
+
+  const token = data.token;
+  const tokenType = data.tokenType || 'Bearer';
+  const expiresIn = data.expiresIn ?? 0;
+  const user = data.user;
+
+  if (!token) throw new Error('Không nhận được token từ server');
+  if (!user) throw new Error('Không nhận được user từ server');
+
+  const expiresAt = Date.now() + Number(expiresIn);
+
+  const session: AuthSession = {
+    token,
+    tokenType,
+    expiresAt,
+    user,
+  };
+
+  saveAuthSession(session);
+
+  return {
+    session,
+    raw: body,
+  };
+}
+
+export async function requestPasswordReset(email: string): Promise<ApiResponse<unknown>> {
+  const response = await api.post<ApiResponse<unknown>>('/auth/forgot-password', { email });
+  return response.data;
+}
+
+export async function resendOtp(pendingToken: string): Promise<ApiResponse<unknown>> {
+  const response = await api.post<ApiResponse<unknown>>('/auth/resend-otp', { pendingToken });
+  return response.data;
+}
+
+export interface ResetPasswordPayload {
+  email: string;
+  otp: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export async function resetPassword(payload: ResetPasswordPayload): Promise<ApiResponse<unknown>> {
+  const response = await api.post<ApiResponse<unknown>>('/auth/reset-password', payload);
+  return response.data;
+}
+
+export interface VerifyOtpPayload {
+  pendingToken: string;
+  otp: string;
+}
+
+export async function verifyOtp(payload: VerifyOtpPayload): Promise<LoginResult> {
+  const response = await api.post<ApiResponse<LoginResponseData>>('/auth/verify-otp', payload);
+  const body = response.data;
 
   const token = body?.data?.token;
   const tokenType = body?.data?.tokenType || 'Bearer';
@@ -149,18 +218,27 @@ export async function updateProfile(payload: UpdateProfilePayload): Promise<ApiR
   formData.append('dateOfBirth', payload.dateOfBirth || '');
   formData.append('address', payload.address || '');
   
-  // Avatar - only append if file is provided, otherwise send empty string
+  // Avatar - chỉ append nếu có file, còn không thì bỏ trống field này
   if (payload.avatar) {
     formData.append('avatar', payload.avatar);
-  } else {
-    formData.append('avatar', '');
   }
 
-  const response = await api.post<ApiResponse<unknown>>('/profile/update-profile', formData, {
+  const response = await api.put<ApiResponse<unknown>>('/profile/update-profile', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
   });
 
+  return response.data;
+}
+
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export async function changePassword(payload: ChangePasswordPayload): Promise<ApiResponse<unknown>> {
+  const response = await api.post<ApiResponse<unknown>>('/profile/change-password', payload);
   return response.data;
 }
