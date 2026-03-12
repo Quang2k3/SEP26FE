@@ -1,49 +1,79 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { resendOtp, verifyOtp } from '@/services/authService';
 
 export default function VerifyEmailPage() {
   const router = useRouter();
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [pendingToken, setPendingToken] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const token = localStorage.getItem('pending_token');
+    const storedEmail = localStorage.getItem('pending_email');
+    if (!token || !storedEmail) {
+      router.replace('/login');
+      return;
+    }
+    setPendingToken(token);
+    setEmail(storedEmail);
+  }, [router]);
+
   const handleChange = (index: number, value: string) => {
-    // Chỉ cho phép nhập số
     if (value && !/^\d$/.test(value)) return;
 
     const newOtp = [...otp];
     newOtp[index] = value;
     setOtp(newOtp);
-    setError(''); // Xóa lỗi khi user nhập
+    setError('');
 
-    // Auto focus sang ô tiếp theo
     if (value && index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
   };
 
   const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Backspace: xóa và focus về ô trước
     if (e.key === 'Backspace' && !otp[index] && index > 0) {
       inputRefs.current[index - 1]?.focus();
     }
   };
 
-  const handleVerify = () => {
-    // Check xem đã điền đủ 6 ô chưa
-    if (otp.some(digit => digit === '')) {
+  const handleVerify = async () => {
+    if (otp.some((digit) => digit === '')) {
       setError('Please enter all 6 digits to verify.');
       return;
     }
+    if (!pendingToken) {
+      setError('Phiên xác thực không hợp lệ. Vui lòng đăng nhập lại.');
+      return;
+    }
 
-    // TODO: Gửi OTP lên server để verify
-    console.log('OTP:', otp.join(''));
-    // alert('OTP verified! (Mock)'); // Đã ẩn alert đi để chuyển trang mượt hơn
+    setIsLoading(true);
+    setError('');
+    setMessage('');
 
-    // Mock: Redirect to dashboard after verify
-    router.push('/dashboard');
+    try {
+      await verifyOtp({ pendingToken, otp: otp.join('') });
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('pending_token');
+        localStorage.removeItem('pending_email');
+      }
+      router.push('/dashboard');
+    } catch (err: any) {
+      console.error('Verify OTP error:', err);
+      const apiMessage =
+        err?.response?.data?.message || err?.message || 'Không thể xác thực OTP. Vui lòng thử lại.';
+      setError(apiMessage);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -62,11 +92,17 @@ export default function VerifyEmailPage() {
         {/* Form Body */}
         <div className="p-8 flex flex-col gap-6">
           
-          {/* Error Message */}
+          {/* Error / Success Message */}
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm font-medium px-4 py-3 rounded-lg flex items-center gap-2">
               <span className="material-symbols-outlined text-red-500 text-lg">error</span>
               {error}
+            </div>
+          )}
+          {message && !error && (
+            <div className="bg-green-50 border border-green-200 text-green-700 text-sm font-medium px-4 py-3 rounded-lg flex items-center gap-2">
+              <span className="material-symbols-outlined text-green-500 text-lg">check_circle</span>
+              {message}
             </div>
           )}
 
@@ -91,21 +127,49 @@ export default function VerifyEmailPage() {
           {/* Verify Button */}
           <div className="pt-2">
             <button
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold py-3 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
               type="button"
               onClick={handleVerify}
+              disabled={isLoading}
             >
-              Verify Code
-              <span className="material-symbols-outlined text-sm">check_circle</span>
+              {isLoading ? 'Verifying...' : 'Verify Code'}
+              <span className="material-symbols-outlined text-sm">
+                {isLoading ? 'hourglass_top' : 'check_circle'}
+              </span>
             </button>
           </div>
 
           {/* Resend Code */}
           <div className="text-center pt-2 border-t border-gray-100">
             <p className="text-sm text-gray-500 mb-1">
-              Didn't receive a code?
+              {email
+                ? `Didn't receive a code? We can resend it to ${email}.`
+                : "Didn't receive a code?"}
             </p>
-            <button className="text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors">
+            <button
+              className="text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors disabled:text-blue-300"
+              type="button"
+              disabled={isLoading || !pendingToken}
+              onClick={async () => {
+                if (!pendingToken) return;
+                setIsLoading(true);
+                setError('');
+                setMessage('');
+                try {
+                  await resendOtp(pendingToken);
+                  setMessage('Mã OTP mới đã được gửi tới email của bạn.');
+                } catch (err: any) {
+                  console.error('Resend OTP error:', err);
+                  const apiMessage =
+                    err?.response?.data?.message ||
+                    err?.message ||
+                    'Không thể gửi lại mã. Vui lòng thử lại.';
+                  setError(apiMessage);
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
+            >
               Resend Code
             </button>
           </div>

@@ -101,11 +101,24 @@ export function getAuthorizationHeaderValue(): string | null {
 export async function login(payload: LoginPayload): Promise<LoginResult> {
   const response = await api.post<ApiResponse<LoginResponseData>>('/auth/login', payload);
   const body = response.data;
+  const data = body?.data;
 
-  const token = body?.data?.token;
-  const tokenType = body?.data?.tokenType || 'Bearer';
-  const expiresIn = body?.data?.expiresIn ?? 0;
-  const user = body?.data?.user;
+  if (!data) {
+    throw new Error('Không nhận được dữ liệu đăng nhập từ server');
+  }
+
+  // Trường hợp yêu cầu xác minh OTP lần đầu: không có token, chỉ có pendingToken
+  if (data.requiresVerification) {
+    return {
+      session: null,
+      raw: body,
+    };
+  }
+
+  const token = data.token;
+  const tokenType = data.tokenType || 'Bearer';
+  const expiresIn = data.expiresIn ?? 0;
+  const user = data.user;
 
   if (!token) throw new Error('Không nhận được token từ server');
   if (!user) throw new Error('Không nhận được user từ server');

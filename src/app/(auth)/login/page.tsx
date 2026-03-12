@@ -33,6 +33,12 @@ export default function LoginPage() {
       const result = await loginService({ email, password, rememberMe: false });
 
       if (result.raw.data.requiresVerification) {
+        if (typeof window !== 'undefined') {
+          if (result.raw.data.pendingToken) {
+            localStorage.setItem('pending_token', result.raw.data.pendingToken);
+          }
+          localStorage.setItem('pending_email', email);
+        }
         router.push('/verify-email');
       } else {
         router.push('/dashboard');
