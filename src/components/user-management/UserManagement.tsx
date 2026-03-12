@@ -93,7 +93,7 @@ export default function UserManagementContent() {
 
     const payload = {
       email: addForm.email.trim(),
-      roleCodes: [], // role cố định
+      roleCodes: ['KEEPER'], // role cố định
       isPermanent: addForm.isPermanent,
       expireDate: addForm.isPermanent ? null : addForm.expireDate || null,
     };

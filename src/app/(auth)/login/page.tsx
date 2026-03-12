@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { login as loginService, getValidSession } from '@/services/authService';
 
@@ -91,10 +92,9 @@ export default function LoginPage() {
               <label className="block text-sm font-semibold text-gray-700" htmlFor="password">
                 Password
               </label>
-              {/* 2. Sửa thẻ <a> thành thẻ <Link> và trỏ href về đúng trang */}
-              <Link 
+              <Link
                 href="/forgot-password"
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline" 
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline"
               >
                 Forgot Password?
               </Link>

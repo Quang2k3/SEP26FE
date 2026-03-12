@@ -127,6 +127,62 @@ export async function login(payload: LoginPayload): Promise<LoginResult> {
   };
 }
 
+export async function requestPasswordReset(email: string): Promise<ApiResponse<unknown>> {
+  const response = await api.post<ApiResponse<unknown>>('/auth/forgot-password', { email });
+  return response.data;
+}
+
+export async function resendOtp(pendingToken: string): Promise<ApiResponse<unknown>> {
+  const response = await api.post<ApiResponse<unknown>>('/auth/resend-otp', { pendingToken });
+  return response.data;
+}
+
+export interface ResetPasswordPayload {
+  email: string;
+  otp: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export async function resetPassword(payload: ResetPasswordPayload): Promise<ApiResponse<unknown>> {
+  const response = await api.post<ApiResponse<unknown>>('/auth/reset-password', payload);
+  return response.data;
+}
+
+export interface VerifyOtpPayload {
+  pendingToken: string;
+  otp: string;
+}
+
+export async function verifyOtp(payload: VerifyOtpPayload): Promise<LoginResult> {
+  const response = await api.post<ApiResponse<LoginResponseData>>('/auth/verify-otp', payload);
+  const body = response.data;
+
+  const token = body?.data?.token;
+  const tokenType = body?.data?.tokenType || 'Bearer';
+  const expiresIn = body?.data?.expiresIn ?? 0;
+  const user = body?.data?.user;
+
+  if (!token) throw new Error('Không nhận được token từ server');
+  if (!user) throw new Error('Không nhận được user từ server');
+
+  const expiresAt = Date.now() + Number(expiresIn);
+
+  const session: AuthSession = {
+    token,
+    tokenType,
+    expiresAt,
+    user,
+  };
+
+  saveAuthSession(session);
+
+  return {
+    session,
+    raw: body,
+  };
+}
+
 export interface UpdateProfilePayload {
   fullName: string;
   phone: string;
