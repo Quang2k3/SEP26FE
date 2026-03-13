@@ -2,78 +2,105 @@ export interface ZoneData {
   id?: number;
   code: string;
   name: string;
+  type: string;
   description?: string;
+  isActive: boolean;
 }
 
 export interface ZoneFormModalProps {
-  open: boolean;
-  onClose: () => void;
+  isOpen: boolean;
+  mode: 'create' | 'edit';
   initialData?: ZoneData | null;
-}
-
-export interface EditBinData {
-  id: number;
-  code: string;
-  description?: string;
-  capacity: number;
+  onClose: () => void;
+  onSubmit: (data: ZoneData) => void;
 }
 
 export interface BinFormData {
   code: string;
-  description?: string;
-  capacity: number;
+  zoneId: string;
+  capacity: string;
+  length: string;
+  width: string;
+  height: string;
 }
 
 export interface CreateBinModalProps {
-  open: boolean;
+  isOpen: boolean;
+  zones: { id: string; name: string }[];
   onClose: () => void;
-  zoneId: number;
-  onCreated?: () => void;
+  onSubmit: (data: BinFormData) => void;
+}
+
+export interface BinStats {
+  occupancy: number;
+  occupancyTrend: string;
+  skuCount: number;
+  lastPicking: string;
+}
+
+export interface EditBinData {
+  code: string;
+  status: 'Active' | 'Inactive' | 'Maintenance';
+  zoneId: string;
+  type: 'Standard Rack' | 'Floor Location' | 'Pallet Position';
+  maxWeight: string;
+  maxVolume: string;
+  stackLimit: string;
+  length: string;
+  width: string;
+  height: string;
+  stats: BinStats;
 }
 
 export interface EditBinModalProps {
-  open: boolean;
-  onClose: () => void;
+  isOpen: boolean;
   initialData: EditBinData;
-  onUpdated?: () => void;
+  zones: { id: string; name: string }[];
+  onClose: () => void;
+  onSubmit: (data: EditBinData) => void;
 }
 
 export interface OutboundFormData {
-  referenceCode: string;
-  description?: string;
-  scheduledAt: string;
+  binCode: string;
+  shipmentCode: string;
+  customer: string;
+  expectedDate: string;
+  quantity: string;
+  notes: string;
 }
 
 export interface CreateOutboundModalProps {
-  open: boolean;
+  isOpen: boolean;
+  binCode?: string;
   onClose: () => void;
-  onCreated?: () => void;
+  onSubmit: (data: OutboundFormData) => void;
 }
 
 export interface EditOutboundModalProps {
-  open: boolean;
+  isOpen: boolean;
+  initialData: OutboundFormData;
   onClose: () => void;
-  outboundId: number;
-  onUpdated?: () => void;
+  onSubmit: (data: OutboundFormData) => void;
+}
+
+export interface CategorySummary {
+  code: string;
+  name: string;
+  status: string;
+  color: string;
 }
 
 export interface CreateCategoryModalProps {
-  open: boolean;
   onClose: () => void;
-  onCreated?: () => void;
 }
 
 export interface EditCategoryModalProps {
-  open: boolean;
   onClose: () => void;
-  categoryId: number;
-  onUpdated?: () => void;
+  categoryData: CategorySummary;
 }
 
 export interface CategoryDetailModalProps {
-  open: boolean;
   onClose: () => void;
-  categoryId: number;
+  categoryData: CategorySummary;
 }
-
 

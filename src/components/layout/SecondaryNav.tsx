@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { CATEGORY_ACTIONS, ZONE_ACTIONS, BIN_ACTIONS, NavAction } from '@/config/navigation';
+import { CATEGORY_ACTIONS, ZONE_ACTIONS, BIN_ACTIONS } from '@/config/navigation';
+import type { NavAction } from '@/interfaces/navigation';
 
 export default function SecondaryNav() {
   const pathname = usePathname();

@@ -153,7 +153,7 @@ export default function SKUToCategoryPage() {
             </div>
 
             <p className="mt-6 px-4 text-[10px] font-bold text-gray-400 italic leading-relaxed">
-              * Tip: Use 'Shift' key to select multiple items in the table for faster categorization.
+              * Tip: Use the Shift key to select multiple items in the table for faster categorization.
             </p>
           </div>
         </div>

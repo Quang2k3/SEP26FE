@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import DashboardHeader from './DashboardHeader';
@@ -10,10 +10,11 @@ import {
   BIN_ACTIONS,
   INBOUND_ACTIONS,
   OUTBOUND_ACTIONS,
-  type NavAction,
-  USER_MANAGEMENT_ACTIONS,
   MANAGER_DASHBOARD,
 } from '@/config/navigation';
+import type { NavAction } from '@/interfaces/navigation';
+import type { RoleCode } from '@/interfaces/auth';
+import { getCurrentUserRoles } from '@/services/authService';
 
 type SidebarSection = {
   key: string;
@@ -21,6 +22,11 @@ type SidebarSection = {
   icon: string;
   path?: string;
   children?: NavAction[];
+  /**
+   * Danh sách role được phép thấy section này.
+   * Nếu không khai báo hoặc mảng rỗng => mọi role đều thấy.
+   */
+  allowedRoles?: RoleCode[];
 };
 
 export default function DashboardLayout({
@@ -33,14 +39,9 @@ export default function DashboardLayout({
   const [collapsed, setCollapsed] = useState(false);
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
 
-  // useEffect(() => {
-  //   const token = localStorage.getItem('auth_token');
-  //   if (!token) {
-  //     router.push('/login');
-  //   }
-  // }, [router]);
+  const userRoles = getCurrentUserRoles();
 
-  const sections: SidebarSection[] = [
+  const allSections: SidebarSection[] = [
     {
       key: 'dashboard',
       name: 'Dashboard',
@@ -82,27 +83,37 @@ export default function DashboardLayout({
       name: 'User Management',
       icon: 'person',
       path: '/user-management',
+      allowedRoles: ['ADMIN'],
     },
     {
-      key: "qc-inspections",
-      name: "QC Inspections",
-      icon: "verified",
-      path: "/qc-inspections",
+      key: 'qc-inspections',
+      name: 'QC Inspections',
+      icon: 'verified',
+      path: '/qc-inspections',
+      allowedRoles: ['ADMIN', 'MANAGER'],
     },
     {
-      key: "manager-dashboard",
-      name: "Manager Dashboard",
-      icon: "qr_code_scanner",
+      key: 'manager-dashboard',
+      name: 'Manager Dashboard',
+      icon: 'qr_code_scanner',
       children: MANAGER_DASHBOARD,
+      allowedRoles: ['MANAGER'],
     },
     {
-      key: "location",
-      name: "Location Management",
-      icon: "location_on",
-      path: "/location",
+      key: 'location',
+      name: 'Location Management',
+      icon: 'location_on',
+      path: '/location',
     },
-
   ];
+
+  const sections = allSections.filter((section) => {
+    if (!section.allowedRoles || section.allowedRoles.length === 0) {
+      return true;
+    }
+
+    return userRoles.some((role) => section.allowedRoles!.includes(role));
+  });
 
   const toggleSection = (key: string) => {
     setOpenMenus((prev) => ({

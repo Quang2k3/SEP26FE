@@ -6,6 +6,7 @@ import type { ApiResponse } from '@/interfaces/common';
 import type { MeUser, ProfileFormData } from '@/interfaces/profile';
 import { updateProfile } from '@/services/authService';
 import toast from 'react-hot-toast';
+import Image from 'next/image';
 
 export default function ProfilePage() {
   const [userData, setUserData] = useState<MeUser | null>(null);
@@ -22,6 +23,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -165,15 +167,12 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Khối 1: Identity Data (Thông tin định danh của bạn) */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         
-        {/* Profile Photo Section */}
         <div className="p-6 md:p-8 border-b border-gray-200 flex flex-col sm:flex-row items-center sm:items-end gap-6 bg-gray-50/50">
           <div className="relative w-28 h-28 border border-gray-200 rounded-full flex items-center justify-center bg-white shadow-sm overflow-hidden shrink-0 group cursor-pointer">
             {avatarPreview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={avatarPreview} alt={userData?.fullName || 'Avatar'} className="w-full h-full object-cover" />
+              <Image src={avatarPreview} alt={userData?.fullName || 'Avatar'} className="w-full h-full object-cover" />
             ) : (
               <span className="material-symbols-outlined text-5xl text-gray-300 group-hover:scale-110 transition-transform">person</span>
             )}

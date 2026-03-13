@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { login as loginService, getValidSession } from '@/services/authService';
+import Link from 'next/link';
 
 export default function LoginPage() {
   const router = useRouter();

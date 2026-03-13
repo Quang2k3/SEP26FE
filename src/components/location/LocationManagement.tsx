@@ -24,6 +24,8 @@ import {
   Location,
   LocationPage as LocationPageType,
   LocationQueryParams,
+  CreateLocationRequest,
+  UpdateLocationRequest,
 } from "@/interfaces/location";
 import { Zone } from "@/interfaces/zone";
 
@@ -42,8 +44,7 @@ export default function LocationListPage() {
   const [loading, setLoading] = useState(false);
 
   const session = getStoredSession();
-
-  const warehouseId = session?.user?.warehouseIds[0];
+  const warehouseId = session?.user?.warehouseIds?.[0];
   const [allLocations, setAllLocations] = useState<Location[]>([]);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(
@@ -89,7 +90,7 @@ export default function LocationListPage() {
     }
   };
 
-  const handleCreate = async (values: any) => {
+  const handleCreate = async (values: CreateLocationRequest) => {
     try {
       await createLocation(values);
 
@@ -103,7 +104,7 @@ export default function LocationListPage() {
     }
   };
 
-  const handleUpdate = async (values: any) => {
+  const handleUpdate = async (values: UpdateLocationRequest) => {
     if (!selectedLocation) return;
 
     try {
@@ -123,7 +124,7 @@ export default function LocationListPage() {
     loadLocations();
 
     fetchZones({ activeOnly: true, warehouseId }).then((data) =>
-      setZones(data.content),
+      setZones(data),
     );
 
     fetchLocations({ page: 0, size: 1000 }).then((data) =>

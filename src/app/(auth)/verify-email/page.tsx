@@ -103,7 +103,7 @@ export default function VerifyEmailPage() {
           {/* Resend Code */}
           <div className="text-center pt-2 border-t border-gray-100">
             <p className="text-sm text-gray-500 mb-1">
-              Didn't receive a code?
+              Didn&apos;t receive a code?
             </p>
             <button className="text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors">
               Resend Code

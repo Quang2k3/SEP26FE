@@ -1,6 +1,13 @@
 import api from '@/config/axios';
 import type { ApiResponse } from '@/interfaces/common';
-import type { AuthSession, AuthUser, LoginPayload, LoginResponseData, LoginResult } from '@/interfaces/auth';
+import type {
+  AuthSession,
+  AuthUser,
+  LoginPayload,
+  LoginResponseData,
+  LoginResult,
+  RoleCode,
+} from '@/interfaces/auth';
 
 const STORAGE_TOKEN = 'auth_token';
 const STORAGE_TOKEN_TYPE = 'auth_token_type';
@@ -98,6 +105,17 @@ export function getAuthorizationHeaderValue(): string | null {
   return `${session.tokenType} ${session.token}`;
 }
 
+/**
+ * Lấy danh sách roleCodes của user đang đăng nhập.
+ * Nếu chưa đăng nhập hoặc session không hợp lệ thì trả về mảng rỗng.
+ */
+export function getCurrentUserRoles(): RoleCode[] {
+  const session = getValidSession();
+  if (!session) return [];
+
+  return session.user.roleCodes ?? [];
+}
+
 export async function login(payload: LoginPayload): Promise<LoginResult> {
   const response = await api.post<ApiResponse<LoginResponseData>>('/auth/login', payload);
   const body = response.data;
@@ -139,17 +157,13 @@ export interface UpdateProfilePayload {
 export async function updateProfile(payload: UpdateProfilePayload): Promise<ApiResponse<unknown>> {
   const formData = new FormData();
   
-  // Required fields
   formData.append('fullName', payload.fullName);
   formData.append('phone', payload.phone);
   
-  // Optional fields - always send, use empty string if not provided
-  // Format: yyyy-MM-dd for dateOfBirth
   formData.append('gender', payload.gender || '');
   formData.append('dateOfBirth', payload.dateOfBirth || '');
   formData.append('address', payload.address || '');
   
-  // Avatar - only append if file is provided, otherwise send empty string
   if (payload.avatar) {
     formData.append('avatar', payload.avatar);
   } else {

@@ -7,9 +7,9 @@ export default function EditBinModal({ isOpen, initialData, zones, onClose, onSu
   const [formData, setFormData] = useState<EditBinData | null>(null);
 
   useEffect(() => {
-    if (isOpen && initialData) {
-      setFormData(initialData);
-    }
+    if (!isOpen || !initialData) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFormData(initialData);
   }, [isOpen, initialData]);
 
   if (!isOpen || !formData) return null;
@@ -61,7 +61,16 @@ export default function EditBinModal({ isOpen, initialData, zones, onClose, onSu
                 <div className="space-y-1.5">
                   <label className="block text-sm font-semibold text-gray-700">Status</label>
                   <div className="relative">
-                    <select value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value as any})} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 appearance-none shadow-sm cursor-pointer">
+                    <select
+                      value={formData.status}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          status: e.target.value as EditBinData['status'],
+                        })
+                      }
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 appearance-none shadow-sm cursor-pointer"
+                    >
                       <option value="Active">Active</option>
                       <option value="Inactive">Inactive</option>
                       <option value="Maintenance">Maintenance</option>
@@ -83,7 +92,16 @@ export default function EditBinModal({ isOpen, initialData, zones, onClose, onSu
                 <div className="space-y-1.5">
                   <label className="block text-sm font-semibold text-gray-700">Bin Type</label>
                   <div className="relative">
-                    <select value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value as any})} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 appearance-none shadow-sm cursor-pointer">
+                    <select
+                      value={formData.type}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          type: e.target.value as EditBinData['type'],
+                        })
+                      }
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 appearance-none shadow-sm cursor-pointer"
+                    >
                       <option value="Standard Rack">Standard Rack</option>
                       <option value="Floor Location">Floor Location</option>
                       <option value="Pallet Position">Pallet Position</option>

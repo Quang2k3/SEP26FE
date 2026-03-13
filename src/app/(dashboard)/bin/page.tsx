@@ -2,8 +2,9 @@
 
 import React, { Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import CreateBinModal, { BinFormData } from '@/components/bin/CreateBinModal';
-import EditBinModal, { EditBinData } from '@/components/bin/EditBinModal';
+import CreateBinModal from '@/components/bin/CreateBinModal';
+import EditBinModal from '@/components/bin/EditBinModal';
+import type { BinFormData, EditBinData } from '@/interfaces/modals';
 
 // Dữ liệu tĩnh cho danh sách Bin
 const MOCK_BINS = [

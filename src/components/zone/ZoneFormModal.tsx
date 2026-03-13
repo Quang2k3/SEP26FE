@@ -10,12 +10,14 @@ export default function ZoneFormModal({ isOpen, mode, initialData, onClose, onSu
 
   // Tự động reset hoặc điền form dựa vào Mode
   useEffect(() => {
-    if (isOpen) {
-      if (mode === 'edit' && initialData) {
-        setFormData(initialData);
-      } else {
-        setFormData({ code: '', name: '', type: '', description: '', isActive: true });
-      }
+    if (!isOpen) return;
+
+    if (mode === 'edit' && initialData) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFormData(initialData);
+    } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFormData({ code: '', name: '', type: '', description: '', isActive: true });
     }
   }, [isOpen, mode, initialData]);
 

@@ -10,9 +10,9 @@ export default function CreateBinModal({ isOpen, zones, onClose, onSubmit }: Cre
 
   // Reset form mỗi khi mở lại
   useEffect(() => {
-    if (isOpen) {
-      setFormData({ code: '', zoneId: '', capacity: '', length: '', width: '', height: '' });
-    }
+    if (!isOpen) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFormData({ code: '', zoneId: '', capacity: '', length: '', width: '', height: '' });
   }, [isOpen]);
 
   if (!isOpen) return null;

@@ -1,6 +1,5 @@
 "use client";
 
- import type { ReactNode } from "react";
  import type { ButtonProps } from "@/interfaces/ui";
 
  type ButtonVariant = "primary" | "secondary" | "outline" | "danger";

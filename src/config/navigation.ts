@@ -23,6 +23,7 @@ export const BIN_ACTIONS: NavAction[] = [
 export const INBOUND_ACTIONS: NavAction[] = [
   { label: 'Receipt List', path: '/inbound' },
   { label: 'Gate-Check', path: '/inbound/gate-check' },
+  { label: 'Receiving Orders', path: '/receiving-orders' },
 ];
 
 export const OUTBOUND_ACTIONS: NavAction[] = [

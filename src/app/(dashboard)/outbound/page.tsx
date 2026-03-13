@@ -4,9 +4,10 @@ import React, { Suspense, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import CreateOutboundModal, { OutboundFormData } from '@/components/outbound/CreateOutboundModal';
+import CreateOutboundModal from '@/components/outbound/CreateOutboundModal';
 import EditOutboundModal from '@/components/outbound/EditOutboundModal';
 import { AdminPage } from '@/components/layout/AdminPage';
+import type { OutboundFormData } from '@/interfaces/modals';
 
 // Mock data tương tự inbound nhưng cho outbound shipments
 const MOCK_SHIPMENTS = [

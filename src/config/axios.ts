@@ -49,8 +49,12 @@ api.interceptors.response.use(
     // Xử lý 401: clear token và redirect về login
     if (status === 401) {
       clearAuthToken();
-      toast.error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-      
+      // Sửa lỗi: kiểu dữ liệu có thể không có property 'message'
+      const errorMessage =
+        (error.response?.data as { message?: string } | undefined)?.message ||
+        'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
+      toast.error(errorMessage);
+
       // Tránh loop nếu đang ở trang login
       if (!window.location.pathname.startsWith('/login')) {
         window.location.href = '/login';

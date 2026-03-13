@@ -2,7 +2,22 @@
 
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
-import type { Task } from '@/interfaces/dashboard';
+
+type TaskType = 'Putaway' | 'Picking' | 'Internal';
+type TaskStatus = 'Unassigned' | 'In Progress' | 'Exceptions';
+type TaskPriority = 'URGENT' | 'Medium' | 'Low';
+
+type Task = {
+  id: string;
+  type: TaskType;
+  status: TaskStatus;
+  priority: TaskPriority;
+  sku: string;
+  desc: string;
+  location: string;
+  assigned: string | null;
+  etc: string;
+};
 
 // Mock Data gốc
 const MOCK_TASKS: Task[] = [
@@ -18,19 +33,8 @@ function PendingTasksContent() {
   const searchParams = useSearchParams();
   
   // 2. STATE CHỨA DỮ LIỆU TỪ API
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // GIẢ LẬP GỌI API (SAU NÀY THAY BẰNG FETCH THẬT Ở ĐÂY)
-  useEffect(() => {
-    setIsLoading(true);
-    // Giả lập delay mạng 0.5s
-    const timer = setTimeout(() => {
-      setTasks(MOCK_TASKS);
-      setIsLoading(false);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, []);
+  const [tasks, setTasks] = useState<Task[]>(MOCK_TASKS);
+  const [isLoading] = useState(false);
 
   // STATES CHO BỘ LỌC
   const [activeTab, setActiveTab] = useState<Task['type']>('Picking');
@@ -47,10 +51,17 @@ function PendingTasksContent() {
     const sortFromUrl = searchParams.get('sort');
 
     if (searchFromUrl) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearchQuery(searchFromUrl);
-      if (searchFromUrl.includes('PT-')) setActiveTab('Picking');
+      if (searchFromUrl.includes('PT-')) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setActiveTab('Picking');
+      }
     }
-    if (sortFromUrl === 'priority') setSortOption('Priority');
+    if (sortFromUrl === 'priority') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSortOption('Priority');
+    }
   }, [searchParams]);
 
   // Lọc dữ liệu dựa trên các state
@@ -93,6 +104,7 @@ function PendingTasksContent() {
 
   // Reset checkbox khi đổi tab hoặc đổi filter
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedTaskIds([]);
   }, [activeTab, activeSubFilter, searchQuery]);
 

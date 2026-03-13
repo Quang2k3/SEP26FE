@@ -3,12 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import type { OutboundFormData, CreateOutboundModalProps } from '@/interfaces/modals';
 
- export default function CreateOutboundModal({
-   isOpen,
-   binCode,
-   onClose,
-   onSubmit,
- }: CreateOutboundModalProps) {
+export default function CreateOutboundModal({
+  isOpen,
+  binCode,
+  onClose,
+  onSubmit,
+}: CreateOutboundModalProps) {
    const [formData, setFormData] = useState<OutboundFormData>({
      binCode: binCode || '',
      shipmentCode: '',
@@ -18,18 +18,18 @@ import type { OutboundFormData, CreateOutboundModalProps } from '@/interfaces/mo
      notes: '',
    });
 
-   useEffect(() => {
-     if (isOpen) {
-       setFormData({
-         binCode: binCode || '',
-         shipmentCode: '',
-         customer: '',
-         expectedDate: '',
-         quantity: '',
-         notes: '',
-       });
-     }
-   }, [isOpen, binCode]);
+  useEffect(() => {
+    if (!isOpen) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFormData({
+      binCode: binCode || '',
+      shipmentCode: '',
+      customer: '',
+      expectedDate: '',
+      quantity: '',
+      notes: '',
+    });
+  }, [isOpen, binCode]);
 
    if (!isOpen) return null;
 

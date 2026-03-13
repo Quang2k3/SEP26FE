@@ -1,11 +1,12 @@
  'use client';
 
- import React, { useMemo, useState } from 'react';
- import { useRouter } from 'next/navigation';
- import { Button } from '@/components/ui/Button';
- import { Card } from '@/components/ui/Card';
- import EditOutboundModal from '@/components/outbound/EditOutboundModal';
- import type { OutboundFormData, OutboundDetailPageProps } from '@/interfaces/dashboard';
+import React, { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import EditOutboundModal from '@/components/outbound/EditOutboundModal';
+import type { OutboundDetailPageProps } from '@/interfaces/dashboard';
+import type { OutboundFormData } from '@/interfaces/modals';
 
  const MOCK_OUTBOUND_DETAILS: OutboundFormData[] = [
    {
@@ -70,10 +71,8 @@
 
    const handleDelete = () => {
      // Mock delete
-     // eslint-disable-next-line no-alert
      if (window.confirm('Are you sure you want to delete this outbound shipment?')) {
        // Thay bằng gọi API thực tế
-       // eslint-disable-next-line no-console
        console.log('API Call: Delete outbound', params.id);
        router.push('/outbound');
      }
@@ -124,26 +123,20 @@
            >
              {status}
            </span>
-           <Button
-             variant="outline"
-             size="sm"
-             onClick={handleEdit}
-             leftIcon={
-               <span className="material-symbols-outlined text-[16px]">edit</span>
-             }
-           >
-             Edit
-           </Button>
-           <Button
-             variant="danger"
-             size="sm"
-             onClick={handleDelete}
-             leftIcon={
-               <span className="material-symbols-outlined text-[16px]">delete</span>
-             }
-           >
-             Delete
-           </Button>
+          <Button
+            variant="secondary"
+            onClick={handleEdit}
+          >
+            <span className="material-symbols-outlined text-[16px] mr-1">edit</span>
+            Edit
+          </Button>
+          <Button
+            variant="danger"
+            onClick={handleDelete}
+          >
+            <span className="material-symbols-outlined text-[16px] mr-1">delete</span>
+            Delete
+          </Button>
          </div>
        </div>
 

@@ -28,8 +28,7 @@ export default function GateCheckContent() {
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("SUBMITTED");
   const [openGateCheck, setOpenGateCheck] = useState(false);
   const [page, setPage] = useState(0);
-  const currentPage = receivings?.currentPage ?? 0;
-  const pageSize = receivings?.pageSize ?? 10;
+  const pageSize = receivings?.size ?? 10;
   const totalPages = receivings?.totalPages ?? 0;
 
   const loadReceivings = async () => {
@@ -79,8 +78,8 @@ export default function GateCheckContent() {
   const columns = getReceivingColumns(handleStartUnload);
 
   const totalElements = receivings?.totalElements ?? 0;
-  const from = totalElements === 0 ? 0 : currentPage * pageSize + 1;
-  const to = Math.min(totalElements, (currentPage + 1) * pageSize);
+  const from = totalElements === 0 ? 0 : page * pageSize + 1;
+  const to = Math.min(totalElements, (page + 1) * pageSize);
 
   return (
     <AdminPage title="Gate Check" description="Danh sách xe chờ nhận hàng">

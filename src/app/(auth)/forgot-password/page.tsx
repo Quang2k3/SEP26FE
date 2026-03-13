@@ -114,7 +114,7 @@ export default function ForgotPasswordPage() {
                   data-lpignore="true"
                 />
                 <div className="flex justify-center items-center mt-3 gap-1">
-                  <span className="text-xs text-gray-500">Didn't receive the code?</span>
+                  <span className="text-xs text-gray-500">Didn&apos;t receive the code?</span>
                   <button type="button" className="text-xs font-semibold text-blue-600 hover:text-blue-800">Resend Code</button>
                 </div>
               </div>

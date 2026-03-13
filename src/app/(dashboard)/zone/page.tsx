@@ -2,7 +2,8 @@
 
 import React, { Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import ZoneFormModal, { ZoneData } from '@/components/zone/ZoneFormModal'; // Đảm bảo import đúng đường dẫn Modal của bạn
+import ZoneFormModal from '@/components/zone/ZoneFormModal';
+import type { ZoneData } from '@/interfaces/modals'; // Kiểu dữ liệu Zone
 
 // Dữ liệu tĩnh mô phỏng (Mock Data)
 const MOCK_ZONES = [

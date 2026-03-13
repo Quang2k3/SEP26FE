@@ -1,21 +1,21 @@
 'use client';
 
- import React, { useState, useEffect } from 'react';
- import type { OutboundFormData, EditOutboundModalProps } from '@/interfaces/modals';
+import React, { useState, useEffect } from 'react';
+import type { OutboundFormData, EditOutboundModalProps } from '@/interfaces/modals';
 
- export default function EditOutboundModal({
-   isOpen,
-   initialData,
-   onClose,
-   onSubmit,
- }: EditOutboundModalProps) {
-   const [formData, setFormData] = useState<OutboundFormData>(initialData);
+export default function EditOutboundModal({
+  isOpen,
+  initialData,
+  onClose,
+  onSubmit,
+}: EditOutboundModalProps) {
+  const [formData, setFormData] = useState<OutboundFormData>(initialData);
 
-   useEffect(() => {
-     if (isOpen) {
-       setFormData(initialData);
-     }
-   }, [isOpen, initialData]);
+  useEffect(() => {
+    if (!isOpen) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFormData(initialData);
+  }, [isOpen, initialData]);
 
    if (!isOpen) return null;
 
