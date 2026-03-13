@@ -44,7 +44,8 @@ export function getReceivingColumns(
       title: "Action",
       align: "center",
       render: (r) => {
-        const disabled = r.status === "POSTED";
+        // Chỉ cho "Bắt đầu dỡ hàng" khi đơn đang SUBMITTED (chờ QC)
+      const disabled = r.status !== "SUBMITTED";
 
         return (
           <Button

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { login as loginService, getValidSession } from '@/services/authService';
 
@@ -20,28 +21,36 @@ export default function LoginPage() {
   }, [router]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    const formData = new FormData(e.currentTarget);
-    const email = formData.get('username') as string;
-    const password = formData.get('password') as string;
+  const formData = new FormData(e.currentTarget);
+  const email = formData.get('email') as string;
+  const password = formData.get('password') as string;
 
-    setLoading(true);
+  setLoading(true);
 
-    try {
-      const result = await loginService({ email, password, rememberMe: false });
+  try {
+    const result = await loginService({ email, password, rememberMe: false });
 
-      if (result.raw.data.requiresVerification) {
-        router.push('/verify-email');
-      } else {
-        router.push('/dashboard');
+    // Guard: data có thể null nếu server trả response bất thường
+    const data = result.raw?.data;
+    if (data?.requiresVerification === true) {
+      if (typeof window !== 'undefined') {
+        if (data.pendingToken) {
+          localStorage.setItem('pending_token', data.pendingToken);
+        }
+        localStorage.setItem('pending_email', email);
       }
-    } catch (err: unknown) {
-      console.error('Login error:', err);
-    } finally {
-      setLoading(false);
+      router.push('/verify-email');
+    } else {
+      router.push('/dashboard');
     }
-  };
+  } catch (err: unknown) {
+    console.error('Login error:', err);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Hiển thị loading khi đang check token
   if (checking) {
@@ -78,9 +87,9 @@ export default function LoginPage() {
               <input
                 className="w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all"
                 id="username"
-                name="username"
-                placeholder="Enter username..."
-                type="text"
+                name="email"
+                placeholder="Enter email..."
+                type="email"
                 required
               />
             </div>
@@ -91,10 +100,9 @@ export default function LoginPage() {
               <label className="block text-sm font-semibold text-gray-700" htmlFor="password">
                 Password
               </label>
-              {/* 2. Sửa thẻ <a> thành thẻ <Link> và trỏ href về đúng trang */}
-              <Link 
+              <Link
                 href="/forgot-password"
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline" 
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline"
               >
                 Forgot Password?
               </Link>

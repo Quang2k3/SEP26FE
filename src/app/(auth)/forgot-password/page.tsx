@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { requestPasswordReset, resetPassword } from '@/services/authService';
 
 type Step = 'REQUEST_EMAIL' | 'VERIFY_OTP' | 'RESET_PASSWORD';
 
@@ -16,37 +17,63 @@ export default function ForgotPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
 
   const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleRequestOTP = (e: React.FormEvent) => {
+  const handleRequestOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
+    setMessage(null);
+    setError(null);
+    try {
+      await requestPasswordReset(email);
       setCurrentStep('VERIFY_OTP');
-    }, 1000);
+      setMessage('Vui lòng kiểm tra email để lấy mã OTP.');
+    } catch (err: any) {
+      console.error('Request reset password error:', err);
+      const apiMessage =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Không thể gửi yêu cầu. Vui lòng thử lại.';
+      setError(apiMessage);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleVerifyOTP = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      setCurrentStep('RESET_PASSWORD');
-    }, 1000);
+    if (otp.length !== 6) {
+      setError('Mã OTP phải gồm 6 số.');
+      return;
+    }
+    setError(null);
+    setCurrentStep('RESET_PASSWORD');
   };
 
-  const handleResetPassword = (e: React.FormEvent) => {
+  const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
-      alert('Passwords do not match!');
+      setError('Mật khẩu xác nhận không khớp.');
       return;
     }
     setIsLoading(true);
-    setTimeout(() => {
+    setMessage(null);
+    setError(null);
+    try {
+      await resetPassword({ email, otp, newPassword, confirmPassword });
+      setMessage('Đặt lại mật khẩu thành công. Đang chuyển về trang đăng nhập...');
+      setTimeout(() => router.push('/login'), 1500);
+    } catch (err: any) {
+      console.error('Reset password error:', err);
+      const apiMessage =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Không thể đặt lại mật khẩu. Vui lòng thử lại.';
+      setError(apiMessage);
+    } finally {
       setIsLoading(false);
-      alert('Password updated successfully! Redirecting to login...');
-      router.push('/login');
-    }, 1500);
+    }
   };
 
   return (
@@ -75,6 +102,8 @@ export default function ForgotPasswordPage() {
         </div>
 
         <div className="p-6 md:p-8">
+          {message && <p className="mb-4 text-sm text-green-600">{message}</p>}
+          {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
           
           {currentStep === 'REQUEST_EMAIL' && (
             <form onSubmit={handleRequestOTP} className="space-y-5">
@@ -115,7 +144,31 @@ export default function ForgotPasswordPage() {
                 />
                 <div className="flex justify-center items-center mt-3 gap-1">
                   <span className="text-xs text-gray-500">Didn't receive the code?</span>
-                  <button type="button" className="text-xs font-semibold text-blue-600 hover:text-blue-800">Resend Code</button>
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+                    onClick={async () => {
+                      if (!email) return;
+                      setIsLoading(true);
+                      setMessage(null);
+                      setError(null);
+                      try {
+                        await requestPasswordReset(email);
+                        setMessage('Đã gửi lại mã OTP vào email của bạn.');
+                      } catch (err: any) {
+                        console.error('Resend OTP error:', err);
+                        const apiMessage =
+                          err?.response?.data?.message ||
+                          err?.message ||
+                          'Không thể gửi lại mã. Vui lòng thử lại.';
+                        setError(apiMessage);
+                      } finally {
+                        setIsLoading(false);
+                      }
+                    }}
+                  >
+                    Resend Code
+                  </button>
                 </div>
               </div>
               <button 

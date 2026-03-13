@@ -28,8 +28,8 @@ export default function GateCheckContent() {
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("SUBMITTED");
   const [openGateCheck, setOpenGateCheck] = useState(false);
   const [page, setPage] = useState(0);
-  const currentPage = receivings?.currentPage ?? 0;
-  const pageSize = receivings?.pageSize ?? 10;
+ const currentPage = receivings?.page ?? 0;
+const pageSize = receivings?.size ?? 10;
   const totalPages = receivings?.totalPages ?? 0;
 
   const loadReceivings = async () => {

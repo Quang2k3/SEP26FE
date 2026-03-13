@@ -31,8 +31,11 @@ export default function GateCheckFilter({
       placeholder="Search receiving code..."
       options={[
         { value: "ALL", label: "All" },
+        { value: "DRAFT", label: "Draft" },
         { value: "SUBMITTED", label: "Submitted" },
-        { value: "APPROVED", label: "Approved" },
+        { value: "PENDING_INCIDENT", label: "Pending Incident" },
+        { value: "QC_APPROVED", label: "QC Approved" },
+        { value: "GRN_CREATED", label: "GRN Created" },
         { value: "POSTED", label: "Posted" },
       ]}
     />
