@@ -7,6 +7,7 @@ import { TbPackageImport } from 'react-icons/tb';
 import { clearAuthToken } from '@/services/authService';
 import { useModal } from '@/components/ui/ModalProvider';
 import ScanQRCode from '../inbound/ScanQRCode';
+import NotificationBell from './NotificationBell';
 
 export default function DashboardHeader() {
   const router = useRouter();
@@ -50,6 +51,7 @@ export default function DashboardHeader() {
         </Link>
 
         <div className="flex items-center gap-2 sm:gap-4">
+          <NotificationBell />
           <button
             type="button"
             onClick={() =>
@@ -66,6 +68,7 @@ export default function DashboardHeader() {
             className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-50 text-green-700 border border-green-200 text-xs font-semibold hover:bg-green-100 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
           >
             <TbPackageImport className="text-base" />
+            
             <span>New Inbound</span>
           </button>
 

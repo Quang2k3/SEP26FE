@@ -1,114 +1,36 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import DashboardHeader from './DashboardHeader';
-import {
-  CATEGORY_ACTIONS,
-  ZONE_ACTIONS,
-  BIN_ACTIONS,
-  INBOUND_ACTIONS,
-  OUTBOUND_ACTIONS,
-  type NavAction,
-  USER_MANAGEMENT_ACTIONS,
-  MANAGER_DASHBOARD,
-} from '@/config/navigation';
-
-type SidebarSection = {
-  key: string;
-  name: string;
-  icon: string;
-  path?: string;
-  children?: NavAction[];
-};
+import { SIDEBAR_SECTIONS, type SidebarSection, type RoleCode } from '@/config/navigation';
+import { getStoredSession } from '@/services/authService';
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const router = useRouter();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
+  const [userRoles, setUserRoles] = useState<RoleCode[]>([]);
 
-  // useEffect(() => {
-  //   const token = localStorage.getItem('auth_token');
-  //   if (!token) {
-  //     router.push('/login');
-  //   }
-  // }, [router]);
+  useEffect(() => {
+    const session = getStoredSession();
+    if (session?.user?.roleCodes) {
+      setUserRoles(session.user.roleCodes as RoleCode[]);
+    }
+  }, []);
 
-  const sections: SidebarSection[] = [
-    {
-      key: 'dashboard',
-      name: 'Dashboard',
-      path: '/dashboard',
-      icon: 'space_dashboard',
-    },
-    {
-      key: 'category',
-      name: 'Category',
-      icon: 'category',
-      children: CATEGORY_ACTIONS,
-    },
-    {
-      key: 'zone',
-      name: 'Zone',
-      icon: 'grid_view',
-      children: ZONE_ACTIONS,
-    },
-    {
-      key: 'bin',
-      name: 'Bin',
-      icon: 'inventory_2',
-      children: BIN_ACTIONS,
-    },
-    {
-      key: 'inbound',
-      name: 'Inbound',
-      icon: 'input_circle',
-      children: INBOUND_ACTIONS,
-    },
-    {
-      key: 'outbound',
-      name: 'Outbound',
-      icon: 'output_circle',
-      children: OUTBOUND_ACTIONS,
-    },
-    {
-      key: 'user-management',
-      name: 'User Management',
-      icon: 'person',
-      path: '/user-management',
-    },
-    {
-      key: "qc-inspections",
-      name: "QC Inspections",
-      icon: "verified",
-      path: "/qc-inspections",
-    },
-    {
-      key: "manager-dashboard",
-      name: "Manager Dashboard",
-      icon: "qr_code_scanner",
-      children: MANAGER_DASHBOARD,
-    },
-    {
-      key: "location",
-      name: "Location Management",
-      icon: "location_on",
-      path: "/location",
-    },
-
-  ];
+  // Lọc sections theo role của user
+  const visibleSections = SIDEBAR_SECTIONS.filter((section) =>
+    section.roles.some((r) => userRoles.includes(r)),
+  );
 
   const toggleSection = (key: string) => {
-    setOpenMenus((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
+    setOpenMenus((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   return (
@@ -122,6 +44,7 @@ export default function DashboardLayout({
               collapsed ? 'w-[64px]' : 'w-60'
             }`}
           >
+            {/* Header */}
             <div className="flex items-center justify-between px-2 py-3 border-b border-gray-100">
               {!collapsed && (
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -132,7 +55,6 @@ export default function DashboardLayout({
                 type="button"
                 onClick={() => setCollapsed((v) => !v)}
                 className="flex items-center justify-center w-7 h-7 rounded-full hover:bg-gray-100 text-gray-500 border border-gray-200 text-xs"
-                aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               >
                 <span className="material-symbols-outlined text-[16px]">
                   {collapsed ? 'chevron_right' : 'chevron_left'}
@@ -140,15 +62,17 @@ export default function DashboardLayout({
               </button>
             </div>
 
+            {/* Menu items */}
             <div className="flex-1 overflow-auto py-2">
               <div className="flex flex-col gap-1 px-1">
-                {sections.map((section) => {
-                  const hasChildren = section.children && section.children.length > 0;
+                {visibleSections.map((section) => {
+                  const hasChildren = !!section.children?.length;
 
                   const parentActive = hasChildren
-                    ? section.children!.some((child) =>
-                        pathname === child.path ||
-                        pathname.startsWith(child.path + '/'),
+                    ? section.children!.some(
+                        (child) =>
+                          pathname === child.path ||
+                          pathname.startsWith(child.path + '/'),
                       )
                     : section.path
                     ? pathname === section.path ||
@@ -157,9 +81,10 @@ export default function DashboardLayout({
 
                   const isOpen =
                     hasChildren && !collapsed
-                      ? openMenus[section.key] ?? parentActive
+                      ? (openMenus[section.key] ?? parentActive)
                       : false;
 
+                  // Leaf node (no children)
                   if (!hasChildren && section.path) {
                     return (
                       <Link
@@ -183,6 +108,7 @@ export default function DashboardLayout({
                     );
                   }
 
+                  // Parent with children
                   return (
                     <div key={section.key} className="flex flex-col gap-0.5">
                       <button
@@ -220,7 +146,6 @@ export default function DashboardLayout({
                           <div className="flex flex-col gap-0.5">
                             {section.children.map((child) => {
                               const childActive = pathname === child.path;
-
                               return (
                                 <Link
                                   key={child.path}
@@ -243,6 +168,30 @@ export default function DashboardLayout({
                 })}
               </div>
             </div>
+
+            {/* Role badge ở cuối sidebar */}
+            {!collapsed && userRoles.length > 0 && (
+              <div className="px-3 py-3 border-t border-gray-100">
+                <div className="flex flex-wrap gap-1">
+                  {userRoles.map((role) => (
+                    <span
+                      key={role}
+                      className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                        role === 'MANAGER'
+                          ? 'bg-purple-50 text-purple-700'
+                          : role === 'KEEPER'
+                          ? 'bg-green-50 text-green-700'
+                          : role === 'QC'
+                          ? 'bg-yellow-50 text-yellow-700'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {role}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </nav>
         </aside>
 
