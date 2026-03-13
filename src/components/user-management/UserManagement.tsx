@@ -75,21 +75,22 @@ export default function UserManagementContent() {
   };
 
   // Load lần đầu
-  useEffect(() => {
-    loadUsers(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+useEffect(() => {
+  loadUsers(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
-  // Live search: debounce 400ms khi search hoặc statusFilter thay đổi
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      loadUsers(0);
-    }, 400);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, statusFilter]);
+// Live search: debounce 400ms khi search hoặc statusFilter thay đổi
+useEffect(() => {
+  const timer = setTimeout(() => {
+    loadUsers(0);
+  }, 400);
+  return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [search, statusFilter]);
 
   const users = useMemo(() => userPage?.users ?? [], [userPage]);
+
 
   const handleChangePage = (nextPage: number) => {
     if (nextPage < 0 || nextPage >= totalPages) return;
