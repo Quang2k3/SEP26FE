@@ -8,12 +8,13 @@
   --foreground-rgb: 17, 24, 39;
   --sidebar-bg-from: #1e2d4e;
   --sidebar-bg-to: #1a253f;
-  --page-bg: #f5f6fa;
+  --page-bg: #f0f4ff;
 }
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: var(--page-bg);
+  background: linear-gradient(145deg, #eef2ff 0%, #f0f4ff 50%, #e8f0fe 100%);
+  background-attachment: fixed;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -32,8 +33,8 @@ a, button {
 /* ── Scrollbar ── */
 ::-webkit-scrollbar       { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+::-webkit-scrollbar-thumb { background: #c7d2fe; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #a5b4fc; }
 
 /* sidebar thin scrollbar */
 .sidebar-scroll::-webkit-scrollbar       { width: 2px; }
@@ -44,15 +45,30 @@ a, button {
 
 /* ── Card utility ── */
 @utility sketch-box {
-  @apply bg-white border border-gray-200 rounded-2xl shadow-sm;
+  background: #ffffff;
+  border: 1px solid rgba(99,102,241,0.12);
+  border-radius: 1rem;
+  box-shadow: 0 2px 12px rgba(99,102,241,0.07);
 }
 
 @utility sketch-input {
-  @apply px-3.5 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white transition-all;
+  @apply px-3.5 py-2.5 rounded-lg focus:outline-none text-sm transition-all;
+  background: #f8faff;
+  border: 1.5px solid #e0e7ff;
+  color: #111827;
 }
+.sketch-input::placeholder { color: #9ca3af; }
+.sketch-input:hover { border-color: #a5b4fc; background: #f5f7ff; }
+.sketch-input:focus { background: #ffffff; border-color: #6366f1; box-shadow: 0 0 0 4px rgba(99,102,241,0.12); }
 
 @utility sketch-button {
-  @apply px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 active:scale-95 transition-all shadow-sm flex items-center justify-center gap-2 outline-none;
+  @apply px-4 py-2 text-white rounded-xl font-semibold active:scale-95 transition-all flex items-center justify-center gap-2 outline-none;
+  background: linear-gradient(135deg, #4f46e5, #6366f1, #3b82f6);
+  box-shadow: 0 4px 16px rgba(79,70,229,0.25);
+}
+.sketch-button:hover {
+  box-shadow: 0 6px 24px rgba(79,70,229,0.35);
+  transform: translateY(-1px);
 }
 
 /* ── Page fade-in ── */
@@ -66,6 +82,18 @@ a, button {
 
 /* ── Modal backdrop ── */
 .modal-backdrop {
-  backdrop-filter: blur(6px);
-  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(8px);
+  background: rgba(79, 70, 229, 0.12);
 }
+
+/* ── Ambient particle canvas (đặt sau body) ── */
+#ambient-canvas {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.55;
+}
+
+/* Mọi nội dung phải nằm trên canvas */
+#__next { position: relative; z-index: 1; }

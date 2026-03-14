@@ -11,13 +11,9 @@ interface AdminPageProps {
   children: ReactNode;
 }
 
-export function AdminPage({
-  title, description, actions, breadcrumb, headerMeta, children,
-}: AdminPageProps) {
+export function AdminPage({ title, description, actions, breadcrumb, headerMeta, children }: AdminPageProps) {
   return (
     <div className="w-full flex flex-col gap-5 font-sans page-enter">
-
-      {/* Page header — outside card */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
           {breadcrumb && <div className="text-xs text-gray-400 mb-1">{breadcrumb}</div>}
@@ -31,8 +27,6 @@ export function AdminPage({
           <div className="flex items-center gap-2.5 flex-wrap justify-end flex-shrink-0">{actions}</div>
         )}
       </div>
-
-      {/* Content */}
       {children}
     </div>
   );

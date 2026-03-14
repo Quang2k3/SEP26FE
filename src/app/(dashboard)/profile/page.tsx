@@ -17,14 +17,14 @@ function resolveAvatarUrl(url: string | null | undefined): string | null {
   return `${API_ORIGIN}${url}`;
 }
 
-const inputCls = "w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white";
-const readonlyCls = "w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed";
+const inputCls = "w-full px-3.5 py-2.5 text-sm border border-indigo-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all bg-white text-gray-800 placeholder:text-gray-400";
+const readonlyCls = "w-full px-3.5 py-2.5 text-sm border border-gray-100 rounded-lg bg-gray-50 text-gray-400 cursor-not-allowed";
 
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
-        {label}{required && <span className="text-red-500 ml-0.5 normal-case">*</span>}
+      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">
+        {label}{required && <span className="text-red-400 ml-0.5 normal-case">*</span>}
       </label>
       {children}
     </div>
@@ -48,7 +48,7 @@ function PasswordModal({ onClose }: { onClose: () => void }) {
     } catch { } finally { setLoading(false); }
   };
 
-  const PwField = ({ label, fkey, sk }: { label: string; fkey: 'currentPassword'|'newPassword'|'confirmPassword'; sk: 'cur'|'nw'|'cf' }) => (
+  const PwField = ({ label, fkey, sk }: { label: string; fkey: 'currentPassword' | 'newPassword' | 'confirmPassword'; sk: 'cur' | 'nw' | 'cf' }) => (
     <div className="space-y-1.5">
       <label className="block text-sm font-medium text-gray-700">{label}</label>
       <div className="relative">
@@ -56,7 +56,7 @@ function PasswordModal({ onClose }: { onClose: () => void }) {
           onChange={(e) => setForm({ ...form, [fkey]: e.target.value })}
           placeholder="••••••••" className={`${inputCls} pr-10`} />
         <button type="button" onClick={() => setShow(s => ({ ...s, [sk]: !s[sk] }))}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-500 transition-colors">
           <span className="material-symbols-outlined text-[18px]">{show[sk] ? 'visibility_off' : 'visibility'}</span>
         </button>
       </div>
@@ -64,8 +64,10 @@ function PasswordModal({ onClose }: { onClose: () => void }) {
   );
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-gray-100 overflow-hidden">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      style={{ background: 'rgba(79,70,229,0.12)', backdropFilter: 'blur(8px)' }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-indigo-100 overflow-hidden"
+        style={{ boxShadow: '0 24px 60px rgba(99,102,241,0.15)' }}>
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center">
@@ -83,9 +85,17 @@ function PasswordModal({ onClose }: { onClose: () => void }) {
           <p className="text-xs text-gray-400 -mt-2">Tối thiểu 8 ký tự</p>
           <PwField label="Xác nhận mật khẩu mới" fkey="confirmPassword" sk="cf" />
           <div className="pt-2 flex justify-end gap-2.5">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Huỷ</button>
-            <button type="submit" disabled={loading} className="px-4 py-2 text-sm font-semibold text-white bg-gray-900 hover:bg-black disabled:opacity-60 rounded-lg flex items-center gap-2 transition-colors">
-              {loading ? <><span className="w-4 h-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />Đang lưu...</> : <><span className="material-symbols-outlined text-[16px]">lock_reset</span>Cập nhật</>}
+            <button type="button" onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+              Huỷ
+            </button>
+            <button type="submit" disabled={loading}
+              className="px-4 py-2 text-sm font-semibold text-white rounded-lg flex items-center gap-2 transition-all disabled:opacity-60"
+              style={{ background: 'linear-gradient(135deg,#4f46e5,#6366f1)', boxShadow: '0 4px 14px rgba(79,70,229,0.3)' }}>
+              {loading
+                ? <><span className="w-4 h-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />Đang lưu...</>
+                : <><span className="material-symbols-outlined text-[16px]">lock_reset</span>Cập nhật</>
+              }
             </button>
           </div>
         </form>
@@ -185,14 +195,13 @@ export default function ProfilePage() {
     } catch { } finally { setSaving(false); }
   };
 
-
   const roleLabels: Record<string, string> = {
     MANAGER: 'Warehouse Manager', QC: 'Quality Control', KEEPER: 'Warehouse Keeper',
   };
   const roleColors: Record<string, string> = {
-    MANAGER: 'bg-purple-100 text-purple-700',
-    QC: 'bg-yellow-100 text-yellow-700',
-    KEEPER: 'bg-green-100 text-green-700',
+    MANAGER: 'bg-violet-100 text-violet-700',
+    QC: 'bg-amber-100 text-amber-700',
+    KEEPER: 'bg-emerald-100 text-emerald-700',
   };
 
   const initials = fullName.split(' ').map(w => w[0]).slice(-2).join('').toUpperCase() || '?';
@@ -200,7 +209,7 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
-        <span className="material-symbols-outlined text-[36px] animate-spin text-blue-400">progress_activity</span>
+        <span className="material-symbols-outlined text-[36px] animate-spin text-indigo-400">progress_activity</span>
       </div>
     );
   }
@@ -219,19 +228,26 @@ export default function ProfilePage() {
       {/* ── Main content: 2 columns ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-        {/* Left column — Avatar card + Security card */}
+        {/* Left column */}
         <div className="flex flex-col gap-5">
 
           {/* Avatar card */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            {/* Gradient banner */}
-            <div className="h-20 bg-gradient-to-r from-blue-500 to-indigo-600" />
+          <div className="bg-white rounded-2xl border border-indigo-100/60 shadow-sm overflow-hidden"
+            style={{ boxShadow: '0 4px 20px rgba(99,102,241,0.08)' }}>
+
+            {/* Gradient banner — indigo/blue pastel */}
+            <div className="h-20 relative overflow-hidden"
+              style={{ background: 'linear-gradient(135deg,#4f46e5 0%,#6366f1 50%,#3b82f6 100%)' }}>
+              {/* subtle shimmer lines */}
+              <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(45deg,rgba(255,255,255,0.04) 0px,rgba(255,255,255,0.04) 1px,transparent 1px,transparent 12px)', backgroundSize: '17px 17px' }} />
+            </div>
 
             <div className="px-5 pb-5">
-              {/* Avatar — overlapping banner */}
+              {/* Avatar overlapping banner */}
               <div className="relative -mt-10 mb-4 flex justify-center">
                 <div className="relative">
-                  <div className="w-20 h-20 rounded-2xl overflow-hidden bg-blue-600 flex items-center justify-center shadow-lg ring-4 ring-white">
+                  <div className="w-20 h-20 rounded-2xl overflow-hidden flex items-center justify-center shadow-lg ring-4 ring-white"
+                    style={{ background: 'linear-gradient(135deg,#4f46e5,#6366f1)' }}>
                     {avatarPreview ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={avatarPreview} alt={fullName} className="w-full h-full object-cover" />
@@ -240,7 +256,8 @@ export default function ProfilePage() {
                     )}
                   </div>
                   {/* Camera badge */}
-                  <label className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center cursor-pointer shadow hover:bg-blue-700 transition-colors ring-2 ring-white">
+                  <label className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer shadow-md ring-2 ring-white transition-all hover:scale-110"
+                    style={{ background: 'linear-gradient(135deg,#4f46e5,#6366f1)' }}>
                     <span className="material-symbols-outlined text-white text-[13px]">photo_camera</span>
                     <input ref={fileInputRef} type="file" accept="image/jpeg,image/jpg,image/png"
                       onChange={handleAvatarChange} className="hidden" />
@@ -268,22 +285,23 @@ export default function ProfilePage() {
 
               {/* Quick stats */}
               <div className="space-y-2.5 text-sm">
-                <div className="flex items-center gap-2.5 text-gray-600">
-                  <span className="material-symbols-outlined text-[16px] text-gray-400 flex-shrink-0">circle</span>
-                  <span className={`font-medium ${userData?.status === 'ACTIVE' ? 'text-green-600' : 'text-gray-400'}`}>
+                <div className="flex items-center gap-2.5">
+                  <span className="material-symbols-outlined text-[16px] flex-shrink-0"
+                    style={{ color: userData?.status === 'ACTIVE' ? '#10b981' : '#9ca3af' }}>circle</span>
+                  <span className={`font-medium text-sm ${userData?.status === 'ACTIVE' ? 'text-emerald-600' : 'text-gray-400'}`}>
                     {userData?.status === 'ACTIVE' ? 'Đang hoạt động' : 'Không hoạt động'}
                   </span>
                 </div>
                 {userData?.lastLoginAt && (
                   <div className="flex items-start gap-2.5 text-gray-500">
-                    <span className="material-symbols-outlined text-[16px] text-gray-400 flex-shrink-0 mt-0.5">schedule</span>
+                    <span className="material-symbols-outlined text-[16px] text-indigo-300 flex-shrink-0 mt-0.5">schedule</span>
                     <span className="text-xs">Đăng nhập lần cuối<br />
                       <span className="font-medium text-gray-600">{new Date(userData.lastLoginAt).toLocaleString('vi-VN')}</span>
                     </span>
                   </div>
                 )}
                 <div className="flex items-start gap-2.5 text-gray-500">
-                  <span className="material-symbols-outlined text-[16px] text-gray-400 flex-shrink-0 mt-0.5">calendar_today</span>
+                  <span className="material-symbols-outlined text-[16px] text-indigo-300 flex-shrink-0 mt-0.5">calendar_today</span>
                   <span className="text-xs">Ngày tạo tài khoản<br />
                     <span className="font-medium text-gray-600">
                       {userData?.createdAt ? new Date(userData.createdAt).toLocaleDateString('vi-VN') : '—'}
@@ -301,7 +319,7 @@ export default function ProfilePage() {
                     setAvatarFile(null);
                     setAvatarPreview(resolveAvatarUrl(userData?.avatarUrl));
                     if (fileInputRef.current) fileInputRef.current.value = '';
-                  }} className="text-amber-500 hover:text-red-600 flex-shrink-0">
+                  }} className="text-amber-500 hover:text-red-500 flex-shrink-0 transition-colors">
                     <span className="material-symbols-outlined text-[14px]">close</span>
                   </button>
                 </div>
@@ -310,23 +328,25 @@ export default function ProfilePage() {
           </div>
 
           {/* Security card */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+          <div className="bg-white rounded-2xl border border-indigo-100/60 shadow-sm p-5"
+            style={{ boxShadow: '0 4px 20px rgba(99,102,241,0.06)' }}>
             <div className="flex items-center gap-3 mb-3">
               <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
-                <span className="material-symbols-outlined text-amber-600 text-[18px]">shield</span>
+                <span className="material-symbols-outlined text-amber-500 text-[18px]">shield</span>
               </div>
               <div>
                 <h3 className="text-sm font-bold text-gray-900">Bảo mật</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Quản lý mật khẩu</p>
+                <p className="text-xs text-gray-400 mt-0.5">Quản lý mật khẩu</p>
               </div>
             </div>
             <button type="button" onClick={() => setShowPwModal(true)}
-              className="w-full flex items-center justify-between px-3.5 py-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 transition-colors">
+              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium text-gray-700 transition-all border hover:border-indigo-200 hover:bg-indigo-50/50"
+              style={{ background: '#f8faff', borderColor: '#e0e7ff' }}>
               <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-[16px] text-gray-500">key</span>
+                <span className="material-symbols-outlined text-[16px] text-indigo-400">key</span>
                 Đổi mật khẩu
               </div>
-              <span className="material-symbols-outlined text-[16px] text-gray-400">arrow_forward_ios</span>
+              <span className="material-symbols-outlined text-[16px] text-gray-300">arrow_forward_ios</span>
             </button>
           </div>
 
@@ -334,19 +354,19 @@ export default function ProfilePage() {
 
         {/* Right column — Edit form */}
         <div className="lg:col-span-2">
-          <form onSubmit={handleSave} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden h-full flex flex-col">
+          <form onSubmit={handleSave} className="bg-white rounded-2xl border border-indigo-100/60 shadow-sm overflow-hidden h-full flex flex-col"
+            style={{ boxShadow: '0 4px 20px rgba(99,102,241,0.07)' }}>
 
             {/* Form header */}
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-gray-900">Thông tin cá nhân</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Chỉ các trường có nội dung sẽ được cập nhật</p>
+                <p className="text-xs text-gray-400 mt-0.5">Chỉ các trường có nội dung sẽ được cập nhật</p>
               </div>
             </div>
 
             {/* Fields */}
             <div className="px-6 py-5 flex-1 space-y-5">
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
 
                 <Field label="Họ và tên" required>
@@ -356,7 +376,7 @@ export default function ProfilePage() {
 
                 <Field label="Email">
                   <div className="relative">
-                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[16px]">mail</span>
+                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 text-[16px]">mail</span>
                     <input type="email" value={userData?.email ?? ''} readOnly disabled className={`${readonlyCls} pl-9`} />
                   </div>
                 </Field>
@@ -387,9 +407,7 @@ export default function ProfilePage() {
                     disabled={saving} className={inputCls} />
                 </Field>
 
-                {/* Filler to keep grid balanced */}
                 <div />
-
               </div>
 
               <Field label="Địa chỉ">
@@ -397,11 +415,11 @@ export default function ProfilePage() {
                   placeholder="Nhập địa chỉ của bạn..."
                   rows={3} disabled={saving} className={`${inputCls} resize-none`} />
               </Field>
-
             </div>
 
             {/* Form footer */}
-            <div className="px-6 py-4 bg-gray-50/80 border-t border-gray-100 flex items-center justify-between rounded-b-2xl">
+            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between rounded-b-2xl"
+              style={{ background: 'linear-gradient(90deg,#f8faff,#f5f3ff)' }}>
               {avatarFile ? (
                 <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
                   <span className="material-symbols-outlined text-[14px]">warning</span>
@@ -411,7 +429,8 @@ export default function ProfilePage() {
                 <span className="text-xs text-gray-400">Điền vào ô muốn thay đổi rồi bấm lưu</span>
               )}
               <button type="submit" disabled={loading || saving}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold rounded-xl shadow-sm flex items-center gap-2 transition-colors">
+                className="px-5 py-2.5 text-white text-sm font-semibold rounded-xl flex items-center gap-2 transition-all disabled:opacity-60 active:scale-95"
+                style={{ background: 'linear-gradient(135deg,#4f46e5,#6366f1)', boxShadow: '0 4px 14px rgba(79,70,229,0.3)' }}>
                 {saving
                   ? <><span className="w-4 h-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />Đang lưu...</>
                   : <><span className="material-symbols-outlined text-[16px]">save</span>Lưu thay đổi</>

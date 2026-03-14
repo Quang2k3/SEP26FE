@@ -41,10 +41,10 @@ const ModalContext = createContext<ModalContextValue | undefined>(undefined);
 const VARIANT_STYLES: Record<ConfirmVariant, {
   iconBg: string; iconColor: string; confirmBtn: string; defaultIcon: string;
 }> = {
-  danger:  { iconBg: 'bg-red-100',    iconColor: 'text-red-600',    confirmBtn: 'bg-red-600 hover:bg-red-700 focus:ring-red-500',    defaultIcon: 'delete_forever' },
-  warning: { iconBg: 'bg-amber-100',  iconColor: 'text-amber-600',  confirmBtn: 'bg-amber-500 hover:bg-amber-600 focus:ring-amber-400', defaultIcon: 'warning' },
-  info:    { iconBg: 'bg-blue-100',   iconColor: 'text-blue-600',   confirmBtn: 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500',   defaultIcon: 'info' },
-  success: { iconBg: 'bg-emerald-100',iconColor: 'text-emerald-600',confirmBtn: 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500', defaultIcon: 'check_circle' },
+  danger:  { iconBg: 'bg-red-50',     iconColor: 'text-red-600',     confirmBtn: 'bg-red-600 hover:bg-red-700 focus:ring-red-500',          defaultIcon: 'delete_forever' },
+  warning: { iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   confirmBtn: 'bg-amber-500 hover:bg-amber-600 focus:ring-amber-400',    defaultIcon: 'warning' },
+  info:    { iconBg: 'bg-indigo-50',  iconColor: 'text-indigo-600',  confirmBtn: 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500', defaultIcon: 'info' },
+  success: { iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', confirmBtn: 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500', defaultIcon: 'check_circle' },
 };
 
 function ConfirmDialog({
@@ -62,7 +62,7 @@ function ConfirmDialog({
   return (
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-      style={{ background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(4px)' }}
+      style={{ background: 'rgba(79,70,229,0.12)', backdropFilter: 'blur(8px)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
     >
       <div
@@ -117,12 +117,10 @@ function ConfirmDialog({
 
 /* ── Provider ── */
 export function ModalProvider({ children }: { children: ReactNode }) {
-  // Generic modal state
   const [open, setOpen] = useState(false);
   const [config, setConfig] = useState<ModalConfig | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
 
-  // Confirm dialog state
   const [confirmConfig, setConfirmConfig] = useState<ConfirmConfig | null>(null);
   const [confirmRunning, setConfirmRunning] = useState(false);
 
@@ -168,15 +166,20 @@ export function ModalProvider({ children }: { children: ReactNode }) {
     <ModalContext.Provider value={{ openModal, closeModal, confirm: confirmFn }}>
       {children}
 
-      {/* Generic modal (Ant Design) */}
+      {/* Generic modal */}
       {open && config && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4"
-          style={{ background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(4px)' }}>
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center p-4"
+          style={{ background: 'rgba(79,70,229,0.12)', backdropFilter: 'blur(8px)' }}
+        >
           <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
             {config.title && (
               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                 <h3 className="text-base font-bold text-gray-900">{config.title}</h3>
-                <button onClick={closeModal} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
+                <button
+                  onClick={closeModal}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 transition-colors"
+                >
                   <span className="material-symbols-outlined text-[18px]">close</span>
                 </button>
               </div>
@@ -186,13 +189,20 @@ export function ModalProvider({ children }: { children: ReactNode }) {
               <div className="px-6 pb-5 flex justify-end gap-2.5">
                 {config.footer ?? (
                   <>
-                    <button onClick={closeModal}
-                      className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-all">
+                    <button
+                      onClick={closeModal}
+                      className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-all"
+                    >
                       Huỷ
                     </button>
-                    <button onClick={handleGenericOk} disabled={confirmLoading}
-                      className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl flex items-center gap-1.5 disabled:opacity-60 transition-all">
-                      {confirmLoading && <span className="w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" />}
+                    <button
+                      onClick={handleGenericOk}
+                      disabled={confirmLoading}
+                      className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl flex items-center gap-1.5 disabled:opacity-60 transition-all"
+                    >
+                      {confirmLoading && (
+                        <span className="w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                      )}
                       {String(config.okText ?? 'OK')}
                     </button>
                   </>
@@ -222,7 +232,6 @@ export function useModal() {
   return ctx;
 }
 
-/* Convenience standalone hook */
 export function useConfirm() {
   return useModal().confirm;
 }

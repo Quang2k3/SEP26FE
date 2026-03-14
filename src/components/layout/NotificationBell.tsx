@@ -8,30 +8,20 @@ import {
   type NotificationItem,
 } from "@/services/notificationService";
 
-// Cấu hình thông báo theo role
-const ROLE_NOTIFICATION_CONFIG: Record<
-  string,
-  {
-    status: string;
-    label: string;
-    description: string;
-    navigateTo: string;
-    color: string;
-  }
-> = {
+const ROLE_NOTIFICATION_CONFIG: Record<string, { status: string; label: string; description: string; navigateTo: string; color: string }> = {
   QC: {
     status: "SUBMITTED",
     label: "Chờ QC kiểm tra",
     description: "Keeper vừa scan xong, cần QC duyệt chất lượng",
     navigateTo: "/inbound/gate-check",
-    color: "text-yellow-600",
+    color: "text-amber-600",
   },
   MANAGER: {
     status: "GRN_CREATED",
     label: "Chờ duyệt GRN",
     description: "GRN đã tạo, chờ Manager phê duyệt",
     navigateTo: "/manager-dashboard/grn",
-    color: "text-purple-600",
+    color: "text-violet-600",
   },
   KEEPER: {
     status: "PENDING_INCIDENT",
@@ -51,11 +41,9 @@ export default function NotificationBell() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Lấy role từ session
   useEffect(() => {
     const session = getStoredSession();
     const roles = session?.user?.roleCodes ?? [];
-    // Ưu tiên: MANAGER > QC > KEEPER
     if (roles.includes("MANAGER")) setUserRole("MANAGER");
     else if (roles.includes("QC")) setUserRole("QC");
     else if (roles.includes("KEEPER")) setUserRole("KEEPER");
@@ -73,19 +61,15 @@ export default function NotificationBell() {
     }
   }, [config]);
 
-  // Polling mỗi 30 giây
   useEffect(() => {
     if (!config) return;
-
     fetchNotifications();
-
     intervalRef.current = setInterval(fetchNotifications, 30_000);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [config, fetchNotifications]);
 
-  // Fetch thêm khi mở dropdown
   useEffect(() => {
     if (open && config) {
       setLoading(true);
@@ -95,13 +79,9 @@ export default function NotificationBell() {
     }
   }, [open, config]);
 
-  // Click outside đóng dropdown
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(e.target as Node)
-      ) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setOpen(false);
       }
     };
@@ -119,9 +99,10 @@ export default function NotificationBell() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="relative w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 border border-transparent hover:border-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        className="relative w-9 h-9 rounded-full flex items-center justify-center transition-all focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-2 border hover:border-indigo-100"
+        style={{ background: "rgba(238,242,255,0.8)", borderColor: "rgba(199,210,254,0.6)" }}
       >
-        <span className="material-symbols-outlined text-gray-600 text-[20px]">
+        <span className="material-symbols-outlined text-indigo-400 text-[20px]">
           notifications
         </span>
         {count > 0 && (
@@ -133,7 +114,10 @@ export default function NotificationBell() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50">
+        <div
+          className="absolute right-0 mt-2 w-80 rounded-xl shadow-xl border border-indigo-100 overflow-hidden z-50"
+          style={{ background: "rgba(255,255,255,0.97)", backdropFilter: "blur(16px)" }}
+        >
           {/* Header */}
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <div>
@@ -153,7 +137,7 @@ export default function NotificationBell() {
           <div className="max-h-72 overflow-y-auto">
             {loading ? (
               <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500" />
               </div>
             ) : items.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 gap-2">
@@ -171,15 +155,15 @@ export default function NotificationBell() {
                     setOpen(false);
                     router.push(config.navigateTo);
                   }}
-                  className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-50 last:border-0 transition-colors"
+                  className="w-full text-left px-4 py-3 hover:bg-indigo-50/50 border-b border-gray-50 last:border-0 transition-colors"
                 >
                   <div className="flex items-start gap-3">
                     <div
                       className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
                         config.status === "SUBMITTED"
-                          ? "bg-yellow-400"
+                          ? "bg-amber-400"
                           : config.status === "GRN_CREATED"
-                            ? "bg-purple-400"
+                            ? "bg-violet-400"
                             : "bg-red-400"
                       }`}
                     />
@@ -203,7 +187,7 @@ export default function NotificationBell() {
             )}
           </div>
 
-          {/* Footer — xem tất cả */}
+          {/* Footer */}
           {items.length > 0 && (
             <div className="border-t border-gray-100">
               <button
@@ -212,12 +196,10 @@ export default function NotificationBell() {
                   setOpen(false);
                   router.push(config.navigateTo);
                 }}
-                className="w-full px-4 py-2.5 text-xs font-semibold text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-1"
+                className="w-full px-4 py-2.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center justify-center gap-1"
               >
                 Xem tất cả
-                <span className="material-symbols-outlined text-sm">
-                  arrow_forward
-                </span>
+                <span className="material-symbols-outlined text-sm">arrow_forward</span>
               </button>
             </div>
           )}
