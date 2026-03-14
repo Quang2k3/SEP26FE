@@ -43,27 +43,64 @@ function PwStrengthBar({ pw }: { pw: string }) {
 
 /* ── 6-box OTP input ── */
 function OtpInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const refs = useRef<(HTMLInputElement | null)[]>([]);
-  const digits = value.padEnd(6, '').split('').slice(0, 6);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([null, null, null, null, null, null]);
 
-  const handleKey = (i: number, e: KeyboardEvent<HTMLInputElement>) => {
+  const focusAt = (i: number) => {
+    if (i >= 0 && i <= 5) inputRefs.current[i]?.focus();
+  };
+
+  const getDigits = () => {
+    return inputRefs.current.map(el => el?.value || '');
+  };
+
+  const syncUp = () => {
+    onChange(getDigits().join(''));
+  };
+
+  const handleInput = (i: number, e: React.FormEvent<HTMLInputElement>) => {
+    const el = e.currentTarget;
+    const raw = el.value.replace(/\D/g, '');
+    if (raw.length === 0) {
+      el.value = '';
+      syncUp();
+      return;
+    }
+    // take last digit typed
+    el.value = raw[raw.length - 1];
+    syncUp();
+    if (i < 5) focusAt(i + 1);
+  };
+
+  const handleKeyDown = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Backspace') {
-      const next = digits.map((d, j) => j === i ? '' : d);
-      onChange(next.join(''));
-      if (i > 0) refs.current[i - 1]?.focus();
+      const el = inputRefs.current[i];
+      if (el?.value) {
+        el.value = '';
+        syncUp();
+      } else if (i > 0) {
+        const prev = inputRefs.current[i - 1];
+        if (prev) { prev.value = ''; }
+        syncUp();
+        focusAt(i - 1);
+      }
+      e.preventDefault();
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      focusAt(i - 1);
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      focusAt(i + 1);
     }
   };
-  const handleChange = (i: number, v: string) => {
-    const char = v.replace(/\D/g, '').slice(-1);
-    const next = digits.map((d, j) => j === i ? char : d);
-    onChange(next.join(''));
-    if (char && i < 5) refs.current[i + 1]?.focus();
-  };
-  const handlePaste = (e: React.ClipboardEvent) => {
-    const raw = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-    onChange(raw.padEnd(6, ''));
-    refs.current[Math.min(raw.length, 5)]?.focus();
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
+    const digits = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    digits.split('').forEach((d, i) => {
+      if (inputRefs.current[i]) inputRefs.current[i]!.value = d;
+    });
+    syncUp();
+    focusAt(Math.min(digits.length, 5));
   };
 
   return (
@@ -71,26 +108,51 @@ function OtpInput({ value, onChange }: { value: string; onChange: (v: string) =>
       {[0, 1, 2, 3, 4, 5].map(i => (
         <input
           key={i}
-          ref={el => { refs.current[i] = el; }}
-          type="text" inputMode="numeric" maxLength={1}
-          value={digits[i] || ''}
-          onChange={e => handleChange(i, e.target.value)}
-          onKeyDown={e => handleKey(i, e)}
+          ref={el => { inputRefs.current[i] = el; }}
+          type="text"
+          inputMode="numeric"
+          autoComplete={i === 0 ? 'one-time-code' : 'off'}
+          maxLength={2}
+          defaultValue=""
+          onInput={e => handleInput(i, e)}
+          onKeyDown={e => handleKeyDown(i, e)}
           onPaste={handlePaste}
+          onFocus={e => e.target.select()}
+          onClick={e => (e.target as HTMLInputElement).select()}
           style={{
-            width: 48, height: 56, textAlign: 'center', fontSize: 22, fontWeight: 700,
-            border: digits[i] ? '1.5px solid #6366f1' : '1.5px solid #e0e7ff',
+            width: 48,
+            height: 56,
+            textAlign: 'center',
+            fontSize: 22,
+            fontWeight: 700,
+            border: '1.5px solid #e0e7ff',
             borderRadius: 12,
-            background: digits[i] ? '#eef2ff' : '#f8faff',
-            color: '#111827', outline: 'none', fontFamily: 'monospace',
-            transition: 'border .15s, background .15s',
-            caretColor: 'transparent',
+            background: '#f8faff',
+            color: '#111827',
+            outline: 'none',
+            fontFamily: 'monospace',
+            cursor: 'text',
+            WebkitUserSelect: 'text',
+            userSelect: 'text',
+          }}
+          onFocusCapture={e => {
+            e.currentTarget.style.border = '1.5px solid #6366f1';
+            e.currentTarget.style.background = '#eef2ff';
+            e.currentTarget.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.15)';
+          }}
+          onBlur={e => {
+            e.currentTarget.style.border = e.currentTarget.value
+              ? '1.5px solid #6366f1'
+              : '1.5px solid #e0e7ff';
+            e.currentTarget.style.background = e.currentTarget.value ? '#eef2ff' : '#f8faff';
+            e.currentTarget.style.boxShadow = 'none';
           }}
         />
       ))}
     </div>
   );
 }
+
 
 /* ── step indicator ── */
 function Steps({ current }: { current: Step }) {
