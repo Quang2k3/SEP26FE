@@ -1,0 +1,30 @@
+services:
+  frontend:
+    image: ghcr.io/quang2k3/sep26fe:latest
+    container_name: sep26fe
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount Docker config for GHCR authentication
+      - ~/.docker/config.json:/config.json:ro
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=60
+      - WATCHTOWER_INCLUDE_STOPPED=true
+      - DOCKER_CONFIG=/
+    command: sep26fe
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
