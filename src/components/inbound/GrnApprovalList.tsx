@@ -1,17 +1,17 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { fetchGrns, approveGrn, rejectGrn, type Grn, type GrnStatus } from '@/services/grnService';
+import { fetchGrns, approveGrn, postGrn, rejectGrn, type Grn, type GrnStatus } from '@/services/grnService';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import toast from 'react-hot-toast';
 
 const STATUS_BADGE: Record<GrnStatus, { label: string; className: string }> = {
-  DRAFT:            { label: 'Draft',            className: 'bg-gray-100 text-gray-600' },
-  PENDING_APPROVAL: { label: 'Chờ duyệt',        className: 'bg-orange-50 text-orange-700' },
-  APPROVED:         { label: 'Đã duyệt',         className: 'bg-green-50 text-green-700' },
-  REJECTED:         { label: 'Từ chối',          className: 'bg-red-50 text-red-700' },
-  POSTED:           { label: 'Đã nhập kho',      className: 'bg-blue-50 text-blue-700' },
+  DRAFT:            { label: 'Draft',        className: 'bg-gray-100 text-gray-600' },
+  PENDING_APPROVAL: { label: 'Chờ duyệt',   className: 'bg-orange-50 text-orange-700' },
+  APPROVED:         { label: 'Đã duyệt',    className: 'bg-green-50 text-green-700' },
+  REJECTED:         { label: 'Từ chối',     className: 'bg-red-50 text-red-700' },
+  POSTED:           { label: 'Đã nhập kho', className: 'bg-blue-50 text-blue-700' },
 };
 
 export default function GrnApprovalList() {
@@ -22,7 +22,6 @@ export default function GrnApprovalList() {
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
 
-  // Modal detail + approve/reject
   const [selectedGrn, setSelectedGrn] = useState<Grn | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -50,11 +49,25 @@ export default function GrnApprovalList() {
     loadGrns(0);
   }, [statusFilter, loadGrns]);
 
+  // PENDING_APPROVAL → APPROVED
   const handleApprove = async (grn: Grn) => {
     setActionLoading(true);
     try {
       await approveGrn(grn.grnId);
       toast.success(`Đã duyệt GRN ${grn.grnCode}`);
+      setShowDetail(false);
+      loadGrns(page);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // APPROVED → POSTED (cộng tồn kho + tạo Putaway Task)
+  const handlePost = async (grn: Grn) => {
+    setActionLoading(true);
+    try {
+      await postGrn(grn.grnId);
+      toast.success(`Đã nhập kho GRN ${grn.grnCode} — Putaway Task đã được tạo`);
       setShowDetail(false);
       loadGrns(page);
     } finally {
@@ -171,7 +184,6 @@ export default function GrnApprovalList() {
           </table>
         </div>
 
-        {/* Pagination */}
         {totalPages > 1 && (
           <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
             <span className="text-xs text-gray-500">
@@ -197,12 +209,10 @@ export default function GrnApprovalList() {
         )}
       </Card>
 
-      {/* ── Modal Detail + Approve/Reject ── */}
+      {/* Modal Detail */}
       {showDetail && selectedGrn && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="w-full max-w-xl bg-white rounded-xl shadow-xl border flex flex-col max-h-[85vh]">
-
-            {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
               <div>
                 <h3 className="text-sm font-bold text-gray-900">
@@ -227,9 +237,7 @@ export default function GrnApprovalList() {
               </div>
             </div>
 
-            {/* Items list */}
             <div className="flex-1 overflow-y-auto px-5 py-4">
-              {/* Info grid */}
               <div className="grid grid-cols-2 gap-3 mb-4">
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-xs text-gray-500">Ngày tạo</p>
@@ -253,7 +261,6 @@ export default function GrnApprovalList() {
                 )}
               </div>
 
-              {/* Items table */}
               <p className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
                 Danh sách sản phẩm ({selectedGrn.items?.length ?? 0} dòng)
               </p>
@@ -291,37 +298,47 @@ export default function GrnApprovalList() {
               </div>
             </div>
 
-            {/* Footer actions — chỉ hiện khi PENDING_APPROVAL */}
-            {selectedGrn.status === 'PENDING_APPROVAL' && (
-              <div className="flex gap-2 px-5 py-4 border-t flex-shrink-0">
+            {/* Footer: PENDING_APPROVAL → Approve/Reject; APPROVED → Post */}
+            <div className="flex gap-2 px-5 py-4 border-t flex-shrink-0">
+              {selectedGrn.status === 'PENDING_APPROVAL' && (
+                <>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => { setShowRejectModal(true); setRejectReason(''); }}
+                  >
+                    <span className="material-symbols-outlined text-sm">close</span>
+                    Từ chối
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1"
+                    isLoading={actionLoading}
+                    onClick={() => handleApprove(selectedGrn)}
+                  >
+                    <span className="material-symbols-outlined text-sm">check_circle</span>
+                    Duyệt GRN
+                  </Button>
+                </>
+              )}
+              {selectedGrn.status === 'APPROVED' && (
                 <Button
-                  variant="danger"
                   size="sm"
-                  className="flex-1"
-                  onClick={() => {
-                    setShowRejectModal(true);
-                    setRejectReason('');
-                  }}
-                >
-                  <span className="material-symbols-outlined text-sm">close</span>
-                  Từ chối
-                </Button>
-                <Button
-                  size="sm"
-                  className="flex-1"
+                  className="flex-1 bg-green-600 hover:bg-green-700"
                   isLoading={actionLoading}
-                  onClick={() => handleApprove(selectedGrn)}
+                  onClick={() => handlePost(selectedGrn)}
                 >
-                  <span className="material-symbols-outlined text-sm">check_circle</span>
-                  Duyệt GRN
+                  <span className="material-symbols-outlined text-sm">inventory</span>
+                  Nhập kho (Post GRN)
                 </Button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* ── Modal Reject ── */}
+      {/* Modal Reject */}
       {showRejectModal && selectedGrn && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="w-full max-w-sm bg-white rounded-xl shadow-xl border overflow-hidden">
@@ -334,7 +351,6 @@ export default function GrnApprovalList() {
                 <p className="text-xs text-gray-500">{selectedGrn.grnCode}</p>
               </div>
             </div>
-
             <div className="p-5 space-y-3">
               <div>
                 <label className="text-xs font-medium text-gray-700 block mb-1.5">
@@ -349,15 +365,12 @@ export default function GrnApprovalList() {
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
                 />
                 <div className="flex justify-between mt-1">
-                  <span className={`text-xs ${
-                    rejectReason.length < 20 ? 'text-red-400' : 'text-green-600'
-                  }`}>
+                  <span className={`text-xs ${rejectReason.length < 20 ? 'text-red-400' : 'text-green-600'}`}>
                     {rejectReason.length}/20 ký tự tối thiểu
                   </span>
                 </div>
               </div>
             </div>
-
             <div className="flex gap-2 px-5 pb-5">
               <Button
                 variant="secondary"

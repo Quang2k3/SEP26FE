@@ -57,9 +57,15 @@ export async function fetchGrn(id: number): Promise<Grn> {
   return data.data;
 }
 
-// POST /v1/grns/{id}/approve
+// POST /v1/grns/{id}/approve — PENDING_APPROVAL → APPROVED (Manager)
 export async function approveGrn(id: number): Promise<Grn> {
   const { data } = await api.post<ApiResponse<Grn>>(`/grns/${id}/approve`);
+  return data.data;
+}
+
+// POST /v1/grns/{id}/post — APPROVED → POSTED (cộng tồn kho + tạo Putaway Task)
+export async function postGrn(id: number): Promise<Grn> {
+  const { data } = await api.post<ApiResponse<Grn>>(`/grns/${id}/post`);
   return data.data;
 }
 

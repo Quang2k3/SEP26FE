@@ -18,6 +18,13 @@ export async function fetchReceivingOrders(
   return data.data;
 }
 
+export async function fetchReceivingOrder(id: number): Promise<ReceivingOrder> {
+  const { data } = await api.get<ApiResponse<ReceivingOrder>>(
+    `/receiving-orders/${id}`,
+  );
+  return data.data;
+}
+
 export interface CreateReceivingOrderPayload {
   warehouseId: number;
   sourceType: string;
@@ -33,6 +40,8 @@ export interface CreateReceivingOrderPayload {
   }[];
 }
 
+export type UpdateReceivingOrderPayload = CreateReceivingOrderPayload;
+
 // POST /v1/receiving-orders — tạo DRAFT
 export async function createDraftReceivingOrder(
   payload: CreateReceivingOrderPayload,
@@ -44,10 +53,38 @@ export async function createDraftReceivingOrder(
   return data.data;
 }
 
-// POST /v1/receiving-orders/{id}/submit — DRAFT → SUBMITTED
+// PUT /v1/receiving-orders/{id} — cập nhật DRAFT
+export async function updateDraftReceivingOrder(
+  id: number,
+  payload: UpdateReceivingOrderPayload,
+): Promise<ReceivingOrder> {
+  const { data } = await api.put<ApiResponse<ReceivingOrder>>(
+    `/receiving-orders/${id}`,
+    payload,
+  );
+  return data.data;
+}
+
+// POST /v1/receiving-orders/{id}/submit — DRAFT → PENDING_COUNT
 export async function submitReceivingOrder(id: number): Promise<ReceivingOrder> {
   const { data } = await api.post<ApiResponse<ReceivingOrder>>(
     `/receiving-orders/${id}/submit`,
+  );
+  return data.data;
+}
+
+// POST /v1/receiving-orders/{id}/finalize-count — PENDING_COUNT → SUBMITTED
+export async function finalizeCount(id: number): Promise<ReceivingOrder> {
+  const { data } = await api.post<ApiResponse<ReceivingOrder>>(
+    `/receiving-orders/${id}/finalize-count`,
+  );
+  return data.data;
+}
+
+// POST /v1/receiving-orders/{id}/qc-approve — SUBMITTED → QC_APPROVED
+export async function qcApproveReceivingOrder(id: number): Promise<ReceivingOrder> {
+  const { data } = await api.post<ApiResponse<ReceivingOrder>>(
+    `/receiving-orders/${id}/qc-approve`,
   );
   return data.data;
 }

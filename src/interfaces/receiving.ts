@@ -1,30 +1,29 @@
-// BE ReceivingOrderStatus enum
+// BE ReceivingOrderStatus enum — đúng với BE
 export type ReceivingStatus =
   | "DRAFT"
-  | "SUBMITTED"
+  | "PENDING_COUNT"     // sau khi submit (DRAFT → PENDING_COUNT)
+  | "SUBMITTED"         // sau khi finalize-count (PENDING_COUNT → SUBMITTED)
   | "PENDING_INCIDENT"
   | "QC_APPROVED"
   | "GRN_CREATED"
   | "POSTED";
 
-// Khớp với BE ReceivingItemResponse
 export interface ReceivingItem {
   receivingItemId: number;
   skuId: number;
   skuCode: string;
   skuName: string;
   unit: string;
-  receivedQty: number;       // BE BigDecimal
-  expectedQty: number;       // BE BigDecimal
+  receivedQty: number;
+  expectedQty: number;
   lotNumber: string | null;
-  expiryDate: string | null;      // BE LocalDate → "yyyy-MM-dd"
-  manufactureDate: string | null; // BE LocalDate → "yyyy-MM-dd"
+  expiryDate: string | null;
+  manufactureDate: string | null;
   note: string | null;
-  condition: string | null;       // "PASS" | "FAIL"
+  condition: string | null;
   reasonCode: string | null;
 }
 
-// Khớp với BE ReceivingOrderResponse
 export interface ReceivingOrder {
   receivingId: number;
   receivingCode: string;
@@ -46,36 +45,33 @@ export interface ReceivingOrder {
   updatedAt: string | null;
 
   totalLines: number;
-  totalQty: number;           // BE BigDecimal
-  totalExpectedQty: number;   // BE BigDecimal — THÊM MỚI
+  totalQty: number;
+  totalExpectedQty: number;
 
   items: ReceivingItem[];
 }
 
-// Khớp với BE PageResponse<T>: content, page, size, totalElements, totalPages, last
 export interface ReceivingOrderPagePayload {
   content: ReceivingOrder[];
   totalElements: number;
   totalPages: number;
-  page: number;       // BE dùng "page" (0-indexed), không phải "currentPage"
-  size: number;       // BE dùng "size", không phải "pageSize"
+  page: number;
+  size: number;
   last: boolean;
 }
 
-// Query params cho GET /v1/receiving-orders
 export interface ReceivingListQuery {
-  status?: ReceivingStatus;   // Không gửi nếu muốn ALL
+  status?: ReceivingStatus;
   page?: number;
   size?: number;
 }
 
-// Payload tạo GRN từ session — khớp với BE CreateGrnRequest
 export interface CreateGrnPayload {
-  sourceType: string;          // "SUPPLIER" | "TRANSFER" | "RETURN"
+  sourceType: string;
   supplierCode?: string | null;
   sourceReferenceCode?: string | null;
   lotNumber?: string | null;
-  expiryDate?: string | null;  // "yyyy-MM-dd"
+  expiryDate?: string | null;
   manufactureDate?: string | null;
   note?: string | null;
 }

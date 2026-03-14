@@ -5,39 +5,75 @@ import axios, {
   AxiosResponse,
   InternalAxiosRequestConfig,
 } from 'axios';
-import { clearAuthToken, getAuthorizationHeaderValue } from '@/services/authService';
+import { clearAuthToken, getAuthorizationHeaderValue, getValidSession } from '@/services/authService';
 import { extractErrorMessage } from '@/utils/errorHandler';
 import toast from 'react-hot-toast';
 
-// Base URL nên cấu hình qua biến môi trường cho linh hoạt
-// Nếu chưa set, axios sẽ dùng relative URL (cùng domain)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
+
+// Các endpoint không cần token
+const PUBLIC_ENDPOINTS = [
+  '/auth/login',
+  '/auth/verify-otp',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/auth/resend-otp',
+];
+
+function isPublicEndpoint(url?: string): boolean {
+  if (!url) return false;
+  return PUBLIC_ENDPOINTS.some((p) => url.includes(p));
+}
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
 });
 
-// Gắn token cho mọi request nếu có
+// Gắn token cho mọi request
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     if (typeof window !== 'undefined') {
-      const authHeader = getAuthorizationHeaderValue();
-      if (authHeader) {
-        config.headers = config.headers ?? {};
-        (config.headers as Record<string, string>).Authorization = authHeader;
+      // Bỏ qua check session cho public endpoints
+      if (isPublicEndpoint(config.url)) {
+        return config;
       }
+
+      const session = getValidSession();
+
+      if (!session) {
+        // Token hết hạn — redirect về login
+        if (!window.location.pathname.startsWith('/login')) {
+          clearAuthToken();
+          window.location.href = '/login';
+        }
+        return Promise.reject(new Error('No valid session')) as any;
+      }
+
+      config.headers = config.headers ?? {};
+      (config.headers as Record<string, string>).Authorization =
+        `${session.tokenType} ${session.token}`;
     }
     return config;
   },
   (error: AxiosError) => Promise.reject(error),
 );
 
-// Xử lý response errors: hiển thị toast và xử lý 401
+// Xử lý response errors
 api.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error: AxiosError) => {
     if (typeof window === 'undefined') {
+      return Promise.reject(error);
+    }
+
+    // Bỏ qua lỗi do request interceptor cancel
+    if (!error.response) {
+      const msg = (error as any)?.message;
+      if (msg === 'No valid session') {
+        return Promise.reject(error);
+      }
+      toast.error('Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.');
       return Promise.reject(error);
     }
 
@@ -46,45 +82,26 @@ api.interceptors.response.use(
     const serverMessage =
       (error.response?.data as { message?: string } | undefined)?.message;
 
-    // Xử lý 401: clear token và redirect về login
     if (status === 401) {
       clearAuthToken();
       toast.error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-      
-      // Tránh loop nếu đang ở trang login
       if (!window.location.pathname.startsWith('/login')) {
         window.location.href = '/login';
       }
       return Promise.reject(error);
     }
 
-    // Xử lý các lỗi khác: hiển thị toast
-    // Chỉ hiển thị toast nếu không phải lỗi network (status = undefined)
-    if (status !== undefined) {
-      // 403: Forbidden
-      if (status === 403) {
-        toast.error('Bạn không có quyền thực hiện thao tác này.');
-      }
-      // 404: Not Found
-      else if (status === 404) {
-        toast.error('Không tìm thấy tài nguyên yêu cầu.');
-      }
-      // 500+: Internal Server Error
-      else if (status >= 500) {
-        // Nếu server KHÔNG gửi kèm message thì hiển thị lỗi hệ thống
-        if (!serverMessage) {
-          toast.error('Lỗi hệ thống. Vui lòng liên hệ quản trị hoặc thử lại sau.');
-        } else {
-          toast.error(message);
-        }
-      }
-      // Các lỗi khác: hiển thị message từ server
-      else if (message) {
-        toast.error(message);
-      }
-    } else {
-      // Network error hoặc lỗi không có response
-      toast.error('Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.');
+    if (status === 403) {
+      const session = getValidSession();
+      console.warn('[403] Forbidden. Roles:', session?.user?.roleCodes);
+      console.warn('[403] URL:', (error.config as any)?.url);
+      toast.error('Bạn không có quyền thực hiện thao tác này.');
+    } else if (status === 404) {
+      toast.error('Không tìm thấy tài nguyên yêu cầu.');
+    } else if (status !== undefined && status >= 500) {
+      toast.error(serverMessage || 'Lỗi hệ thống. Vui lòng thử lại sau.');
+    } else if (message) {
+      toast.error(message);
     }
 
     return Promise.reject(error);
@@ -92,6 +109,3 @@ api.interceptors.response.use(
 );
 
 export default api;
-
-
-

@@ -28,15 +28,16 @@ export default function GateCheckFilter({
       setSearch={setSearch}
       setStatus={(v) => setStatusFilter(v as FilterStatus)}
       onSubmit={onSubmit}
-      placeholder="Search receiving code..."
+      placeholder="Search receipt code, supplier..."
       options={[
-        { value: "ALL", label: "All" },
-        { value: "DRAFT", label: "Draft" },
-        { value: "SUBMITTED", label: "Submitted" },
+        { value: "ALL",              label: "All" },
+        { value: "DRAFT",            label: "Draft" },
+        { value: "PENDING_COUNT",    label: "Pending Count" },
+        { value: "SUBMITTED",        label: "Submitted" },
         { value: "PENDING_INCIDENT", label: "Pending Incident" },
-        { value: "QC_APPROVED", label: "QC Approved" },
-        { value: "GRN_CREATED", label: "GRN Created" },
-        { value: "POSTED", label: "Posted" },
+        { value: "QC_APPROVED",      label: "QC Approved" },
+        { value: "GRN_CREATED",      label: "GRN Created" },
+        { value: "POSTED",           label: "Posted" },
       ]}
     />
   );

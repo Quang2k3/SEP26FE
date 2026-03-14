@@ -107,12 +107,8 @@ export async function login(payload: LoginPayload): Promise<LoginResult> {
     throw new Error('Không nhận được dữ liệu đăng nhập từ server');
   }
 
-  // Trường hợp yêu cầu xác minh OTP lần đầu
   if (data.requiresVerification === true) {
-    return {
-      session: null,
-      raw: body,
-    };
+    return { session: null, raw: body };
   }
 
   const token = data.token;
@@ -123,22 +119,14 @@ export async function login(payload: LoginPayload): Promise<LoginResult> {
   if (!token) throw new Error('Không nhận được token từ server');
   if (!user) throw new Error('Không nhận được thông tin user từ server');
 
-  // BE trả expiresIn là milliseconds (vd: 604800000)
-  const expiresAt = Date.now() + Number(expiresIn);
+  // BE có thể trả ms hoặc seconds — tự detect
+  const rawExpiry = Number(expiresIn);
+  const expiresAt = Date.now() + (rawExpiry > 100_000 ? rawExpiry : rawExpiry * 1000);
 
-  const session: AuthSession = {
-    token,
-    tokenType,
-    expiresAt,
-    user,
-  };
-
+  const session: AuthSession = { token, tokenType, expiresAt, user };
   saveAuthSession(session);
 
-  return {
-    session,
-    raw: body,
-  };
+  return { session, raw: body };
 }
 
 export async function requestPasswordReset(email: string): Promise<ApiResponse<unknown>> {
@@ -180,21 +168,14 @@ export async function verifyOtp(payload: VerifyOtpPayload): Promise<LoginResult>
   if (!token) throw new Error('Không nhận được token từ server');
   if (!user) throw new Error('Không nhận được user từ server');
 
-  const expiresAt = Date.now() + Number(expiresIn);
+  // BE có thể trả ms hoặc seconds — tự detect
+  const rawExpiry = Number(expiresIn);
+  const expiresAt = Date.now() + (rawExpiry > 100_000 ? rawExpiry : rawExpiry * 1000);
 
-  const session: AuthSession = {
-    token,
-    tokenType,
-    expiresAt,
-    user,
-  };
-
+  const session: AuthSession = { token, tokenType, expiresAt, user };
   saveAuthSession(session);
 
-  return {
-    session,
-    raw: body,
-  };
+  return { session, raw: body };
 }
 
 export interface UpdateProfilePayload {

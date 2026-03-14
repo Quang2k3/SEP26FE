@@ -143,15 +143,33 @@ export default function CreateReceivingOrderModal({
       toast.error("Vui lòng chọn nhà cung cấp");
       return;
     }
-    
+
     const validItems = items.filter((i) => i.skuCode.trim());
     if (validItems.length === 0) {
       toast.error("Vui lòng thêm ít nhất 1 sản phẩm");
       return;
     }
 
+    // Bắt buộc nhập số lượng dự kiến — nếu để 0 sẽ gây lệch → PENDING_INCIDENT
+    const missingQty = validItems.find(
+      (i) => !i.expectedQty || Number(i.expectedQty) <= 0,
+    );
+    if (missingQty) {
+      toast.error(
+        `Vui lòng nhập số lượng dự kiến cho SKU: ${missingQty.skuCode}`,
+      );
+      return;
+    }
+
     setSubmitting(true);
     try {
+      console.log("Creating order with payload:", {
+        warehouseId,
+        sourceType,
+        supplierCode,
+        items: validItems,
+      });
+
       const result = await createDraftReceivingOrder({
         warehouseId: warehouseId!,
         sourceType,
@@ -273,7 +291,6 @@ export default function CreateReceivingOrderModal({
               />
             </div>
           )}
-          
 
           {/* Note */}
           <div className="space-y-1">
@@ -340,13 +357,18 @@ export default function CreateReceivingOrderModal({
                 <div className="col-span-2">
                   <input
                     type="number"
-                    min="0"
-                    placeholder="SL"
+                    min="1"
+                    required
+                    placeholder="SL *"
                     value={item.expectedQty}
                     onChange={(e) =>
                       updateItem(item.id, "expectedQty", e.target.value)
                     }
-                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className={`w-full px-2 py-1 text-xs border rounded text-center focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                      !item.expectedQty || Number(item.expectedQty) <= 0
+                        ? "border-red-300 bg-red-50"
+                        : "border-gray-300"
+                    }`}
                   />
                 </div>
 
