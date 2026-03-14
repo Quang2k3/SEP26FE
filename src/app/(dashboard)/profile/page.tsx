@@ -3,503 +3,427 @@
 import { useEffect, useState, useRef } from 'react';
 import api from '@/config/axios';
 import type { ApiResponse } from '@/interfaces/common';
-import type { MeUser, ProfileFormData } from '@/interfaces/profile';
-import { changePassword, updateProfile } from '@/services/authService';
+import type { MeUser } from '@/interfaces/profile';
+import { changePassword } from '@/services/authService';
+import { useConfirm } from '@/components/ui/ModalProvider';
 import toast from 'react-hot-toast';
 
-export default function ProfilePage() {
-  const [userData, setUserData] = useState<MeUser | null>(null);
-  const [formData, setFormData] = useState<ProfileFormData>({
-    fullName: '',
-    email: '',
-    phone: '',
-    gender: '',
-    dateOfBirth: '',
-    address: '',
-  });
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
-  const [passwordForm, setPasswordForm] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: '',
-  });
-  const [changingPassword, setChangingPassword] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
+const API_ORIGIN = API_BASE.replace(/\/v1\/?$/, '');
 
-  useEffect(() => {
-    let ignore = false;
+function resolveAvatarUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith('http')) return url;
+  return `${API_ORIGIN}${url}`;
+}
 
-    const fetchProfile = async () => {
-      try {
-        const res = await api.get<ApiResponse<MeUser>>('/auth/me');
-        if (ignore) return;
+const inputCls = "w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white";
+const readonlyCls = "w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed";
 
-        const user = res.data.data;
-        if (!user) return;
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
+        {label}{required && <span className="text-red-500 ml-0.5 normal-case">*</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
 
-        setUserData(user);
-        setFormData({
-          fullName: user.fullName ?? '',
-          email: user.email ?? '',
-          phone: user.phone ?? '',
-          gender: user.gender ?? '',
-          dateOfBirth: user.dateOfBirth ?? '',
-          address: user.address ?? '',
-        });
-      } catch (error) {
-        console.error('Failed to load profile:', error);
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchProfile();
-
-    return () => {
-      ignore = true;
-    };
-  }, []);
-
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        toast.error('Please select an image file');
-        return;
-      }
-      // Validate file size (2MB)
-      if (file.size > 2 * 1024 * 1024) {
-        toast.error('File size must be less than 2MB');
-        return;
-      }
-      setAvatarFile(file);
-      // Create preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAvatarPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleRemoveAvatar = () => {
-    setAvatarFile(null);
-    setAvatarPreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
+function PasswordModal({ onClose }: { onClose: () => void }) {
+  const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [show, setShow] = useState({ cur: false, nw: false, cf: false });
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.fullName.trim() || !formData.phone.trim()) {
-      toast.error('Full Name and Phone are required');
-      return;
-    }
-
-    setSaving(true);
-
+    if (form.newPassword.length < 8) { toast.error('Mật khẩu mới phải ít nhất 8 ký tự'); return; }
+    if (form.newPassword !== form.confirmPassword) { toast.error('Xác nhận mật khẩu không khớp'); return; }
+    setLoading(true);
     try {
-      await updateProfile({
-        fullName: formData.fullName.trim(),
-        phone: formData.phone.trim(),
-        gender: formData.gender || null,
-        dateOfBirth: formData.dateOfBirth || null,
-        address: formData.address.trim() || null,
-        avatar: avatarFile,
-      });
-
-      toast.success('Profile updated successfully');
-      
-      // Refresh profile data
-      const res = await api.get<ApiResponse<MeUser>>('/auth/me');
-      const user = res.data.data;
-      if (user) {
-        setUserData(user);
-        setFormData({
-          fullName: user.fullName ?? '',
-          email: user.email ?? '',
-          phone: user.phone ?? '',
-          gender: user.gender ?? '',
-          dateOfBirth: user.dateOfBirth ?? '',
-          address: user.address ?? '',
-        });
-        // Reset avatar if not uploading new one
-        if (!avatarFile) {
-          setAvatarPreview(user.avatarUrl);
-        }
-      }
-      
-      // Reset avatar file after successful upload
-      setAvatarFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    } catch (error) {
-      console.error('Failed to update profile:', error);
-      // Error toast sẽ được hiển thị bởi axios interceptor
-    } finally {
-      setSaving(false);
-    }
+      const res = await changePassword(form) as any;
+      toast.success(res?.message ?? 'Đổi mật khẩu thành công');
+      onClose();
+    } catch { } finally { setLoading(false); }
   };
 
+  const PwField = ({ label, fkey, sk }: { label: string; fkey: 'currentPassword'|'newPassword'|'confirmPassword'; sk: 'cur'|'nw'|'cf' }) => (
+    <div className="space-y-1.5">
+      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <div className="relative">
+        <input type={show[sk] ? 'text' : 'password'} required value={form[fkey]}
+          onChange={(e) => setForm({ ...form, [fkey]: e.target.value })}
+          placeholder="••••••••" className={`${inputCls} pr-10`} />
+        <button type="button" onClick={() => setShow(s => ({ ...s, [sk]: !s[sk] }))}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+          <span className="material-symbols-outlined text-[18px]">{show[sk] ? 'visibility_off' : 'visibility'}</span>
+        </button>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="max-w-4xl mx-auto w-full flex flex-col gap-6 p-4 md:p-8 font-sans">
-      
-      {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Personal Profile</h1>
-        <p className="mt-1 text-sm text-gray-500">Manage your account settings and preferences.</p>
-      </div>
-
-      {/* Info Callout */}
-      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 flex items-start gap-3">
-        <span className="material-symbols-outlined text-blue-500 text-xl shrink-0 mt-0.5">info</span>
-        <div className="text-sm text-blue-800">
-          <p className="font-semibold mb-1">Profile Edit Rules</p>
-          <p className="opacity-90">
-            You must have <strong>&apos;Admin&apos;</strong> rights to edit the &apos;Department&apos; and &apos;Employee ID&apos; fields. 
-            Photo uploads should be in PNG or JPG format, up to 2MB in size.
-          </p>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-gray-100 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center">
+              <span className="material-symbols-outlined text-amber-600 text-[18px]">key</span>
+            </div>
+            <h2 className="text-base font-bold text-gray-900">Đổi mật khẩu</h2>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
+            <span className="material-symbols-outlined text-[20px]">close</span>
+          </button>
         </div>
-      </div>
-
-      {/* Khối 1: Identity Data (Thông tin định danh của bạn) */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        
-        {/* Profile Photo Section */}
-        <div className="p-6 md:p-8 border-b border-gray-200 flex flex-col sm:flex-row items-center sm:items-end gap-6 bg-gray-50/50">
-          <div className="relative w-28 h-28 border border-gray-200 rounded-full flex items-center justify-center bg-white shadow-sm overflow-hidden shrink-0 group cursor-pointer">
-            {avatarPreview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={avatarPreview} alt={userData?.fullName || 'Avatar'} className="w-full h-full object-cover" />
-            ) : (
-              <span className="material-symbols-outlined text-5xl text-gray-300 group-hover:scale-110 transition-transform">person</span>
-            )}
-            <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center transition-all">
-              <span className="material-symbols-outlined text-white">photo_camera</span>
-            </div>
-          </div>
-          
-          <div className="flex flex-col items-center sm:items-start gap-2">
-            <div className="flex gap-3">
-              <label className="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-blue-600 transition-colors shadow-sm flex items-center gap-2 cursor-pointer">
-                <span className="material-symbols-outlined text-sm">upload</span>
-                Upload New Photo
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/jpg,image/png,image/gif"
-                  onChange={handleAvatarChange}
-                  className="hidden"
-                  disabled={loading || saving}
-                />
-              </label>
-              {(avatarPreview || userData?.avatarUrl) && (
-                <button
-                  type="button"
-                  onClick={handleRemoveAvatar}
-                  className="px-4 py-2 rounded-md text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
-                  disabled={loading || saving}
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-            <p className="text-xs text-gray-500">Allowed JPG, GIF or PNG. Max size of 2MB.</p>
-          </div>
-        </div>
-
-        {/* Profile Form */}
-        <form onSubmit={handleSubmit}>
-          <div className="p-6 md:p-8 flex flex-col gap-6">
-            
-            {/* Section: Personal Information */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Personal Information</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Full Name */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-gray-700">Full Name <span className="text-red-500">*</span></label>
-                  <input
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all"
-                    type="text"
-                    value={formData.fullName}
-                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                    placeholder="Enter your name"
-                    required
-                    disabled={loading || saving}
-                  />
-                </div>
-
-                {/* Email */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-gray-700">Email Address</label>
-                  <div className="relative">
-                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">mail</span>
-                    <input
-                      className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-500 text-sm cursor-not-allowed"
-                      type="email"
-                      value={formData.email}
-                      readOnly
-                      disabled
-                    />
-                  </div>
-                </div>
-
-                {/* Phone */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-gray-700">Phone Number <span className="text-red-500">*</span></label>
-                  <div className="relative">
-                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">phone</span>
-                    <input
-                      className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all"
-                      type="tel"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      placeholder="Enter phone number"
-                      required
-                      disabled={loading || saving}
-                    />
-                  </div>
-                </div>
-
-                {/* Gender */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-gray-700">Gender</label>
-                  <div className="relative">
-                    <select
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm appearance-none cursor-pointer bg-white transition-all"
-                      value={formData.gender}
-                      onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-                      disabled={loading}
-                    >
-                      <option value="">Select gender</option>
-                      <option value="MALE">Male</option>
-                      <option value="FEMALE">Female</option>
-                      <option value="OTHER">Other</option>
-                    </select>
-                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-lg">
-                      expand_more
-                    </span>
-                  </div>
-                </div>
-
-                {/* Date of Birth */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-gray-700">Date of Birth</label>
-                  <input
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all"
-                    type="date"
-                    value={formData.dateOfBirth}
-                    onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
-                    disabled={loading}
-                  />
-                </div>
-
-                {/* Address */}
-                <div className="flex flex-col gap-1.5 md:col-span-2">
-                  <label className="text-sm font-medium text-gray-700">Address</label>
-                  <textarea
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all resize-none"
-                    rows={3}
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    placeholder="Enter your address"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex justify-end">
-            <button
-              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white text-sm font-medium rounded-md shadow-sm transition-colors flex items-center gap-2"
-              type="submit"
-              disabled={loading || saving}
-            >
-              {saving ? (
-                <>
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-transparent"></span>
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <span className="material-symbols-outlined text-sm">save</span>
-                  Save Changes
-                </>
-              )}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <PwField label="Mật khẩu hiện tại" fkey="currentPassword" sk="cur" />
+          <PwField label="Mật khẩu mới" fkey="newPassword" sk="nw" />
+          <p className="text-xs text-gray-400 -mt-2">Tối thiểu 8 ký tự</p>
+          <PwField label="Xác nhận mật khẩu mới" fkey="confirmPassword" sk="cf" />
+          <div className="pt-2 flex justify-end gap-2.5">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Huỷ</button>
+            <button type="submit" disabled={loading} className="px-4 py-2 text-sm font-semibold text-white bg-gray-900 hover:bg-black disabled:opacity-60 rounded-lg flex items-center gap-2 transition-colors">
+              {loading ? <><span className="w-4 h-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />Đang lưu...</> : <><span className="material-symbols-outlined text-[16px]">lock_reset</span>Cập nhật</>}
             </button>
           </div>
         </form>
       </div>
+    </div>
+  );
+}
 
-      {/* Khối 2: Security Settings (Chứa nút Change Password) */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-start gap-4">
-            <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
-              <span className="material-symbols-outlined text-amber-600">lock</span>
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-gray-900">Account Security</h2>
-              <p className="text-sm text-gray-500 mt-1">
-                Ensure your account is using a long, random password to stay secure.
-              </p>
-            </div>
-          </div>
-          
-          <button
-            type="button"
-            onClick={() => setIsPasswordModalOpen(true)}
-            className="shrink-0 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm flex items-center gap-2 outline-none focus:ring-2 focus:ring-gray-200"
-          >
-            <span className="material-symbols-outlined text-sm">key</span>
-            Change Password
-          </button>
+export default function ProfilePage() {
+  const [userData, setUserData] = useState<MeUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [gender, setGender] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [address, setAddress] = useState('');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [showPwModal, setShowPwModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const confirm = useConfirm();
+
+  const fetchProfile = async () => {
+    try {
+      const res = await api.get<ApiResponse<MeUser>>('/auth/me');
+      const u = res.data.data;
+      if (!u) return;
+      setUserData(u);
+      setFullName(u.fullName ?? '');
+      setPhone(u.phone ?? '');
+      setGender(u.gender ?? '');
+      setDateOfBirth(u.dateOfBirth ?? '');
+      setAddress(u.address ?? '');
+      setAvatarPreview(resolveAvatarUrl(u.avatarUrl));
+    } catch { } finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchProfile(); }, []); // eslint-disable-line
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Vui lòng chọn file ảnh (JPG, PNG)'); return; }
+    if (file.size > 2 * 1024 * 1024) { toast.error('File ảnh tối đa 2MB'); return; }
+    setAvatarFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setAvatarPreview(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fullName.trim()) { toast.error('Họ tên không được để trống'); return; }
+    confirm({
+      title: 'Lưu thay đổi hồ sơ',
+      description: 'Bạn có chắc muốn cập nhật thông tin cá nhân không?',
+      variant: 'info',
+      icon: 'save',
+      confirmText: 'Lưu thay đổi',
+      onConfirm: doSave,
+    });
+  };
+
+  const doSave = async () => {
+    setSaving(true);
+    try {
+      const fd = new FormData();
+      if (fullName.trim()) fd.append('fullName', fullName.trim());
+      if (phone.trim()) fd.append('phone', phone.trim());
+      if (gender) fd.append('gender', gender);
+      if (dateOfBirth) fd.append('dateOfBirth', dateOfBirth);
+      if (address.trim()) fd.append('address', address.trim());
+      if (avatarFile) fd.append('avatar', avatarFile);
+
+      const res = await api.put<ApiResponse<any>>('/profile/update-profile', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const updated = res.data.data;
+      if (updated) {
+        setUserData(updated);
+        const newAvatarUrl = resolveAvatarUrl(updated.avatarUrl);
+        setAvatarPreview(newAvatarUrl);
+        setAvatarFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        try {
+          const stored = JSON.parse(localStorage.getItem('auth_user') ?? '{}');
+          localStorage.setItem('auth_user', JSON.stringify({
+            ...stored,
+            fullName: updated.fullName ?? stored.fullName,
+            avatarUrl: updated.avatarUrl ?? stored.avatarUrl,
+          }));
+          window.dispatchEvent(new Event('profile-updated'));
+        } catch { }
+      }
+      toast.success('Cập nhật hồ sơ thành công');
+    } catch { } finally { setSaving(false); }
+  };
+
+
+  const roleLabels: Record<string, string> = {
+    MANAGER: 'Warehouse Manager', QC: 'Quality Control', KEEPER: 'Warehouse Keeper',
+  };
+  const roleColors: Record<string, string> = {
+    MANAGER: 'bg-purple-100 text-purple-700',
+    QC: 'bg-yellow-100 text-yellow-700',
+    KEEPER: 'bg-green-100 text-green-700',
+  };
+
+  const initials = fullName.split(' ').map(w => w[0]).slice(-2).join('').toUpperCase() || '?';
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <span className="material-symbols-outlined text-[36px] animate-spin text-blue-400">progress_activity</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full font-sans space-y-5">
+
+      {/* Page header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 tracking-tight">Hồ sơ cá nhân</h1>
+          <p className="mt-0.5 text-sm text-gray-500">Quản lý thông tin tài khoản và bảo mật.</p>
         </div>
       </div>
 
-      {/* --- MODAL: CHANGE PASSWORD --- */}
-      {isPasswordModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col border border-gray-100">
-            
-            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-white">
-              <h2 className="text-lg font-bold text-gray-900">Change Password</h2>
-              <button 
-                onClick={() => setIsPasswordModalOpen(false)} 
-                className="text-gray-400 hover:text-gray-700 p-1 rounded-full transition-colors outline-none"
-              >
-                <span className="material-symbols-outlined text-xl">close</span>
-              </button>
+      {/* ── Main content: 2 columns ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+        {/* Left column — Avatar card + Security card */}
+        <div className="flex flex-col gap-5">
+
+          {/* Avatar card */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            {/* Gradient banner */}
+            <div className="h-20 bg-gradient-to-r from-blue-500 to-indigo-600" />
+
+            <div className="px-5 pb-5">
+              {/* Avatar — overlapping banner */}
+              <div className="relative -mt-10 mb-4 flex justify-center">
+                <div className="relative">
+                  <div className="w-20 h-20 rounded-2xl overflow-hidden bg-blue-600 flex items-center justify-center shadow-lg ring-4 ring-white">
+                    {avatarPreview ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={avatarPreview} alt={fullName} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-white text-2xl font-bold">{initials}</span>
+                    )}
+                  </div>
+                  {/* Camera badge */}
+                  <label className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center cursor-pointer shadow hover:bg-blue-700 transition-colors ring-2 ring-white">
+                    <span className="material-symbols-outlined text-white text-[13px]">photo_camera</span>
+                    <input ref={fileInputRef} type="file" accept="image/jpeg,image/jpg,image/png"
+                      onChange={handleAvatarChange} className="hidden" />
+                  </label>
+                </div>
+              </div>
+
+              {/* Name & email */}
+              <div className="text-center space-y-1.5">
+                <h2 className="text-base font-bold text-gray-900 leading-tight">{userData?.fullName ?? '—'}</h2>
+                <p className="text-xs text-gray-400 truncate">{userData?.email}</p>
+
+                {/* Roles */}
+                <div className="flex flex-wrap gap-1.5 justify-center pt-1">
+                  {(userData?.roleCodes ?? []).map(r => (
+                    <span key={r} className={`text-xs font-semibold px-2.5 py-1 rounded-full ${roleColors[r] ?? 'bg-gray-100 text-gray-600'}`}>
+                      {roleLabels[r] ?? r}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="my-4 border-t border-gray-100" />
+
+              {/* Quick stats */}
+              <div className="space-y-2.5 text-sm">
+                <div className="flex items-center gap-2.5 text-gray-600">
+                  <span className="material-symbols-outlined text-[16px] text-gray-400 flex-shrink-0">circle</span>
+                  <span className={`font-medium ${userData?.status === 'ACTIVE' ? 'text-green-600' : 'text-gray-400'}`}>
+                    {userData?.status === 'ACTIVE' ? 'Đang hoạt động' : 'Không hoạt động'}
+                  </span>
+                </div>
+                {userData?.lastLoginAt && (
+                  <div className="flex items-start gap-2.5 text-gray-500">
+                    <span className="material-symbols-outlined text-[16px] text-gray-400 flex-shrink-0 mt-0.5">schedule</span>
+                    <span className="text-xs">Đăng nhập lần cuối<br />
+                      <span className="font-medium text-gray-600">{new Date(userData.lastLoginAt).toLocaleString('vi-VN')}</span>
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-start gap-2.5 text-gray-500">
+                  <span className="material-symbols-outlined text-[16px] text-gray-400 flex-shrink-0 mt-0.5">calendar_today</span>
+                  <span className="text-xs">Ngày tạo tài khoản<br />
+                    <span className="font-medium text-gray-600">
+                      {userData?.createdAt ? new Date(userData.createdAt).toLocaleDateString('vi-VN') : '—'}
+                    </span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Avatar upload notice */}
+              {avatarFile && (
+                <div className="mt-4 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  <span className="material-symbols-outlined text-[14px]">image</span>
+                  <span className="flex-1 truncate">{avatarFile.name}</span>
+                  <button type="button" onClick={() => {
+                    setAvatarFile(null);
+                    setAvatarPreview(resolveAvatarUrl(userData?.avatarUrl));
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }} className="text-amber-500 hover:text-red-600 flex-shrink-0">
+                    <span className="material-symbols-outlined text-[14px]">close</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Security card */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-amber-600 text-[18px]">shield</span>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">Bảo mật</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Quản lý mật khẩu</p>
+              </div>
+            </div>
+            <button type="button" onClick={() => setShowPwModal(true)}
+              className="w-full flex items-center justify-between px-3.5 py-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 transition-colors">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[16px] text-gray-500">key</span>
+                Đổi mật khẩu
+              </div>
+              <span className="material-symbols-outlined text-[16px] text-gray-400">arrow_forward_ios</span>
+            </button>
+          </div>
+
+        </div>
+
+        {/* Right column — Edit form */}
+        <div className="lg:col-span-2">
+          <form onSubmit={handleSave} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden h-full flex flex-col">
+
+            {/* Form header */}
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">Thông tin cá nhân</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Chỉ các trường có nội dung sẽ được cập nhật</p>
+              </div>
             </div>
 
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
+            {/* Fields */}
+            <div className="px-6 py-5 flex-1 space-y-5">
 
-                if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
-                  toast.error('Please fill in all password fields');
-                  return;
-                }
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
 
-                if (passwordForm.newPassword.length < 8) {
-                  toast.error('New password must be at least 8 characters');
-                  return;
-                }
+                <Field label="Họ và tên" required>
+                  <input type="text" value={fullName} onChange={e => setFullName(e.target.value)}
+                    placeholder="Nguyễn Văn A" required disabled={saving} className={inputCls} />
+                </Field>
 
-                if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-                  toast.error('New password and confirmation do not match');
-                  return;
-                }
+                <Field label="Email">
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[16px]">mail</span>
+                    <input type="email" value={userData?.email ?? ''} readOnly disabled className={`${readonlyCls} pl-9`} />
+                  </div>
+                </Field>
 
-                setChangingPassword(true);
-                try {
-                  const res = await changePassword({
-                    currentPassword: passwordForm.currentPassword,
-                    newPassword: passwordForm.newPassword,
-                    confirmPassword: passwordForm.confirmPassword,
-                  });
+                <Field label="Số điện thoại" required>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[16px]">phone</span>
+                    <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+                      placeholder="0987654321" disabled={saving} className={`${inputCls} pl-9`} />
+                  </div>
+                </Field>
 
-                  toast.success(res.message || 'Password changed successfully');
-                  setIsPasswordModalOpen(false);
-                  setPasswordForm({
-                    currentPassword: '',
-                    newPassword: '',
-                    confirmPassword: '',
-                  });
-                } catch (error: unknown) {
-                  console.error('Failed to change password:', error);
-                  const err = error as { response?: { data?: { message?: string } }; message?: string };
-                  const apiMessage =
-                    err?.response?.data?.message ||
-                    err?.message ||
-                    'Failed to change password. Please try again.';
-                  toast.error(apiMessage);
-                } finally {
-                  setChangingPassword(false);
-                }
-              }}
-              className="p-6 space-y-4"
-            >
-              
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-gray-700">Current Password</label>
-                <input
-                  type="password"
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 text-sm"
-                  placeholder="••••••••"
-                  value={passwordForm.currentPassword}
-                  onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
-                />
-              </div>
-              
-              <div className="flex flex-col gap-1.5 pt-2">
-                <label className="text-sm font-medium text-gray-700">New Password</label>
-                <input
-                  type="password"
-                  required
-                  minLength={8}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 text-sm"
-                  placeholder="••••••••"
-                  value={passwordForm.newPassword}
-                  onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                />
-                <p className="text-xs text-gray-500">Must be at least 8 characters long.</p>
+                <Field label="Giới tính">
+                  <div className="relative">
+                    <select value={gender} onChange={e => setGender(e.target.value)}
+                      disabled={saving} className={`${inputCls} appearance-none cursor-pointer pr-9`}>
+                      <option value="">-- Chọn giới tính --</option>
+                      <option value="MALE">Nam</option>
+                      <option value="FEMALE">Nữ</option>
+                      <option value="OTHER">Khác</option>
+                    </select>
+                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[18px]">expand_more</span>
+                  </div>
+                </Field>
+
+                <Field label="Ngày sinh">
+                  <input type="date" value={dateOfBirth} onChange={e => setDateOfBirth(e.target.value)}
+                    disabled={saving} className={inputCls} />
+                </Field>
+
+                {/* Filler to keep grid balanced */}
+                <div />
+
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-gray-700">Confirm New Password</label>
-                <input
-                  type="password"
-                  required
-                  minLength={8}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 text-sm"
-                  placeholder="••••••••"
-                  value={passwordForm.confirmPassword}
-                  onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-                />
-              </div>
+              <Field label="Địa chỉ">
+                <textarea value={address} onChange={e => setAddress(e.target.value)}
+                  placeholder="Nhập địa chỉ của bạn..."
+                  rows={3} disabled={saving} className={`${inputCls} resize-none`} />
+              </Field>
 
-              <div className="pt-4 flex justify-end gap-3">
-                <button 
-                  type="button" 
-                  onClick={() => setIsPasswordModalOpen(false)}
-                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  className="px-4 py-2 bg-gray-900 hover:bg-black disabled:bg-gray-500 text-white rounded-md text-sm font-medium shadow-sm flex items-center gap-2"
-                  disabled={changingPassword}
-                >
-                  {changingPassword ? (
-                    <>
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-transparent" />
-                      Updating...
-                    </>
-                  ) : (
-                    'Update Password'
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
+            </div>
+
+            {/* Form footer */}
+            <div className="px-6 py-4 bg-gray-50/80 border-t border-gray-100 flex items-center justify-between rounded-b-2xl">
+              {avatarFile ? (
+                <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px]">warning</span>
+                  Có ảnh đại diện chưa được lưu
+                </span>
+              ) : (
+                <span className="text-xs text-gray-400">Điền vào ô muốn thay đổi rồi bấm lưu</span>
+              )}
+              <button type="submit" disabled={loading || saving}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold rounded-xl shadow-sm flex items-center gap-2 transition-colors">
+                {saving
+                  ? <><span className="w-4 h-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />Đang lưu...</>
+                  : <><span className="material-symbols-outlined text-[16px]">save</span>Lưu thay đổi</>
+                }
+              </button>
+            </div>
+          </form>
         </div>
-      )}
 
+      </div>
+
+      {showPwModal && <PasswordModal onClose={() => setShowPwModal(false)} />}
     </div>
   );
 }

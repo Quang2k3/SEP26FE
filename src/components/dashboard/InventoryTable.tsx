@@ -1,97 +1,132 @@
 'use client';
 
-const mockInventory = [
-  {
-    id: 1,
-    sku: 'SKU-4002',
-    name: 'Pallet Jack',
-    location: 'Zone C / Rack 02',
-    quantity: 12,
-  },
-  {
-    id: 2,
-    sku: 'SKU-1082',
-    name: 'Safety Vest',
-    location: 'Zone A / Rack 05',
-    quantity: 150,
-  },
-  {
-    id: 3,
-    sku: 'SKU-2921',
-    name: 'Tape Roll',
-    location: 'Zone B / Bulk 01',
-    quantity: 45,
-  },
-];
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { fetchReceivingOrders } from '@/services/receivingOrdersService';
+import type { ReceivingOrder } from '@/interfaces/receiving';
+
+const STATUS_CONFIG = {
+  DRAFT:            { label: 'Nháp',          cls: 'bg-gray-100 text-gray-600 border-gray-200' },
+  PENDING_COUNT:    { label: 'Chờ đếm',       cls: 'bg-sky-50 text-sky-700 border-sky-100' },
+  SUBMITTED:        { label: 'Chờ QC',        cls: 'bg-amber-50 text-amber-700 border-amber-100' },
+  PENDING_INCIDENT: { label: 'Sự cố',         cls: 'bg-red-50 text-red-600 border-red-100' },
+  QC_APPROVED:      { label: 'QC duyệt',      cls: 'bg-violet-50 text-violet-700 border-violet-100' },
+  GRN_CREATED:      { label: 'GRN đã tạo',   cls: 'bg-orange-50 text-orange-700 border-orange-100' },
+  POSTED:           { label: 'Hoàn thành',    cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+};
+
+function SkeletonRow() {
+  return (
+    <tr className="border-b border-gray-100 animate-pulse">
+      <td className="px-5 py-3.5"><div className="flex flex-col gap-1.5"><div className="w-24 h-3 bg-gray-100 rounded"/><div className="w-16 h-2.5 bg-gray-100 rounded"/></div></td>
+      <td className="px-5 py-3.5"><div className="w-28 h-3 bg-gray-100 rounded"/></td>
+      <td className="px-5 py-3.5 text-center"><div className="w-12 h-3 bg-gray-100 rounded mx-auto"/></td>
+      <td className="px-5 py-3.5 text-center"><div className="w-16 h-5 bg-gray-100 rounded-full mx-auto"/></td>
+      <td className="px-5 py-3.5"><div className="w-6 h-5 bg-gray-100 rounded mx-auto"/></td>
+    </tr>
+  );
+}
 
 export default function InventoryTable() {
+  const [orders, setOrders] = useState<ReceivingOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchReceivingOrders({ page: 0, size: 6 })
+      .then(data => setOrders(data.content))
+      .catch(() => setOrders([]))
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
-    <div className="flex flex-col gap-4">
-      
-      {/* Header khu vực bảng */}
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-bold text-gray-900">Inventory Highlights</h3>
-        <button className="text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors flex items-center gap-1">
-          View Full Inventory
-          <span className="material-symbols-outlined text-sm">arrow_forward</span>
-        </button>
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-gray-900">Phiếu nhập kho gần đây</h3>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {loading ? 'Đang tải...' : `${orders.length} phiếu mới nhất`}
+          </p>
+        </div>
+        <Link href="/inbound/gate-check"
+          className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors px-3 py-1.5 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-100">
+          Xem tất cả
+          <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+        </Link>
       </div>
 
-      {/* Bảng dữ liệu chuẩn Enterprise */}
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[600px]">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Item / SKU</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Location</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center w-32">Qty</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right w-28">Actions</th>
+      {/* Table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-left min-w-[600px]">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-100">
+              <th className="px-5 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Mã phiếu / Kho</th>
+              <th className="px-5 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Nhà cung cấp</th>
+              <th className="px-5 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider text-center">Số lượng</th>
+              <th className="px-5 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider text-center">Trạng thái</th>
+              <th className="px-5 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider text-center">Ngày tạo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              Array(4).fill(0).map((_, i) => <SkeletonRow key={i} />)
+            ) : orders.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-5 py-12 text-center">
+                  <div className="flex flex-col items-center gap-2">
+                    <span className="material-symbols-outlined text-gray-200 text-4xl">inbox</span>
+                    <p className="text-sm text-gray-400 font-medium">Chưa có phiếu nhập kho</p>
+                    <p className="text-xs text-gray-300">Tạo phiếu mới để bắt đầu</p>
+                  </div>
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {mockInventory.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50 transition-colors group">
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-semibold text-gray-900">{item.name}</span>
-                      <span className="text-xs font-medium text-blue-600 hover:underline cursor-pointer mt-0.5">
-                        {item.sku}
+            ) : (
+              orders.map(order => {
+                const s = STATUS_CONFIG[order.status] ?? { label: order.status, cls: 'bg-gray-100 text-gray-600 border-gray-200' };
+                const date = new Date(order.createdAt);
+                const dateStr = date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+                return (
+                  <tr key={order.receivingId} className="border-b border-gray-100 last:border-0 hover:bg-blue-50/30 transition-colors group">
+                    <td className="px-5 py-3.5">
+                      <p className="text-sm font-semibold text-gray-900 font-mono">{order.receivingCode}</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">{order.warehouseName}</p>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className="text-sm text-gray-700 truncate max-w-[140px] block">
+                        {order.supplierName ?? <span className="text-gray-300 italic">Không có</span>}
                       </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="inline-flex items-center px-2.5 py-1 rounded-md bg-gray-100 text-xs font-medium text-gray-700">
-                      <span className="material-symbols-outlined text-[14px] mr-1.5 text-gray-400">location_on</span>
-                      {item.location}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="text-sm font-bold text-gray-900">{item.quantity}</span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                      <button 
-                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" 
-                        title="Edit Item"
-                      >
-                        <span className="material-symbols-outlined text-lg">edit</span>
-                      </button>
-                      <button 
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" 
-                        title="Delete Item"
-                      >
-                        <span className="material-symbols-outlined text-lg">delete</span>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    </td>
+                    <td className="px-5 py-3.5 text-center">
+                      <span className="text-sm font-bold text-gray-900">{order.totalQty}</span>
+                      <span className="text-xs text-gray-400">/{order.totalExpectedQty}</span>
+                    </td>
+                    <td className="px-5 py-3.5 text-center">
+                      <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${s.cls}`}>
+                        {s.label}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-center">
+                      <span className="text-xs text-gray-500">{dateStr}</span>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
-      
+
+      {/* Footer with quick link */}
+      {!loading && orders.length > 0 && (
+        <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/40 flex items-center justify-between">
+          <p className="text-[11px] text-gray-400">Hiển thị {orders.length} phiếu gần nhất</p>
+          <Link href="/inbound/gate-check"
+            className="text-[11px] text-blue-600 font-semibold hover:text-blue-800 flex items-center gap-1 transition-colors">
+            Quản lý inbound
+            <span className="material-symbols-outlined text-[12px]">arrow_forward</span>
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

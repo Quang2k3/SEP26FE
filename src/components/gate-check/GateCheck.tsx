@@ -426,15 +426,15 @@ const handleGrnConfirm = async (r: ReceivingOrder) => {
   };
 
   const columns = getReceivingColumns({
-    userRole,
-    onDetail: r => setDetailReceiving(r),
-    onSubmitConfirm: handleSubmitConfirm,
-    onScan: r => setScanReceiving(r),
-    onGenerateGrn: handleGrnConfirm,   // ← mở confirm thay vì gọi trực tiếp
-    onViewIncident: () => router.push("/manager-dashboard/incident"),
-    loadingId: grnLoadingId,
-    submitLoadingId,
-  });
+  userRole,
+  onDetail: r => setDetailReceiving(r),
+  onSubmitConfirm: handleSubmitConfirm,
+  onScan: r => setScanReceiving(r),
+  onGenerateGrn: handleGrnConfirm,
+  onViewIncident: () => router.push("/manager-dashboard/incident"),
+  loadingId: grnDetailLoading,       
+  submitLoadingId,
+});
 
   const canCreate = userRole === "KEEPER" || userRole === "MANAGER";
 
