@@ -16,6 +16,8 @@ const PUBLIC_ENDPOINTS = [
 // Endpoints silent — KHÔNG hiện toast khi lỗi (polling background)
 const SILENT_ENDPOINTS = [
   '/receiving-sessions/',  // polling getSession mỗi 3s
+  '/locations',            // MANAGER only — KEEPER sẽ 403, không toast
+  '/zones',                // MANAGER only — KEEPER sẽ 403, không toast
 ];
 
 function isPublicEndpoint(url?: string) {

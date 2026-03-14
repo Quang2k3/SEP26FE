@@ -76,6 +76,13 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
     roles: ['MANAGER', 'QC'],
   },
   {
+    key: 'tasks',
+    name: 'Putaway',
+    icon: 'shelves',
+    path: '/tasks',
+    roles: ['KEEPER'],      // Chỉ KEEPER thực hiện cất hàng
+  },
+  {
     key: 'bin',
     name: 'Bin',
     icon: 'inventory_2',

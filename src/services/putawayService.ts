@@ -1,77 +1,168 @@
 import api from '@/config/axios';
-import type { ApiResponse } from '@/interfaces/common';
+import type { ApiResponse, PageResponse } from '@/interfaces/common';
 
-export type PutawayStatus = 'OPEN' | 'IN_PROGRESS' | 'DONE';
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface PutawayTaskItem {
-  putawayItemId: number;
+export interface PutawayTaskItemDto {
+  putawayTaskItemId: number;
   skuId: number;
   skuCode: string;
   skuName: string;
-  qty: number;
-  putawayQty: number | null;
-  locationId: number | null;
-  locationCode: string | null;
-  suggestedLocationCode: string | null;
-  status: string;
-}
-
-export interface PutawayTask {
-  id: number;
-  taskCode: string;
-  receivingId: number;
-  warehouseId: number;
-  status: PutawayStatus;
-  assignedTo: number | null;
-  assignedToName: string | null;
-  createdAt: string;
-  updatedAt: string | null;
-  items: PutawayTaskItem[];
-}
-
-export interface PutawayTaskPage {
-  content: PutawayTask[];
-  totalElements: number;
-  totalPages: number;
-  page: number;
-  size: number;
-  last: boolean;
-}
-
-export interface PutawayConfirmItem {
-  skuId: number;
+  lotId: number | null;
+  quantity: number;
   putawayQty: number;
-  locationId: number;
+  allocatedQty: number;
+  remainingQty: number;
+  suggestedLocationId: number | null;
+  actualLocationId: number | null;
 }
 
-// GET /v1/putaway-tasks
-export async function fetchPutawayTasks(params: {
+export interface PutawayTaskResponse {
+  putawayTaskId: number;
+  warehouseId: number;
+  grnId: number;
+  status: 'PENDING' | 'OPEN' | 'IN_PROGRESS' | 'DONE';
+  fromLocationId: number | null;
+  assignedTo: number | null;
+  createdAt: string;
+  completedAt: string | null;
+  note: string | null;
+  items: PutawayTaskItemDto[];
+}
+
+export interface BinOccupancyResponse {
+  locationId: number;
+  locationCode: string;
+  zoneId: number;
+  zoneCode: string;
+  parentLocationId: number | null;
+  parentLocationCode: string | null;
+  grandParentLocationId: number | null;
+  grandParentLocationCode: string | null;
+  maxWeightKg: number | null;
+  maxVolumeM3: number | null;
+  occupiedQty: number;
+  reservedQty: number;
+  availableQty: number | null;
+  occupancyStatus: 'EMPTY' | 'PARTIAL' | 'FULL';
+  isPickingFace: boolean;
+  isStaging: boolean;
+  active: boolean;
+}
+
+export interface PutawaySuggestion {
+  skuId: number;
+  skuCode: string;
+  categoryCode: string;
+  matchedZoneCode: string;
+  matchedZoneId: number;
+  matchedZoneName: string;
+  suggestedLocationId: number;
+  suggestedLocationCode: string;
+  aisleName: string;
+  rackName: string;
+  currentQty: number;
+  maxCapacity: number;
+  availableCapacity: number;
+  reason: string;
+}
+
+export interface PutawayAllocationResponse {
+  allocationId: number;
+  putawayTaskId: number;
+  skuId: number;
+  skuCode: string;
+  skuName: string;
+  lotId: number | null;
+  locationId: number;
+  locationCode: string;
+  allocatedQty: number;
+  status: 'RESERVED' | 'CONFIRMED' | 'CANCELLED';
+  allocatedBy: number;
+  allocatedAt: string;
+}
+
+export interface AllocateItem {
+  skuId: number;
+  locationId: number;
+  qty: number;
+}
+
+// ─── API calls ────────────────────────────────────────────────────────────────
+
+/** GET /v1/putaway-tasks */
+export async function fetchPutawayTasks(params?: {
   assignedTo?: number;
   status?: string;
   page?: number;
   size?: number;
-}): Promise<PutawayTaskPage> {
-  const { data } = await api.get<ApiResponse<PutawayTaskPage>>('/putaway-tasks', { params });
+}): Promise<PageResponse<PutawayTaskResponse>> {
+  const { data } = await api.get<ApiResponse<PageResponse<PutawayTaskResponse>>>(
+    '/putaway-tasks', { params }
+  );
   return data.data;
 }
 
-// GET /v1/putaway-tasks/{id}
-export async function fetchPutawayTask(id: number): Promise<PutawayTask> {
-  const { data } = await api.get<ApiResponse<PutawayTask>>(`/putaway-tasks/${id}`);
+/** GET /v1/putaway-tasks/{id} */
+export async function fetchPutawayTask(id: number): Promise<PutawayTaskResponse> {
+  const { data } = await api.get<ApiResponse<PutawayTaskResponse>>(`/putaway-tasks/${id}`);
   return data.data;
 }
 
-// GET /v1/putaway-tasks/receiving/{receivingId}
-export async function fetchPutawayTaskByReceivingId(receivingId: number): Promise<PutawayTask> {
-  const { data } = await api.get<ApiResponse<PutawayTask>>(`/putaway-tasks/receiving/${receivingId}`);
+/** GET /v1/putaway-tasks/grn/{grnId} */
+export async function fetchPutawayTaskByGrnId(grnId: number): Promise<PutawayTaskResponse> {
+  const { data } = await api.get<ApiResponse<PutawayTaskResponse>>(`/putaway-tasks/grn/${grnId}`);
   return data.data;
 }
 
-// POST /v1/putaway-tasks/{id}/confirm
-export async function confirmPutaway(
-  id: number,
-  items: PutawayConfirmItem[],
-): Promise<PutawayTask> {
-  const { data } = await api.post<ApiResponse<PutawayTask>>(`/putaway-tasks/${id}/confirm`, { items });
+/** GET /v1/putaway-tasks/{id}/suggestions */
+export async function fetchPutawaySuggestions(taskId: number): Promise<PutawaySuggestion[]> {
+  const { data } = await api.get<ApiResponse<PutawaySuggestion[]>>(`/putaway-tasks/${taskId}/suggestions`);
+  return data.data;
+}
+
+/** GET /v1/bins/occupancy?zoneId=X */
+export async function fetchBinOccupancy(params: {
+  zoneId?: number;
+  occupancyStatus?: 'EMPTY' | 'PARTIAL' | 'FULL';
+  page?: number;
+  size?: number;
+}): Promise<PageResponse<BinOccupancyResponse>> {
+  const { data } = await api.get<ApiResponse<PageResponse<BinOccupancyResponse>>>(
+    '/bins/occupancy', { params: { ...params, size: params.size ?? 100 } }
+  );
+  return data.data;
+}
+
+/** POST /v1/putaway-tasks/{id}/allocate */
+export async function allocatePutaway(
+  taskId: number,
+  items: AllocateItem[]
+): Promise<PutawayAllocationResponse[]> {
+  const { data } = await api.post<ApiResponse<PutawayAllocationResponse[]>>(
+    `/putaway-tasks/${taskId}/allocate`,
+    { items }
+  );
+  return data.data;
+}
+
+/** GET /v1/putaway-tasks/{id}/allocations */
+export async function fetchAllocations(taskId: number): Promise<PutawayAllocationResponse[]> {
+  const { data } = await api.get<ApiResponse<PutawayAllocationResponse[]>>(
+    `/putaway-tasks/${taskId}/allocations`
+  );
+  return data.data;
+}
+
+/** DELETE /v1/putaway-tasks/{id}/allocations/{allocationId} */
+export async function cancelAllocation(taskId: number, allocationId: number): Promise<void> {
+  await api.delete(`/putaway-tasks/${taskId}/allocations/${allocationId}`);
+}
+
+/** POST /v1/putaway-tasks/{id}/confirm */
+export async function confirmPutawayTask(taskId: number): Promise<PutawayTaskResponse> {
+  const { data } = await api.post<ApiResponse<PutawayTaskResponse>>(
+    `/putaway-tasks/${taskId}/confirm`
+  );
   return data.data;
 }
