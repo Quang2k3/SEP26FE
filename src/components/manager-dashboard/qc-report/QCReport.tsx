@@ -12,11 +12,13 @@ import type {
 } from "@/interfaces/qcInspection";
 import { getQCReportColumns } from "./components/columns";
 import QCReportFilter from "./components/QCReportFilter";
+import QCInspectionDetailModal from "@/components/qc-inspections/QCInspectionDetailModal";
 import toast from "react-hot-toast";
 
 type FilterStatus = QCInspectionStatus;
 
 export default function QCReportContent() {
+  const [selectedInspection, setSelectedInspection] = useState<QCInspection | null>(null);
   const [inspectionPage, setInspectionPage] =
     useState<QCInspectionPagePayload | null>(null);
 
@@ -74,13 +76,14 @@ export default function QCReportContent() {
   };
 
   const handleViewDetail = (inspectionId: number) => {
-    console.log("View detail for inspection:", inspectionId);
-    toast.success(`Xem chi tiết kiểm định #${inspectionId}`);
+    const found = filteredInspections.find(i => i.inspectionId === inspectionId) ?? null;
+    setSelectedInspection(found);
   };
 
   const columns = getQCReportColumns(handleViewDetail);
 
   return (
+    <>
     <AdminPage
       title="QC Inspections"
       description="Danh sách các phiếu kiểm định chất lượng"
@@ -112,5 +115,13 @@ export default function QCReportContent() {
         />
       </Card>
     </AdminPage>
+
+      {selectedInspection && (
+        <QCInspectionDetailModal
+          inspection={selectedInspection}
+          onClose={() => setSelectedInspection(null)}
+        />
+      )}
+    </>
   );
 }

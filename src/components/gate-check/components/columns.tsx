@@ -144,12 +144,20 @@ export function getReceivingColumns({
         const isLoading = loadingId === r.receivingId;
 
         if (userRole === "KEEPER") {
-          if (r.status === "PENDING_COUNT" || r.status === "SUBMITTED") {
+          if (r.status === "PENDING_COUNT") {
             return (
               <button onClick={() => onScan(r)} className={BTN_INDIGO}>
                 <span className={ICO}>qr_code_scanner</span>
                 Scan
               </button>
+            );
+          }
+          if (r.status === "SUBMITTED") {
+            return (
+              <span className={`${BTN} bg-blue-50 border-blue-200 text-blue-600 cursor-default opacity-80`}>
+                <span className={ICO}>send</span>
+                Đã gửi QC
+              </span>
             );
           }
           if (r.status === "QC_APPROVED") {

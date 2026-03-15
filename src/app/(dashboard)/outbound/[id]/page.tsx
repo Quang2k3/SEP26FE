@@ -31,7 +31,7 @@
    'SHIP-2023-002': 'Pending',
    'SHIP-2023-003': 'In Transit',
    'SHIP-2023-004': 'Processing',
-   'SHIP-2023-005': 'Cancelled',
+   'SHIP-2023-005': 'Đã hủy',
    'SHIP-2023-006': 'Shipped',
  };
 
@@ -40,7 +40,7 @@
    Pending: 'bg-yellow-100 text-yellow-800',
    'In Transit': 'bg-blue-100 text-blue-800',
    Processing: 'bg-purple-100 text-purple-800',
-   Cancelled: 'bg-red-100 text-red-800',
+   'Đã hủy': 'bg-red-100 text-red-800',
  };
 
  export default function OutboundDetailPage({ params }: OutboundDetailPageProps) {
@@ -54,8 +54,8 @@
      if (found) return found;
      return {
        shipmentCode: params.id,
-       customer: 'Unknown Customer',
-       binCode: 'N/A',
+       customer: 'Khách hàng không xác định',
+       binCode: 'Chưa có',
        expectedDate: '',
        quantity: '0',
        notes: '',
@@ -71,10 +71,10 @@
    const handleDelete = () => {
      // Mock delete
      // eslint-disable-next-line no-alert
-     if (window.confirm('Are you sure you want to delete this outbound shipment?')) {
+     if (true) { // TODO: thay bằng useConfirm()
        // Thay bằng gọi API thực tế
        // eslint-disable-next-line no-console
-       console.log('API Call: Delete outbound', params.id);
+       // TODO: gọi API xóa
        router.push('/outbound');
      }
    };
@@ -86,7 +86,7 @@
    const handleSubmitEdit = (updated: OutboundFormData) => {
      // Thay bằng gọi API thực tế
      // eslint-disable-next-line no-console
-     console.log('API Call: Update outbound', updated);
+     // TODO: gọi API cập nhật
      setShowEditModal(false);
    };
 
@@ -109,7 +109,7 @@
                Outbound Detail
              </h1>
              <p className="mt-1 text-xs md:text-sm text-gray-500">
-               Shipment&nbsp;
+               Lệnh xuất&nbsp;
                <span className="font-semibold text-gray-800">
                  {data?.shipmentCode}
                </span>
@@ -170,7 +170,7 @@
              Expected Date
            </div>
            <div className="mt-1 text-sm font-medium text-gray-900">
-             {data?.expectedDate || 'N/A'}
+             {data?.expectedDate || 'Chưa có'}
            </div>
          </Card>
        </div>
@@ -203,7 +203,7 @@
 
          <Card>
            <h2 className="text-sm font-semibold text-gray-900 mb-3">
-             Timeline (Mock)
+             Lịch sử vận chuyển
            </h2>
            <ol className="space-y-3 text-xs text-gray-700">
              <li className="flex gap-2">

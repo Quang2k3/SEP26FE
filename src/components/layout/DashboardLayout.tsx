@@ -8,6 +8,7 @@ import { SIDEBAR_SECTIONS, type RoleCode } from '@/config/navigation';
 import { getStoredSession, clearAuthToken } from '@/services/authService';
 import { useConfirm } from '@/components/ui/ModalProvider';
 import NotificationBell from './NotificationBell';
+import SecondaryNav from './SecondaryNav';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
 const API_ORIGIN = API_BASE.replace(/\/v1\/?$/, '');
@@ -251,7 +252,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       ${isOpen ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'}`}>
                       <div className="mt-0.5 ml-4 pl-3 border-l border-indigo-200/60 space-y-0.5 py-0.5">
                         {section.children.map(child => {
-                          const active = pathname === child.path || pathname.startsWith(child.path + '/');
+                          const active = pathname === child.path;
                           return (
                             <Link
                               key={child.path}
@@ -313,9 +314,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </aside>
 
         {/* ════════ MAIN CONTENT ════════ */}
-        <main className="flex-1 min-w-0 p-4 md:p-5 overflow-auto">
-          {children}
-        </main>
+        <div className="flex-1 min-w-0 flex flex-col min-h-0">
+          <SecondaryNav />
+          <main className="flex-1 p-4 md:p-5 overflow-auto">
+            {children}
+          </main>
+        </div>
       </div>
     </div>
   );

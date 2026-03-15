@@ -46,6 +46,7 @@ interface PageResponse<T> {
 
 async function fetchZones(): Promise<Zone[]> {
   const session = getStoredSession();
+  const isManager = session?.user?.roleCodes?.includes('MANAGER') ?? false;
   const warehouseId = session?.user?.warehouseIds?.[0];
   if (!warehouseId) return [];
 
@@ -490,7 +491,15 @@ function BinListContent() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 tracking-tight">
+                {!isManager && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl mb-4">
+          <span className="material-symbols-outlined text-amber-500 text-[18px]">info</span>
+          <p className="text-sm text-amber-700 font-medium">
+            Bạn đang xem ở chế độ <strong>chỉ đọc</strong>. Chỉ Manager mới có thể tạo, sửa hoặc xóa bin.
+          </p>
+        </div>
+      )}
+      <h1 className="text-xl font-bold text-gray-900 tracking-tight">
             Location Management
           </h1>
           <p className="mt-0.5 text-sm text-gray-500">

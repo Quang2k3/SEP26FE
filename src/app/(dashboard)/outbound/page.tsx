@@ -15,51 +15,51 @@ const MOCK_SHIPMENTS = [
     shipmentCode: 'SHIP-2023-001',
     customer: 'Global Logistics inc.',
     date: '2023-10-24',
-    status: 'Shipped',
+    status: 'Đã giao',
   },
   {
     id: 2,
     shipmentCode: 'SHIP-2023-002',
     customer: 'Pioneer Parts Co',
     date: '2023-10-25',
-    status: 'Pending',
+    status: 'Chờ xử lý',
   },
   {
     id: 3,
     shipmentCode: 'SHIP-2023-003',
     customer: 'Swift Delivery Ltd',
     date: '2023-10-25',
-    status: 'In Transit',
+    status: 'Đang vận chuyển',
   },
   {
     id: 4,
     shipmentCode: 'SHIP-2023-004',
     customer: 'Industrial Solutions',
     date: '2023-10-26',
-    status: 'Processing',
+    status: 'Đang xử lý',
   },
   {
     id: 5,
     shipmentCode: 'SHIP-2023-005',
     customer: 'Oceanic Supplies',
     date: '2023-10-27',
-    status: 'Cancelled',
+    status: 'Đã hủy',
   },
   {
     id: 6,
     shipmentCode: 'SHIP-2023-006',
     customer: 'Northern Tools',
     date: '2023-10-27',
-    status: 'Shipped',
+    status: 'Đã giao',
   },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
-  Shipped: 'bg-green-100 text-green-800',
-  Pending: 'bg-yellow-100 text-yellow-800',
-  'In Transit': 'bg-blue-100 text-blue-800',
-  Processing: 'bg-purple-100 text-purple-800',
-  Cancelled: 'bg-red-100 text-red-800',
+  'Đã giao': 'bg-green-100 text-green-800',
+  'Chờ xử lý': 'bg-yellow-100 text-yellow-800',
+  'Đang vận chuyển': 'bg-blue-100 text-blue-800',
+  'Đang xử lý': 'bg-purple-100 text-purple-800',
+  'Đã hủy': 'bg-red-100 text-red-800',
 };
 
 function OutboundShipmentListContent() {
@@ -73,7 +73,7 @@ function OutboundShipmentListContent() {
   };
 
   const handleExport = () => {
-    console.log('Export shipments');
+    // TODO: implement export
   };
 
   const handleNewShipment = () => {
@@ -81,7 +81,7 @@ function OutboundShipmentListContent() {
   };
 
   const handleCreateOutbound = (data: OutboundFormData) => {
-    console.log('API Call: Tạo Outbound:', data);
+    // TODO: gọi API tạo lệnh xuất
     setShowCreateModal(false);
   };
 
@@ -103,20 +103,19 @@ function OutboundShipmentListContent() {
   };
 
   const handleSubmitEdit = (updated: OutboundFormData) => {
-    console.log('API Call: Update outbound from list', updated);
+    // TODO: gọi API cập nhật lệnh xuất
     setShowEditModal(false);
   };
 
   const handleDeleteFromList = (shipmentCode: string) => {
-    if (window.confirm(`Delete outbound shipment ${shipmentCode}?`)) {
-      console.log('API Call: Delete outbound from list', shipmentCode);
-    }
+    // TODO: gọi API xóa lệnh xuất
+    console.warn('Delete outbound:', shipmentCode);
   };
 
   return (
     <AdminPage
-      title="Outbound Shipment List"
-      description="Manage outgoing warehouse shipments and deliveries."
+      title="Danh sách lệnh xuất kho"
+      description="Quản lý các lệnh xuất kho và vận chuyển hàng hóa."
       actions={
         <>
           <Button
@@ -143,16 +142,16 @@ function OutboundShipmentListContent() {
           <span className="material-symbols-outlined text-gray-400 text-xl">search</span>
           <input
             className="w-full bg-transparent border-none p-0 text-sm text-gray-900 focus:outline-none placeholder-gray-400"
-            placeholder="Search shipments."
+            placeholder="Tìm kiếm lệnh xuất..."
             type="text"
           />
         </div>
         <button className="flex items-center justify-between gap-2 border border-gray-200 rounded-md px-4 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors">
-          <span className="text-gray-500 font-normal">Status:</span> All
+          <span className="text-gray-500 font-normal">Trạng thái:</span> Tất cả
           <span className="material-symbols-outlined text-gray-400 text-lg">expand_more</span>
         </button>
         <button className="flex items-center justify-between gap-2 border border-gray-200 rounded-md px-4 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors">
-          <span className="text-gray-500 font-normal">Date:</span> All Time
+          <span className="text-gray-500 font-normal">Ngày:</span> Tất cả
           <span className="material-symbols-outlined text-gray-400 text-lg">expand_more</span>
         </button>
       </Card>
@@ -160,19 +159,19 @@ function OutboundShipmentListContent() {
       {/* Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="flex flex-col justify-center">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Shipments</span>
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Tổng lệnh xuất</span>
           <span className="text-3xl font-bold text-gray-900 mt-1">142</span>
         </Card>
         <Card className="flex flex-col justify-center">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Shipped</span>
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Đã giao</span>
           <span className="text-3xl font-bold text-green-600 mt-1">89</span>
         </Card>
         <Card className="flex flex-col justify-center">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Pending</span>
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Chờ xử lý</span>
           <span className="text-3xl font-bold text-amber-500 mt-1">28</span>
         </Card>
         <Card className="flex flex-col justify-center">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">In Transit</span>
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Đang vận chuyển</span>
           <span className="text-3xl font-bold text-blue-600 mt-1">25</span>
         </Card>
       </div>
@@ -233,21 +232,21 @@ function OutboundShipmentListContent() {
                       <button
                         onClick={() => handleViewDetail(shipment.shipmentCode)}
                         className="text-gray-400 hover:text-blue-600 transition-colors outline-none"
-                        title="View Details"
+                        title="Xem chi tiết"
                       >
                         <span className="material-symbols-outlined text-lg">visibility</span>
                       </button>
                       <button
                         onClick={() => handleEditFromList(shipment)}
                         className="text-gray-400 hover:text-blue-600 transition-colors outline-none"
-                        title="Edit Outbound"
+                        title="Chỉnh sửa"
                       >
                         <span className="material-symbols-outlined text-lg">edit</span>
                       </button>
                       <button
                         onClick={() => handleDeleteFromList(shipment.shipmentCode)}
                         className="text-gray-400 hover:text-red-600 transition-colors outline-none"
-                        title="Delete Outbound"
+                        title="Xóa"
                       >
                         <span className="material-symbols-outlined text-lg">delete</span>
                       </button>
@@ -261,14 +260,14 @@ function OutboundShipmentListContent() {
 
         {/* Pagination */}
         <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between bg-white">
-          <span className="text-sm text-gray-500">Showing 1 to 6 of 142 entries</span>
+          <span className="text-sm text-gray-500">Hiển thị 6 lệnh xuất</span>
           <div className="flex gap-1">
-            <button className="px-3 py-1 border border-gray-200 rounded text-sm text-gray-500 hover:bg-gray-50">Previous</button>
+            <button className="px-3 py-1 border border-gray-200 rounded text-sm text-gray-500 hover:bg-gray-50">Trước</button>
             <button className="px-3 py-1 border border-gray-200 rounded text-sm bg-blue-50 text-blue-600 font-medium border-blue-200">1</button>
             <button className="px-3 py-1 border border-gray-200 rounded text-sm text-gray-700 hover:bg-gray-50">2</button>
             <button className="px-3 py-1 border border-gray-200 rounded text-sm text-gray-700 hover:bg-gray-50">3</button>
             <span className="px-2 py-1 text-gray-500">...</span>
-            <button className="px-3 py-1 border border-gray-200 rounded text-sm text-gray-500 hover:bg-gray-50">Next</button>
+            <button className="px-3 py-1 border border-gray-200 rounded text-sm text-gray-500 hover:bg-gray-50">Sau</button>
           </div>
         </div>
       </Card>

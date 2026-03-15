@@ -5,7 +5,6 @@ import { AdminPage } from "@/components/layout/AdminPage";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { DataTable } from "@/components/ui/Table";
-import { Select } from "antd";
 import {
   assignUserRole,
   changeUserStatus,
@@ -16,6 +15,7 @@ import type { UserSummary, UserListPage, UserStatus } from "@/interfaces/user";
 import { getUserColumns } from "./components/columns";
 import UserFilter from "./components/UserFilter";
 import Portal from '@/components/ui/Portal';
+import toast from 'react-hot-toast';
 
 interface AddUserForm {
   email: string;
@@ -320,7 +320,7 @@ useEffect(() => {
               onSubmit={(e) => {
                 if (!addForm.isPermanent && !addForm.expireDate) {
                   e.preventDefault();
-                  alert("Vui lòng chọn ngày hết hạn");
+                  toast.error("Vui lòng chọn ngày hết hạn");
                   return;
                 }
                 handleSubmitAdd(e);
@@ -432,13 +432,16 @@ useEffect(() => {
               <label className="text-xs font-medium text-gray-700 block mb-2">
                 Role <span className="text-red-500">*</span>
               </label>
-              <Select
-                placeholder="Chọn role"
-                style={{ width: "100%" }}
-                value={selectedRole || undefined}
-                onChange={(value) => setSelectedRole(value)}
-                options={ROLE_OPTIONS}
-              />
+              <select
+                value={selectedRole}
+                onChange={(e) => setSelectedRole(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-gray-700"
+              >
+                <option value="">-- Chọn role --</option>
+                {ROLE_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
               <p className="text-xs text-gray-400 mt-2">
                 Role cũ sẽ bị thay thế hoàn toàn bởi role mới.
               </p>

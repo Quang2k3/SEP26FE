@@ -1,22 +1,28 @@
-"use client";
+'use client';
 
-import { useEffect, useState, useRef } from "react";
-import { Select } from "antd";
-import { Button } from "@/components/ui/Button";
-import { fetchSuppliers, type Supplier } from "@/services/supplierService";
-import { fetchWarehouses, type Warehouse } from "@/services/warehouseService";
-import { searchSkus, type SkuOption } from "@/services/skuService";
-import { createDraftReceivingOrder } from "@/services/receivingOrdersService";
-import toast from "react-hot-toast";
+import { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react';
+import { fetchSuppliers, type Supplier } from '@/services/supplierService';
+import { fetchWarehouses, type Warehouse } from '@/services/warehouseService';
+import { searchSkus, type SkuOption } from '@/services/skuService';
+import { createDraftReceivingOrder } from '@/services/receivingOrdersService';
+import toast from 'react-hot-toast';
 import Portal from '@/components/ui/Portal';
+import { createPortal } from 'react-dom';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ItemRow {
-  id: string; // local key
+  id: string;
+  skuId: number | null;
   skuCode: string;
   skuName: string;
   expectedQty: string;
   lotNumber: string;
+  manufactureDate: string;
   expiryDate: string;
+  // validation
+  mfgError?: string;
+  expError?: string;
 }
 
 interface Props {
@@ -25,409 +31,581 @@ interface Props {
   onCreated: (receivingId: number) => void;
 }
 
-export default function CreateReceivingOrderModal({
-  open,
-  onClose,
-  onCreated,
-}: Props) {
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [skus, setSkus] = useState<SkuOption[]>([]);
-  const [skuSearch, setSkuSearch] = useState("");
-  const [loadingSupplier, setLoadingSupplier] = useState(false);
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [warehouseId, setWarehouseId] = useState<number | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+const inputCls = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white placeholder:text-gray-400 transition-all';
 
-  // Form state
-  const [sourceType, setSourceType] = useState<string>("SUPPLIER");
-  const [supplierCode, setSupplierCode] = useState<string>("");
-  const [sourceReferenceCode, setSourceReferenceCode] = useState("");
-  const [note, setNote] = useState("");
-  const [items, setItems] = useState<ItemRow[]>([
-    {
-      id: "1",
-      skuCode: "",
-      skuName: "",
-      expectedQty: "",
-      lotNumber: "",
-      expiryDate: "",
-    },
-  ]);
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+        {label}{required && <span className="text-red-400 ml-1 normal-case font-normal">*</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
 
-  const skuSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+// ─── Date validation helpers ─────────────────────────────────────────────────
 
-  // Load suppliers khi mở modal
+const today = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+function validateDates(manufactureDate: string, expiryDate: string): { mfgError?: string; expError?: string } {
+  const errors: { mfgError?: string; expError?: string } = {};
+  const now = today();
+
+  if (manufactureDate) {
+    const mfg = new Date(manufactureDate);
+    // Ngày SX không được trong tương lai
+    if (mfg > now) {
+      errors.mfgError = 'Ngày sản xuất không được ở tương lai';
+    }
+  }
+
+  if (expiryDate) {
+    const exp = new Date(expiryDate);
+    // Ngày HSD không được trong quá khứ
+    if (exp < now) {
+      errors.expError = 'Hàng đã hết hạn sử dụng';
+    }
+    // Ngày HSD phải sau ngày SX
+    if (manufactureDate) {
+      const mfg = new Date(manufactureDate);
+      if (exp <= mfg) {
+        errors.expError = 'Hạn dùng phải sau ngày sản xuất';
+      }
+    }
+  }
+
+  // Cảnh báo nếu HSD còn < 30 ngày
+  if (expiryDate && !errors.expError) {
+    const exp = new Date(expiryDate);
+    const daysLeft = Math.floor((exp.getTime() - now.getTime()) / 86400000);
+    if (daysLeft < 30) {
+      errors.expError = `Cảnh báo: còn ${daysLeft} ngày hết hạn`;
+    }
+  }
+
+  return errors;
+}
+
+// ─── Portal Dropdown ─────────────────────────────────────────────────────────
+// Render dropdown vào document.body → thoát khỏi overflow:hidden của modal
+
+function DropdownPortal({ anchorRef, open, children }: {
+  anchorRef: React.RefObject<HTMLElement>;
+  open: boolean;
+  children: React.ReactNode;
+}) {
+  const [style, setStyle] = useState<React.CSSProperties>({});
+
+  useLayoutEffect(() => {
+    if (!open || !anchorRef.current) return;
+    const rect = anchorRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const dropH = Math.min(220, Math.max(spaceBelow, spaceAbove) - 8);
+
+    // Hiện bên dưới nếu còn chỗ, ngược lại hiện bên trên
+    if (spaceBelow >= 120 || spaceBelow >= spaceAbove) {
+      setStyle({
+        position: 'fixed',
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        maxHeight: dropH,
+        zIndex: 9999,
+      });
+    } else {
+      setStyle({
+        position: 'fixed',
+        bottom: window.innerHeight - rect.top + 4,
+        left: rect.left,
+        width: rect.width,
+        maxHeight: dropH,
+        zIndex: 9999,
+      });
+    }
+  }, [open, anchorRef]);
+
+  if (!open || typeof document === 'undefined') return null;
+  return createPortal(
+    <div style={style}
+      className="bg-white rounded-xl border border-gray-200 shadow-2xl overflow-y-auto">
+      {children}
+    </div>,
+    document.body
+  );
+}
+
+// ─── SKU Search Combobox ──────────────────────────────────────────────────────
+
+function SkuCombobox({ value, onSelect }: {
+  value: { skuCode: string; skuName: string } | null;
+  onSelect: (sku: SkuOption | null) => void;
+}) {
+  const [inputVal,  setInputVal]  = useState('');
+  const [results,   setResults]   = useState<SkuOption[]>([]);
+  const [open,      setOpen]      = useState(false);
+  const [searching, setSearching] = useState(false);
+  const timerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wrapRef     = useRef<HTMLDivElement>(null);
+  const isConfirmed = useRef(false);
+
+  useEffect(() => {
+    if (!value) { if (!isConfirmed.current) setInputVal(''); }
+    else setInputVal(`${value.skuCode} — ${value.skuName}`);
+    isConfirmed.current = false;
+  }, [value?.skuCode]);
+
+  useEffect(() => {
+    searchSkus('').then(setResults).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        if (!isConfirmed.current && value) setInputVal(`${value.skuCode} — ${value.skuName}`);
+      }
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [value]);
+
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const q = e.target.value;
+    setInputVal(q);
+    isConfirmed.current = false;
+    setOpen(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setSearching(true);
+    timerRef.current = setTimeout(async () => {
+      try { setResults(await searchSkus(q)); }
+      catch { }
+      finally { setSearching(false); }
+    }, 250);
+  };
+
+  const handleSelect = (sku: SkuOption) => {
+    isConfirmed.current = true;
+    setInputVal(`${sku.skuCode} — ${sku.skuName}`);
+    setOpen(false);
+    onSelect(sku);
+  };
+
+  const handleClear = () => {
+    isConfirmed.current = false;
+    setInputVal('');
+    onSelect(null);
+    searchSkus('').then(setResults).catch(() => {});
+  };
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <div className="relative">
+        <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[15px] pointer-events-none">inventory_2</span>
+        <input type="text" value={inputVal} placeholder="Tìm mã hoặc tên SKU..."
+          className={`${inputCls} pl-8 ${value ? 'pr-8' : ''}`}
+          onFocus={() => setOpen(true)}
+          onChange={handleInput}
+          autoComplete="off"
+        />
+        {value && (
+          <button type="button" onClick={handleClear}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-red-400 transition-colors">
+            <span className="material-symbols-outlined text-[15px]">close</span>
+          </button>
+        )}
+      </div>
+
+      <DropdownPortal anchorRef={wrapRef as React.RefObject<HTMLElement>} open={open}>
+        {searching ? (
+          <div className="flex items-center justify-center py-4 gap-2 text-xs text-gray-400">
+            <span className="material-symbols-outlined animate-spin text-indigo-400 text-[16px]">progress_activity</span>
+            Đang tìm...
+          </div>
+        ) : results.length === 0 ? (
+          <div className="px-3 py-3 text-xs text-gray-400 text-center">Không tìm thấy SKU</div>
+        ) : (
+          results.map(s => (
+            <button key={s.skuCode} type="button"
+              className={`w-full text-left px-3 py-2.5 hover:bg-indigo-50 border-b border-gray-50 last:border-0 transition-colors ${value?.skuCode === s.skuCode ? 'bg-indigo-50' : ''}`}
+              onMouseDown={e => { e.preventDefault(); handleSelect(s); }}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-indigo-600">{s.skuCode}</span>
+                {s.unit && <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">{s.unit}</span>}
+              </div>
+              <p className="text-xs text-gray-600 mt-0.5 truncate">{s.skuName}</p>
+            </button>
+          ))
+        )}
+      </DropdownPortal>
+    </div>
+  );
+}
+
+// ─── Main Modal ───────────────────────────────────────────────────────────────
+// ─── Main Modal ───────────────────────────────────────────────────────────────
+
+function makeItem(id?: string): ItemRow {
+  return { id: id ?? Date.now().toString(), skuId: null, skuCode: '', skuName: '', expectedQty: '', lotNumber: '', manufactureDate: '', expiryDate: '' };
+}
+
+export default function CreateReceivingOrderModal({ open, onClose, onCreated }: Props) {
+  const [suppliers,       setSuppliers]       = useState<Supplier[]>([]);
+  const [warehouses,      setWarehouses]       = useState<Warehouse[]>([]);
+  const [loadingSupplier, setLoadingSupplier]  = useState(false);
+  const [warehouseId,     setWarehouseId]      = useState<number | null>(null);
+  const [submitting,      setSubmitting]       = useState(false);
+  const [sourceType,      setSourceType]       = useState('SUPPLIER');
+  const [supplierCode,    setSupplierCode]     = useState('');
+  const [supplierSearch,  setSupplierSearch]   = useState('');
+  const [supplierOpen,    setSupplierOpen]     = useState(false);
+  const [sourceRef,       setSourceRef]        = useState('');
+  const [note,            setNote]             = useState('');
+  const [items,           setItems]            = useState<ItemRow[]>([makeItem('1')]);
+  const supplierRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!open) return;
     setLoadingSupplier(true);
-    fetchSuppliers()
-      .then(setSuppliers)
-      .catch(() => toast.error("Không tải được danh sách nhà cung cấp"))
-      .finally(() => setLoadingSupplier(false));
-    fetchWarehouses()
-      .then(setWarehouses)
-      .catch(() => {});
-    // Load SKU ban đầu
-    searchSkus()
-      .then(setSkus)
-      .catch(() => {});
-
-    // Reset form
-    setSourceType("SUPPLIER");
-    setSupplierCode("");
-    setWarehouseId(null);
-    setSourceReferenceCode("");
-    setNote("");
-    setItems([
-      {
-        id: "1",
-        skuCode: "",
-        skuName: "",
-        expectedQty: "",
-        lotNumber: "",
-        expiryDate: "",
-      },
-    ]);
+    fetchSuppliers().then(setSuppliers).catch(() => toast.error('Không tải được nhà cung cấp')).finally(() => setLoadingSupplier(false));
+    fetchWarehouses().then(ws => { setWarehouses(ws); if (ws.length === 1) setWarehouseId(ws[0].warehouseId); }).catch(() => {});
+    setSourceType('SUPPLIER'); setSupplierCode(''); setSupplierSearch('');
+    setWarehouseId(null); setSourceRef(''); setNote('');
+    setItems([makeItem('1')]);
   }, [open]);
 
-  // Debounce SKU search
-  const handleSkuSearch = (val: string) => {
-    setSkuSearch(val);
-    if (skuSearchTimer.current) clearTimeout(skuSearchTimer.current);
-    skuSearchTimer.current = setTimeout(() => {
-      searchSkus(val)
-        .then(setSkus)
-        .catch(() => {});
-    }, 350);
-  };
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (supplierRef.current && !supplierRef.current.contains(e.target as Node)) setSupplierOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
 
-  const addItem = () => {
-    setItems((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        skuCode: "",
-        skuName: "",
-        expectedQty: "",
-        lotNumber: "",
-        expiryDate: "",
-      },
-    ]);
-  };
+  const updateItem = useCallback((id: string, field: keyof ItemRow, val: string | number | null) => {
+    setItems(p => p.map(i => {
+      if (i.id !== id) return i;
+      const updated = { ...i, [field]: val };
+      // Re-validate dates whenever either date field changes
+      if (field === 'manufactureDate' || field === 'expiryDate') {
+        const mfg = field === 'manufactureDate' ? String(val ?? '') : i.manufactureDate;
+        const exp = field === 'expiryDate'      ? String(val ?? '') : i.expiryDate;
+        const { mfgError, expError } = validateDates(mfg, exp);
+        return { ...updated, mfgError, expError };
+      }
+      return updated;
+    }));
+  }, []);
 
-  const removeItem = (id: string) => {
-    setItems((prev) => prev.filter((i) => i.id !== id));
-  };
-
-  const updateItem = (id: string, field: keyof ItemRow, value: string) => {
-    setItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, [field]: value } : i)),
-    );
-  };
-
-  const handleSelectSku = (id: string, skuCode: string) => {
-    const sku = skus.find((s) => s.skuCode === skuCode);
-    setItems((prev) =>
-      prev.map((i) =>
-        i.id === id ? { ...i, skuCode, skuName: sku?.skuName ?? "" } : i,
-      ),
-    );
-  };
+  const handleSelectSku = useCallback((id: string, sku: SkuOption | null) => {
+    setItems(p => p.map(i => i.id === id ? { ...i, skuCode: sku?.skuCode ?? '', skuName: sku?.skuName ?? '', skuId: sku?.skuId ?? null } : i));
+  }, []);
 
   const handleSubmit = async () => {
-    if (!warehouseId) {
-      toast.error("Vui lòng chọn kho nhận hàng");
-      return;
-    }
-    // Validate
-    if (sourceType === "SUPPLIER" && !supplierCode) {
-      toast.error("Vui lòng chọn nhà cung cấp");
-      return;
-    }
+    if (!warehouseId)                               { toast.error('Chọn kho nhận hàng'); return; }
+    if (sourceType === 'SUPPLIER' && !supplierCode) { toast.error('Chọn nhà cung cấp'); return; }
+    const valid = items.filter(i => i.skuCode.trim());
+    if (!valid.length)                              { toast.error('Thêm ít nhất 1 sản phẩm'); return; }
+    const noQty = valid.find(i => !i.expectedQty || Number(i.expectedQty) <= 0);
+    if (noQty)                                      { toast.error(`Nhập số lượng cho: ${noQty.skuCode}`); return; }
 
-    const validItems = items.filter((i) => i.skuCode.trim());
-    if (validItems.length === 0) {
-      toast.error("Vui lòng thêm ít nhất 1 sản phẩm");
-      return;
-    }
-
-    // Bắt buộc nhập số lượng dự kiến — nếu để 0 sẽ gây lệch → PENDING_INCIDENT
-    const missingQty = validItems.find(
-      (i) => !i.expectedQty || Number(i.expectedQty) <= 0,
+    // Chặn submit nếu có lỗi date cứng (không chặn cảnh báo <30 ngày)
+    const hardDateError = valid.find(i =>
+      (i.mfgError && !i.mfgError.startsWith('Cảnh báo')) ||
+      (i.expError && !i.expError.startsWith('Cảnh báo'))
     );
-    if (missingQty) {
-      toast.error(
-        `Vui lòng nhập số lượng dự kiến cho SKU: ${missingQty.skuCode}`,
-      );
+    if (hardDateError) {
+      toast.error(`Lỗi ngày cho SKU ${hardDateError.skuCode}: ${hardDateError.mfgError || hardDateError.expError}`);
       return;
+    }
+
+    // Cảnh báo nếu có hàng sắp hết hạn nhưng vẫn cho tiếp tục
+    const warnItems = valid.filter(i => i.expError?.startsWith('Cảnh báo'));
+    if (warnItems.length > 0) {
+      toast(`Lưu ý: ${warnItems.length} SKU sắp hết hạn`, { icon: '⚠️' });
     }
 
     setSubmitting(true);
     try {
-      console.log("Creating order with payload:", {
-        warehouseId,
-        sourceType,
-        supplierCode,
-        items: validItems,
-      });
-
       const result = await createDraftReceivingOrder({
         warehouseId: warehouseId!,
         sourceType,
         supplierCode: supplierCode || null,
-        sourceReferenceCode: sourceReferenceCode.trim() || null,
+        sourceReferenceCode: sourceRef.trim() || null,
         note: note.trim() || null,
-        items: validItems.map((i) => ({
+        items: valid.map(i => ({
           skuCode: i.skuCode,
-          expectedQty: i.expectedQty ? Number(i.expectedQty) : null,
+          expectedQty: Number(i.expectedQty),
           lotNumber: i.lotNumber.trim() || null,
+          manufactureDate: i.manufactureDate || null,
           expiryDate: i.expiryDate || null,
         })),
       });
-
       toast.success(`Tạo phiếu thành công: ${result.receivingCode}`);
       onCreated(result.receivingId);
       onClose();
-    } catch {
-      // axios interceptor đã hiện toast lỗi
-    } finally {
-      setSubmitting(false);
-    }
+    } catch { /* axios interceptor hiện toast lỗi */ }
+    finally { setSubmitting(false); }
   };
+
+  const selectedSupplier = suppliers.find(s => s.supplierCode === supplierCode);
+  const filteredSuppliers = supplierSearch.trim()
+    ? suppliers.filter(s => s.supplierName.toLowerCase().includes(supplierSearch.toLowerCase()) || s.supplierCode.toLowerCase().includes(supplierSearch.toLowerCase()))
+    : suppliers;
+  const totalQty = items.reduce((s, i) => s + (Number(i.expectedQty) || 0), 0);
+  const validCount = items.filter(i => i.skuCode).length;
 
   if (!open) return null;
 
   return (
     <Portal>
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="w-full max-w-2xl bg-white rounded-xl shadow-xl border border-gray-100 flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
-          <div>
-            <h3 className="text-sm font-bold text-gray-900">
-              Tạo phiếu nhận hàng
-            </h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Phiếu sẽ được tạo ở trạng thái DRAFT
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+        style={{ background: 'rgba(17,24,39,0.55)', backdropFilter: 'blur(6px)' }}>
+        <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col"
+          style={{ maxHeight: '92vh' }}>
+
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
+                <span className="material-symbols-outlined text-indigo-500 text-[20px]">add_box</span>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Tạo phiếu nhận hàng</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Phiếu sẽ ở trạng thái <span className="font-semibold text-indigo-500">DRAFT</span> sau khi tạo</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400 transition-colors">
+              <span className="material-symbols-outlined text-[20px]">close</span>
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+
+            {/* Row 1 */}
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Kho nhận hàng" required>
+                <select value={warehouseId ?? ''} onChange={e => setWarehouseId(e.target.value ? Number(e.target.value) : null)} className={inputCls}>
+                  <option value="">-- Chọn kho --</option>
+                  {warehouses.map(w => <option key={w.warehouseId} value={w.warehouseId}>{w.warehouseName} ({w.warehouseCode})</option>)}
+                </select>
+              </Field>
+              <Field label="Loại nhập kho" required>
+                <select value={sourceType} onChange={e => { setSourceType(e.target.value); setSupplierCode(''); setSupplierSearch(''); }} className={inputCls}>
+                  <option value="SUPPLIER">Nhập từ nhà cung cấp</option>
+                  <option value="TRANSFER">Chuyển kho</option>
+                  <option value="RETURN">Hàng trả về</option>
+                </select>
+              </Field>
+            </div>
+
+            {/* Row 2 */}
+            <div className="grid grid-cols-2 gap-4">
+              {sourceType === 'SUPPLIER' ? (
+                <Field label="Nhà cung cấp" required>
+                  <div className="relative" ref={supplierRef as React.RefObject<HTMLDivElement>}>
+                    <div className="relative">
+                      <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[15px] pointer-events-none">business</span>
+                      <input type="text"
+                        placeholder={loadingSupplier ? 'Đang tải...' : 'Tìm nhà cung cấp...'}
+                        value={selectedSupplier ? `${selectedSupplier.supplierName} (${selectedSupplier.supplierCode})` : supplierSearch}
+                        className={`${inputCls} pl-8 ${supplierCode ? 'pr-8' : ''}`}
+                        onFocus={() => { setSupplierSearch(''); setSupplierOpen(true); }}
+                        onChange={e => { setSupplierSearch(e.target.value); setSupplierCode(''); setSupplierOpen(true); }}
+                      />
+                      {supplierCode && (
+                        <button type="button" onClick={() => { setSupplierCode(''); setSupplierSearch(''); }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-red-400 transition-colors">
+                          <span className="material-symbols-outlined text-[15px]">close</span>
+                        </button>
+                      )}
+                    </div>
+                    <DropdownPortal anchorRef={supplierRef as React.RefObject<HTMLElement>} open={supplierOpen}>
+                      {filteredSuppliers.length === 0
+                        ? <p className="px-3 py-3 text-xs text-gray-400 text-center">Không tìm thấy</p>
+                        : filteredSuppliers.map(s => (
+                          <button key={s.supplierCode} type="button"
+                            className="w-full text-left px-3 py-2.5 hover:bg-indigo-50 border-b border-gray-50 last:border-0 transition-colors"
+                            onMouseDown={e => { e.preventDefault(); setSupplierCode(s.supplierCode); setSupplierSearch(''); setSupplierOpen(false); }}>
+                            <p className="text-sm font-semibold text-gray-800">{s.supplierName}</p>
+                            <p className="text-xs text-gray-400">{s.supplierCode}</p>
+                          </button>
+                        ))
+                      }
+                    </DropdownPortal>
+                  </div>
+                </Field>
+              ) : (
+                <Field label="Kho nguồn">
+                  <input type="text" placeholder="Tên kho chuyển..." value={supplierCode}
+                    onChange={e => setSupplierCode(e.target.value)} className={inputCls} />
+                </Field>
+              )}
+              <Field label="Số chứng từ / PO">
+                <input type="text" placeholder="VD: PO-2024-001" value={sourceRef}
+                  onChange={e => setSourceRef(e.target.value)} className={inputCls} />
+              </Field>
+            </div>
+
+            {/* Ghi chú */}
+            <Field label="Ghi chú">
+              <input type="text" placeholder="VD: Xe tải 29C-12345 giao lúc 10h"
+                value={note} onChange={e => setNote(e.target.value)} className={inputCls} />
+            </Field>
+
+            {/* ── Sản phẩm ── */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
+                    Danh sách sản phẩm <span className="text-red-400 normal-case font-normal">*</span>
+                  </label>
+                  {validCount > 0 && (
+                    <span className="ml-2 text-[11px] text-indigo-500 font-medium">
+                      {validCount} SKU · {totalQty} thùng
+                    </span>
+                  )}
+                </div>
+                <button type="button" onClick={() => setItems(p => [...p, makeItem()])}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-xl transition-colors">
+                  <span className="material-symbols-outlined text-[14px]">add</span>
+                  Thêm dòng
+                </button>
+              </div>
+
+              {/* Column headers */}
+              <div className="grid gap-2 px-3 mb-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest"
+                style={{ gridTemplateColumns: '2.8fr 0.8fr 1fr 1.1fr 1.1fr 28px' }}>
+                <div>SKU</div>
+                <div className="text-center">SL *</div>
+                <div>Số lô</div>
+                <div>Ngày SX</div>
+                <div>Hạn dùng</div>
+                <div />
+              </div>
+
+              {/* Rows */}
+              <div className="space-y-2">
+                {items.map((item, idx) => (
+                  <div key={item.id}
+                    className="grid gap-2 items-center px-3 py-3 rounded-xl border transition-colors"
+                    style={{ gridTemplateColumns: '2.8fr 0.8fr 1fr 1.1fr 1.1fr 28px',
+                      background: item.skuCode ? '#fafbff' : 'white',
+                      borderColor: item.skuCode ? '#e0e7ff' : '#f3f4f6' }}>
+
+                    {/* SKU combobox */}
+                    <SkuCombobox
+                      value={item.skuCode ? { skuCode: item.skuCode, skuName: item.skuName } : null}
+                      onSelect={sku => handleSelectSku(item.id, sku)}
+                    />
+
+                    {/* Qty */}
+                    <input type="number" min="1" placeholder="SL"
+                      value={item.expectedQty}
+                      onChange={e => updateItem(item.id, 'expectedQty', e.target.value)}
+                      className={`w-full px-2 py-2 text-sm border rounded-xl text-center focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all ${
+                        item.skuCode && (!item.expectedQty || Number(item.expectedQty) <= 0)
+                          ? 'border-red-300 bg-red-50 text-red-700' : 'border-gray-200 bg-white'}`}
+                    />
+
+                    {/* Lot */}
+                    <input type="text" placeholder="LOT-001"
+                      value={item.lotNumber}
+                      onChange={e => updateItem(item.id, 'lotNumber', e.target.value)}
+                      className="w-full px-2 py-2 text-sm border border-gray-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
+                    />
+
+                    {/* Manufacture date */}
+                    <div>
+                      <input type="date"
+                        value={item.manufactureDate}
+                        max={item.expiryDate || new Date().toISOString().split('T')[0]}
+                        onChange={e => updateItem(item.id, 'manufactureDate', e.target.value)}
+                        className={`w-full px-2 py-2 text-sm border bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all ${
+                          item.mfgError ? 'border-red-300 bg-red-50' : 'border-gray-200'
+                        }`}
+                      />
+                      {item.mfgError && (
+                        <p className="text-[10px] text-red-500 mt-0.5 flex items-center gap-0.5">
+                          <span className="material-symbols-outlined text-[11px]">error</span>
+                          {item.mfgError}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Expiry date */}
+                    <div>
+                      <input type="date"
+                        value={item.expiryDate}
+                        min={item.manufactureDate || new Date().toISOString().split('T')[0]}
+                        onChange={e => updateItem(item.id, 'expiryDate', e.target.value)}
+                        className={`w-full px-2 py-2 text-sm border bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all ${
+                          item.expError
+                            ? item.expError.startsWith('Cảnh báo')
+                              ? 'border-amber-300 bg-amber-50'
+                              : 'border-red-300 bg-red-50'
+                            : 'border-gray-200'
+                        }`}
+                      />
+                      {item.expError && (
+                        <p className={`text-[10px] mt-0.5 flex items-center gap-0.5 ${
+                          item.expError.startsWith('Cảnh báo') ? 'text-amber-600' : 'text-red-500'
+                        }`}>
+                          <span className="material-symbols-outlined text-[11px]">
+                            {item.expError.startsWith('Cảnh báo') ? 'warning' : 'error'}
+                          </span>
+                          {item.expError}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Delete */}
+                    <button type="button" onClick={() => setItems(p => p.filter(i => i.id !== item.id))}
+                      disabled={items.length === 1}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 disabled:opacity-20 transition-colors">
+                      <span className="material-symbols-outlined text-[16px]">delete</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Warning */}
+              {items.some(i => i.skuCode && (!i.expectedQty || Number(i.expectedQty) <= 0)) && (
+                <p className="mt-2 text-xs text-red-500 flex items-center gap-1 px-1">
+                  <span className="material-symbols-outlined text-[13px]">warning</span>
+                  Có dòng chưa nhập số lượng
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 flex-shrink-0 bg-gray-50/50 rounded-b-2xl">
+            <p className="text-xs text-gray-400 hidden sm:block">
+              Sau khi tạo, scan hàng để chuyển trạng thái
             </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-full hover:bg-gray-100 text-gray-400"
-          >
-            <span className="material-symbols-outlined text-[18px]">close</span>
-          </button>
-        </div>
-
-        {/* Body — scrollable */}
-        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
-          {/* Kho nhận hàng */}
-          <div className="space-y-1 col-span-2">
-            <label className="text-xs font-medium text-gray-700">
-              Kho nhận hàng <span className="text-red-500">*</span>
-            </label>
-            <Select
-              placeholder="Chọn kho nhận hàng..."
-              style={{ width: "100%" }}
-              value={warehouseId ?? undefined}
-              onChange={(val) => setWarehouseId(val)}
-              options={warehouses.map((w) => ({
-                value: w.warehouseId,
-                label: `${w.warehouseName} (${w.warehouseCode})`,
-              }))}
-            />
-          </div>
-          {/* Source Type */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">
-                Loại nhập kho <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={sourceType}
-                onChange={(e) => setSourceType(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="SUPPLIER">Nhập từ nhà cung cấp</option>
-                <option value="TRANSFER">Chuyển kho</option>
-                <option value="RETURN">Hàng trả về</option>
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">
-                Số chứng từ / PO
-              </label>
-              <input
-                type="text"
-                placeholder="VD: PO-2024-001"
-                value={sourceReferenceCode}
-                onChange={(e) => setSourceReferenceCode(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-
-          {/* Supplier — chỉ hiện khi SUPPLIER */}
-          {sourceType === "SUPPLIER" && (
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">
-                Nhà cung cấp <span className="text-red-500">*</span>
-              </label>
-              <Select
-                showSearch
-                loading={loadingSupplier}
-                placeholder="Chọn nhà cung cấp..."
-                style={{ width: "100%" }}
-                value={supplierCode || undefined}
-                onChange={(val) => setSupplierCode(val)}
-                filterOption={(input, option) =>
-                  ((option?.label as string) ?? "")
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
-                options={suppliers.map((s) => ({
-                  value: s.supplierCode,
-                  label: `${s.supplierName} (${s.supplierCode})`,
-                }))}
-              />
-            </div>
-          )}
-
-          {/* Note */}
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-gray-700">Ghi chú</label>
-            <input
-              type="text"
-              placeholder="VD: Xe tải 29C-12345 giao hàng lúc 10h"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          {/* Items */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-gray-700">
-                Danh sách sản phẩm <span className="text-red-500">*</span>
-              </label>
-              <button
-                type="button"
-                onClick={addItem}
-                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium"
-              >
-                <span className="material-symbols-outlined text-sm">add</span>
-                Thêm dòng
+            <div className="flex items-center gap-2.5 ml-auto">
+              <button onClick={onClose}
+                className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+                Huỷ
+              </button>
+              <button onClick={handleSubmit} disabled={submitting}
+                className="px-6 py-2.5 text-sm font-semibold text-white rounded-xl flex items-center gap-2 disabled:opacity-60 active:scale-95 transition-all"
+                style={{ background: 'linear-gradient(135deg,#4f46e5,#6366f1)', boxShadow: '0 4px 14px rgba(79,70,229,0.3)' }}>
+                {submitting
+                  ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Đang tạo...</>
+                  : <><span className="material-symbols-outlined text-[16px]">add_box</span>Tạo phiếu</>}
               </button>
             </div>
-
-            {/* Header row */}
-            <div className="grid grid-cols-12 gap-1.5 text-xs font-medium text-gray-500 px-1">
-              <div className="col-span-4">SKU</div>
-              <div className="col-span-2 text-center">Số lượng</div>
-              <div className="col-span-2">Số lô</div>
-              <div className="col-span-3">Hạn dùng</div>
-              <div className="col-span-1" />
-            </div>
-
-            {/* Item rows */}
-            {items.map((item) => (
-              <div
-                key={item.id}
-                className="grid grid-cols-12 gap-1.5 items-center"
-              >
-                {/* SKU select */}
-                <div className="col-span-4">
-                  <Select
-                    showSearch
-                    placeholder="Chọn SKU..."
-                    style={{ width: "100%" }}
-                    size="small"
-                    value={item.skuCode || undefined}
-                    onSearch={handleSkuSearch}
-                    onChange={(val) => handleSelectSku(item.id, val)}
-                    filterOption={false}
-                    options={skus.map((s) => ({
-                      value: s.skuCode,
-                      label: `${s.skuCode} — ${s.skuName}`,
-                    }))}
-                  />
-                </div>
-
-                {/* Expected Qty */}
-                <div className="col-span-2">
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    placeholder="SL *"
-                    value={item.expectedQty}
-                    onChange={(e) =>
-                      updateItem(item.id, "expectedQty", e.target.value)
-                    }
-                    className={`w-full px-2 py-1 text-xs border rounded text-center focus:outline-none focus:ring-1 focus:ring-blue-500 ${
-                      !item.expectedQty || Number(item.expectedQty) <= 0
-                        ? "border-red-300 bg-red-50"
-                        : "border-gray-300"
-                    }`}
-                  />
-                </div>
-
-                {/* Lot Number */}
-                <div className="col-span-2">
-                  <input
-                    type="text"
-                    placeholder="LOT..."
-                    value={item.lotNumber}
-                    onChange={(e) =>
-                      updateItem(item.id, "lotNumber", e.target.value)
-                    }
-                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-
-                {/* Expiry Date */}
-                <div className="col-span-3">
-                  <input
-                    type="date"
-                    value={item.expiryDate}
-                    onChange={(e) =>
-                      updateItem(item.id, "expiryDate", e.target.value)
-                    }
-                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-
-                {/* Remove */}
-                <div className="col-span-1 flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() => removeItem(item.id)}
-                    disabled={items.length === 1}
-                    className="text-gray-300 hover:text-red-500 disabled:opacity-30 transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-base">
-                      delete
-                    </span>
-                  </button>
-                </div>
-              </div>
-            ))}
           </div>
         </div>
-
-        {/* Footer */}
-        <div className="flex justify-end gap-2 px-5 py-4 border-t flex-shrink-0">
-          <Button variant="secondary" size="sm" onClick={onClose}>
-            Huỷ
-          </Button>
-          <Button size="sm" isLoading={submitting} onClick={handleSubmit}>
-            Tạo phiếu
-          </Button>
-        </div>
       </div>
-    </div>
     </Portal>
   );
 }
