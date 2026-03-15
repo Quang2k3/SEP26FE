@@ -4,8 +4,8 @@ import GrnApprovalList from "@/components/inbound/GrnApprovalList";
 export default function GrnApprovalPage() {
   return (
     <AdminPage
-      title="Duyệt GRN"
-      description="Manager xem xét và phê duyệt phiếu nhập kho (GRN) từ Keeper."
+      title="Duyệt đơn nhập kho"
+      description="Xem xét và phê duyệt phiếu nhập kho (GRN) từ Keeper. Sau khi duyệt, tiến hành nhập kho để tạo Putaway Task."
     >
       <GrnApprovalList />
     </AdminPage>

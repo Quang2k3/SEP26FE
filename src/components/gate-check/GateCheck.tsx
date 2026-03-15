@@ -12,12 +12,14 @@ import {
   generateGrn,
   submitReceivingOrder,
 } from "@/services/receivingOrdersService";
+import { fetchGrnByReceivingId, submitGrnToManager } from "@/services/grnService";
 import type { ReceivingOrder, ReceivingOrderPagePayload, ReceivingStatus } from "@/interfaces/receiving";
 import { getReceivingColumns, STATUS_BADGE } from "./components/columns";
 import GateCheckModal from "./components/GateCheckModal";
 import GateCheckFilter from "./components/GateCheckFilter";
 import CreateReceivingOrderModal from "@/components/inbound/CreateReceivingOrderModal";
 import ReceivingDetailModal from "./components/ReceivingDetailModal";
+import Portal from "@/components/ui/Portal";
 import toast from "react-hot-toast";
 
 type FilterStatus = ReceivingStatus | "ALL";
@@ -41,54 +43,112 @@ function SubmitConfirmModal({
   onCancel: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
-        <div className="px-5 py-4 border-b flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
-            <span className="material-symbols-outlined text-blue-600 text-[20px]">send</span>
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-gray-900">Xác nhận Submit phiếu</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Sau khi submit, phiếu chuyển sang <span className="font-medium text-indigo-600">Pending Count</span> và không thể chỉnh sửa.
-            </p>
-          </div>
-        </div>
-        <div className="px-5 py-4 space-y-3">
-          <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
+    // ✅ FIX: dùng Portal để thoát khỏi stacking context của header
+    <Portal>
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
+              <span className="material-symbols-outlined text-blue-600 text-[20px]">send</span>
+            </div>
             <div>
-              <p className="text-[11px] text-gray-400 uppercase tracking-wide">Mã phiếu</p>
-              <p className="text-sm font-bold font-mono text-gray-900 mt-0.5">{receiving.receivingCode}</p>
-            </div>
-            <div className="flex items-center gap-1 text-[11px]">
-              <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">Draft</span>
-              <span className="material-symbols-outlined text-[14px] text-gray-400">arrow_forward</span>
-              <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">Pending Count</span>
+              <h3 className="text-sm font-bold text-gray-900">Xác nhận Submit phiếu</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Sau khi submit, phiếu chuyển sang <span className="font-medium text-indigo-600">Pending Count</span> và không thể chỉnh sửa.
+              </p>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <InfoBox label="Kho nhận" value={receiving.warehouseName} />
-            <InfoBox label="Nhà cung cấp" value={receiving.supplierName} />
-            <InfoBox label="Số chứng từ" value={receiving.sourceReferenceCode} />
-            <InfoBox label="Tổng SL dự kiến" value={String(receiving.totalExpectedQty ?? 0)} bold />
+          <div className="px-5 py-4 space-y-3">
+            <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
+              <div>
+                <p className="text-[11px] text-gray-400 uppercase tracking-wide">Mã phiếu</p>
+                <p className="text-sm font-bold font-mono text-gray-900 mt-0.5">{receiving.receivingCode}</p>
+              </div>
+              <div className="flex items-center gap-1 text-[11px]">
+                <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">Draft</span>
+                <span className="material-symbols-outlined text-[14px] text-gray-400">arrow_forward</span>
+                <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">Pending Count</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <InfoBox label="Kho nhận" value={receiving.warehouseName} />
+              <InfoBox label="Nhà cung cấp" value={receiving.supplierName} />
+              <InfoBox label="Số chứng từ" value={receiving.sourceReferenceCode} />
+              <InfoBox label="Tổng SL dự kiến" value={String(receiving.totalExpectedQty ?? 0)} bold />
+            </div>
+            {(receiving.items?.length ?? 0) > 0 && (
+              <ItemsPreview items={receiving.items!} />
+            )}
+            {receiving.note && (
+              <NoteBox note={receiving.note} />
+            )}
           </div>
-          {(receiving.items?.length ?? 0) > 0 && (
-            <ItemsPreview items={receiving.items!} />
-          )}
-          {receiving.note && (
-            <NoteBox note={receiving.note} />
-          )}
+          <ConfirmFooter
+            loading={loading}
+            onCancel={onCancel}
+            onConfirm={onConfirm}
+            confirmLabel="Xác nhận Submit"
+            confirmIcon="send"
+            confirmClass="bg-blue-600 hover:bg-blue-700"
+          />
         </div>
-        <ConfirmFooter
-          loading={loading}
-          onCancel={onCancel}
-          onConfirm={onConfirm}
-          confirmLabel="Xác nhận Submit"
-          confirmIcon="send"
-          confirmClass="bg-blue-600 hover:bg-blue-700"
-        />
       </div>
-    </div>
+    </Portal>
+  );
+}
+
+// ── Submit GRN to Manager Confirm Modal ──────────────────────────────────────
+function SubmitGrnModal({
+  receiving, loading, onConfirm, onCancel,
+}: {
+  receiving: ReceivingOrder;
+  loading: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Portal>
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-green-50 flex items-center justify-center flex-shrink-0">
+              <span className="material-symbols-outlined text-green-600 text-[20px]">send</span>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">Gửi GRN cho Manager duyệt</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Phiếu sẽ chuyển sang trạng thái <span className="font-medium text-amber-600">Chờ duyệt</span>.
+              </p>
+            </div>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
+              <div>
+                <p className="text-[11px] text-gray-400 uppercase tracking-wide">Mã phiếu</p>
+                <p className="text-sm font-bold font-mono text-gray-900 mt-0.5">{receiving.receivingCode}</p>
+              </div>
+              <div className="flex items-center gap-1 text-[11px]">
+                <span className="px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 font-medium">GRN Created</span>
+                <span className="material-symbols-outlined text-[14px] text-gray-400">arrow_forward</span>
+                <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium">Chờ duyệt</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <InfoBox label="Nhà cung cấp" value={receiving.supplierName} />
+              <InfoBox label="Số chứng từ" value={receiving.sourceReferenceCode} />
+            </div>
+          </div>
+          <ConfirmFooter
+            loading={loading}
+            onCancel={onCancel}
+            onConfirm={onConfirm}
+            confirmLabel="Gửi Manager"
+            confirmIcon="send"
+            confirmClass="bg-green-600 hover:bg-green-700"
+          />
+        </div>
+      </div>
+    </Portal>
   );
 }
 
@@ -102,123 +162,126 @@ function GenGrnConfirmModal({
   onCancel: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
+    // ✅ FIX: dùng Portal để thoát khỏi stacking context của header
+    <Portal>
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
 
-        {/* Header */}
-        <div className="px-5 py-4 border-b flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-purple-50 flex items-center justify-center flex-shrink-0">
-            <span className="material-symbols-outlined text-purple-600 text-[20px]">receipt_long</span>
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-gray-900">Tạo phiếu GRN</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Xem lại thông tin trước khi tạo phiếu nhập kho chính thức.
-            </p>
-          </div>
-        </div>
-
-        {/* Body */}
-        <div className="px-5 py-4 space-y-3">
-          {/* Status transition */}
-          <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
+          {/* Header */}
+          <div className="px-5 py-4 border-b flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-purple-50 flex items-center justify-center flex-shrink-0">
+              <span className="material-symbols-outlined text-purple-600 text-[20px]">receipt_long</span>
+            </div>
             <div>
-              <p className="text-[11px] text-gray-400 uppercase tracking-wide">Mã phiếu nhận</p>
-              <p className="text-sm font-bold font-mono text-gray-900 mt-0.5">{receiving.receivingCode}</p>
-            </div>
-            <div className="flex items-center gap-1 text-[11px]">
-              <span className="px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 font-medium">QC Approved</span>
-              <span className="material-symbols-outlined text-[14px] text-gray-400">arrow_forward</span>
-              <span className="px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 font-medium">GRN Created</span>
+              <h3 className="text-sm font-bold text-gray-900">Tạo phiếu GRN</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Xem lại thông tin trước khi tạo phiếu nhập kho chính thức.
+              </p>
             </div>
           </div>
 
-          {/* Info grid */}
-          <div className="grid grid-cols-2 gap-2">
-            <InfoBox label="Kho nhận" value={receiving.warehouseName} />
-            <InfoBox label="Nhà cung cấp" value={receiving.supplierName} />
-            <InfoBox label="Số chứng từ" value={receiving.sourceReferenceCode} />
-            <InfoBox label="Loại nhập" value={receiving.sourceType} />
-            <InfoBox
-              label="Tổng SL dự kiến"
-              value={String(receiving.totalExpectedQty ?? 0)}
-              bold
-            />
-            <InfoBox
-              label="Tổng SL thực nhận"
-              value={String(receiving.totalQty ?? 0)}
-              bold
-              highlight={
-                (receiving.totalQty ?? 0) < (receiving.totalExpectedQty ?? 0)
-                  ? "red"
-                  : (receiving.totalQty ?? 0) > (receiving.totalExpectedQty ?? 0)
-                  ? "orange"
-                  : "green"
-              }
-            />
-          </div>
-
-          {/* Items — so sánh expected vs received */}
-          {(receiving.items?.length ?? 0) > 0 && (
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="bg-gray-50 px-3 py-1.5 border-b border-gray-100 flex items-center justify-between">
-                <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
-                  Chi tiết hàng hoá — {receiving.items!.length} SKU
-                </p>
-                <p className="text-[11px] text-gray-400">Dự kiến / Thực nhận</p>
+          {/* Body */}
+          <div className="px-5 py-4 space-y-3">
+            {/* Status transition */}
+            <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
+              <div>
+                <p className="text-[11px] text-gray-400 uppercase tracking-wide">Mã phiếu nhận</p>
+                <p className="text-sm font-bold font-mono text-gray-900 mt-0.5">{receiving.receivingCode}</p>
               </div>
-              <div className="max-h-40 overflow-y-auto divide-y divide-gray-50">
-                {receiving.items!.map(item => {
-                  const diff = (item.receivedQty ?? 0) - item.expectedQty;
-                  const hasReceived = (item.receivedQty ?? 0) > 0;
-                  return (
-                    <div key={item.receivingItemId}
-                      className="flex items-center justify-between px-3 py-2 hover:bg-gray-50">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-mono text-[11px] font-semibold text-gray-800">{item.skuCode}</p>
-                        <p className="text-[11px] text-gray-400 truncate">{item.skuName}</p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0 ml-3">
-                        <span className="text-[11px] text-gray-500">{item.expectedQty}</span>
-                        <span className="material-symbols-outlined text-[12px] text-gray-300">arrow_forward</span>
-                        <span className={`text-[11px] font-bold ${
-                          !hasReceived ? "text-gray-300" :
-                          diff < 0 ? "text-red-600" :
-                          diff > 0 ? "text-orange-600" :
-                          "text-green-600"
-                        }`}>
-                          {hasReceived ? item.receivedQty : "—"}
-                        </span>
-                        {hasReceived && diff !== 0 && (
-                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                            diff < 0
-                              ? "bg-red-50 text-red-500"
-                              : "bg-orange-50 text-orange-500"
+              <div className="flex items-center gap-1 text-[11px]">
+                <span className="px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 font-medium">QC Approved</span>
+                <span className="material-symbols-outlined text-[14px] text-gray-400">arrow_forward</span>
+                <span className="px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 font-medium">GRN Created</span>
+              </div>
+            </div>
+
+            {/* Info grid */}
+            <div className="grid grid-cols-2 gap-2">
+              <InfoBox label="Kho nhận" value={receiving.warehouseName} />
+              <InfoBox label="Nhà cung cấp" value={receiving.supplierName} />
+              <InfoBox label="Số chứng từ" value={receiving.sourceReferenceCode} />
+              <InfoBox label="Loại nhập" value={receiving.sourceType} />
+              <InfoBox
+                label="Tổng SL dự kiến"
+                value={String(receiving.totalExpectedQty ?? 0)}
+                bold
+              />
+              <InfoBox
+                label="Tổng SL thực nhận"
+                value={String(receiving.totalQty ?? 0)}
+                bold
+                highlight={
+                  (receiving.totalQty ?? 0) < (receiving.totalExpectedQty ?? 0)
+                    ? "red"
+                    : (receiving.totalQty ?? 0) > (receiving.totalExpectedQty ?? 0)
+                    ? "orange"
+                    : "green"
+                }
+              />
+            </div>
+
+            {/* Items */}
+            {(receiving.items?.length ?? 0) > 0 && (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="bg-gray-50 px-3 py-1.5 border-b border-gray-100 flex items-center justify-between">
+                  <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                    Chi tiết hàng hoá — {receiving.items!.length} SKU
+                  </p>
+                  <p className="text-[11px] text-gray-400">Dự kiến / Thực nhận</p>
+                </div>
+                <div className="max-h-40 overflow-y-auto divide-y divide-gray-50">
+                  {receiving.items!.map(item => {
+                    const diff = (item.receivedQty ?? 0) - item.expectedQty;
+                    const hasReceived = (item.receivedQty ?? 0) > 0;
+                    return (
+                      <div key={item.receivingItemId}
+                        className="flex items-center justify-between px-3 py-2 hover:bg-gray-50">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-mono text-[11px] font-semibold text-gray-800">{item.skuCode}</p>
+                          <p className="text-[11px] text-gray-400 truncate">{item.skuName}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 ml-3">
+                          <span className="text-[11px] text-gray-500">{item.expectedQty}</span>
+                          <span className="material-symbols-outlined text-[12px] text-gray-300">arrow_forward</span>
+                          <span className={`text-[11px] font-bold ${
+                            !hasReceived ? "text-gray-300" :
+                            diff < 0 ? "text-red-600" :
+                            diff > 0 ? "text-orange-600" :
+                            "text-green-600"
                           }`}>
-                            {diff > 0 ? `+${diff}` : diff}
+                            {hasReceived ? item.receivedQty : "—"}
                           </span>
-                        )}
+                          {hasReceived && diff !== 0 && (
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                              diff < 0
+                                ? "bg-red-50 text-red-500"
+                                : "bg-orange-50 text-orange-500"
+                            }`}>
+                              {diff > 0 ? `+${diff}` : diff}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {receiving.note && <NoteBox note={receiving.note} />}
+            {receiving.note && <NoteBox note={receiving.note} />}
+          </div>
+
+          <ConfirmFooter
+            loading={loading}
+            onCancel={onCancel}
+            onConfirm={onConfirm}
+            confirmLabel="Tạo GRN"
+            confirmIcon="receipt_long"
+            confirmClass="bg-purple-600 hover:bg-purple-700"
+          />
         </div>
-
-        <ConfirmFooter
-          loading={loading}
-          onCancel={onCancel}
-          onConfirm={onConfirm}
-          confirmLabel="Tạo GRN"
-          confirmIcon="receipt_long"
-          confirmClass="bg-purple-600 hover:bg-purple-700"
-        />
       </div>
-    </div>
+    </Portal>
   );
 }
 
@@ -323,6 +386,7 @@ export default function GateCheckContent() {
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
   const [submitLoadingId, setSubmitLoadingId] = useState<number | null>(null);
   const [grnLoadingId, setGrnLoadingId] = useState<number | null>(null);
+  const [submitGrnLoadingId, setSubmitGrnLoadingId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("ALL");
   const [page, setPage] = useState(0);
@@ -331,6 +395,7 @@ export default function GateCheckContent() {
   const [detailReceiving, setDetailReceiving] = useState<ReceivingOrder | null>(null);
   const [submitConfirmReceiving, setSubmitConfirmReceiving] = useState<ReceivingOrder | null>(null);
   const [grnConfirmReceiving, setGrnConfirmReceiving] = useState<ReceivingOrder | null>(null);
+  const [submitGrnReceiving, setSubmitGrnReceiving] = useState<ReceivingOrder | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [grnDetailLoading, setGrnDetailLoading] = useState<number | null>(null);
 
@@ -378,10 +443,8 @@ export default function GateCheckContent() {
     );
   }, [receivings, search]);
 
-  // Submit: mở confirm modal
+  // Submit phiếu → Pending Count
   const handleSubmitConfirm = (r: ReceivingOrder) => setSubmitConfirmReceiving(r);
-
-  // Submit: thực thi sau confirm
   const handleSubmitExecute = async () => {
     if (!submitConfirmReceiving) return;
     setSubmitLoadingId(submitConfirmReceiving.receivingId);
@@ -396,21 +459,18 @@ export default function GateCheckContent() {
     }
   };
 
- // Gen GRN: fetch full detail rồi mới mở confirm modal
-const handleGrnConfirm = async (r: ReceivingOrder) => {
-  setGrnDetailLoading(r.receivingId);
-  try {
-    const full = await fetchReceivingOrder(r.receivingId);
-    setGrnConfirmReceiving(full);
-  } catch {
-    // interceptor hiện toast, fallback dùng data tóm tắt
-    setGrnConfirmReceiving(r);
-  } finally {
-    setGrnDetailLoading(null);
-  }
-};
-
-  // Gen GRN: thực thi sau confirm
+  // Gen GRN
+  const handleGrnConfirm = async (r: ReceivingOrder) => {
+    setGrnDetailLoading(r.receivingId);
+    try {
+      const full = await fetchReceivingOrder(r.receivingId);
+      setGrnConfirmReceiving(full);
+    } catch {
+      setGrnConfirmReceiving(r);
+    } finally {
+      setGrnDetailLoading(null);
+    }
+  };
   const handleGrnExecute = async () => {
     if (!grnConfirmReceiving) return;
     setGrnLoadingId(grnConfirmReceiving.receivingId);
@@ -425,16 +485,37 @@ const handleGrnConfirm = async (r: ReceivingOrder) => {
     }
   };
 
+  // ✅ FIX: Gửi GRN cho Manager — handler đầy đủ, trước đây bị thiếu
+  const handleSubmitGrn = (r: ReceivingOrder) => setSubmitGrnReceiving(r);
+  const handleSubmitGrnExecute = async () => {
+    if (!submitGrnReceiving) return;
+    setSubmitGrnLoadingId(submitGrnReceiving.receivingId);
+    try {
+      // Lấy GRN của receiving order này rồi submit lên Manager
+      const grn = await fetchGrnByReceivingId(submitGrnReceiving.receivingId);
+      await submitGrnToManager(grn.grnId);
+      toast.success(`Đã gửi ${submitGrnReceiving.receivingCode} cho Manager duyệt`);
+      setSubmitGrnReceiving(null);
+      loadReceivings(page);
+    } catch (e: any) {
+      const msg = e?.response?.data?.message ?? e?.message ?? "Lỗi không xác định";
+      toast.error(`Lỗi gửi Manager: ${msg}`);
+    } finally {
+      setSubmitGrnLoadingId(null);
+    }
+  };
+
   const columns = getReceivingColumns({
-  userRole,
-  onDetail: r => setDetailReceiving(r),
-  onSubmitConfirm: handleSubmitConfirm,
-  onScan: r => setScanReceiving(r),
-  onGenerateGrn: handleGrnConfirm,
-  onViewIncident: () => router.push("/manager-dashboard/incident"),
-  loadingId: grnDetailLoading,       
-  submitLoadingId,
-});
+    userRole,
+    onDetail: r => setDetailReceiving(r),
+    onSubmitConfirm: handleSubmitConfirm,
+    onScan: r => setScanReceiving(r),
+    onGenerateGrn: handleGrnConfirm,
+    onSubmitGrn: handleSubmitGrn,   // ✅ FIX: truyền đúng handler
+    onViewIncident: () => router.push("/manager-dashboard/incident"),
+    loadingId: grnDetailLoading,
+    submitLoadingId,
+  });
 
   const canCreate = userRole === "KEEPER" || userRole === "MANAGER";
 
@@ -496,7 +577,7 @@ const handleGrnConfirm = async (r: ReceivingOrder) => {
         onRefresh={() => loadReceivings(page)}
       />
 
-      {/* Submit confirm */}
+      {/* Submit phiếu confirm */}
       {submitConfirmReceiving && (
         <SubmitConfirmModal
           receiving={submitConfirmReceiving}
@@ -513,6 +594,16 @@ const handleGrnConfirm = async (r: ReceivingOrder) => {
           loading={grnLoadingId === grnConfirmReceiving.receivingId}
           onConfirm={handleGrnExecute}
           onCancel={() => setGrnConfirmReceiving(null)}
+        />
+      )}
+
+      {/* ✅ FIX: Gửi GRN cho Manager confirm modal */}
+      {submitGrnReceiving && (
+        <SubmitGrnModal
+          receiving={submitGrnReceiving}
+          loading={submitGrnLoadingId === submitGrnReceiving.receivingId}
+          onConfirm={handleSubmitGrnExecute}
+          onCancel={() => setSubmitGrnReceiving(null)}
         />
       )}
 

@@ -17,9 +17,9 @@ const ROLE_NOTIFICATION_CONFIG: Record<string, { status: string; label: string; 
     color: "text-amber-600",
   },
   MANAGER: {
-    status: "GRN_CREATED",
-    label: "Chờ duyệt GRN",
-    description: "GRN đã tạo, chờ Manager phê duyệt",
+    status: "PENDING_APPROVAL",
+    label: "Chờ duyệt đơn nhập kho",
+    description: "Keeper đã gửi đơn, chờ Manager phê duyệt",
     navigateTo: "/manager-dashboard/grn",
     color: "text-violet-600",
   },
@@ -162,7 +162,7 @@ export default function NotificationBell() {
                       className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
                         config.status === "SUBMITTED"
                           ? "bg-amber-400"
-                          : config.status === "GRN_CREATED"
+                          : config.status === "PENDING_APPROVAL"
                             ? "bg-violet-400"
                             : "bg-red-400"
                       }`}

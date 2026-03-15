@@ -18,12 +18,18 @@ export default function SecondaryNav() {
     <div
       className="sticky top-14 z-30 py-2.5 px-4 md:px-8 flex flex-wrap gap-1.5 md:gap-2 w-full"
       style={{
-        background: 'rgba(255,255,255,0.75)',
-        backdropFilter: 'blur(12px)',
+        position: 'relative',
         borderBottom: '1px solid rgba(99,102,241,0.1)',
         boxShadow: '0 1px 8px rgba(99,102,241,0.06)',
       }}
     >
+      {/* Blur layer riêng — tránh tạo stacking context cho modal children */}
+      <div aria-hidden="true" style={{
+        position: 'absolute', inset: 0,
+        background: 'rgba(255,255,255,0.75)',
+        backdropFilter: 'blur(12px)',
+        zIndex: -1, pointerEvents: 'none',
+      }} />
       {actions.map((action) => {
         const isActive = pathname === action.path;
         return (

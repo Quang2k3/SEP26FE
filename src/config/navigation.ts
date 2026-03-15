@@ -27,7 +27,7 @@ export const OUTBOUND_ACTIONS: NavAction[] = [
 ];
 
 export const MANAGER_DASHBOARD: NavAction[] = [
-  { label: 'Duyệt GRN', path: '/manager-dashboard/grn' },
+  { label: 'Duyệt đơn nhập kho', path: '/manager-dashboard/grn' },
   { label: 'Pending Incidents', path: '/manager-dashboard/incident' },
   { label: 'QC Reports', path: '/manager-dashboard/qc-report' },
 ];
@@ -59,7 +59,7 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
     name: 'Inbound',
     icon: 'input_circle',
     children: INBOUND_ACTIONS,
-    roles: ['MANAGER', 'KEEPER', 'QC'],
+    roles: ['KEEPER', 'QC'],  // Manager dùng "Duyệt đơn nhập kho" thay thế
   },
   {
     key: 'outbound',

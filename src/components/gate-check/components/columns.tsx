@@ -2,13 +2,16 @@ import { Column } from "@/components/ui/Table";
 import type { ReceivingOrder } from "@/interfaces/receiving";
 
 export const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-  DRAFT:            { label: "Draft",            className: "bg-gray-100 text-gray-600" },
-  PENDING_COUNT:    { label: "Pending Count",    className: "bg-indigo-50 text-indigo-700" },
-  SUBMITTED:        { label: "Submitted",        className: "bg-blue-50 text-blue-700" },
-  PENDING_INCIDENT: { label: "Pending Incident", className: "bg-yellow-50 text-yellow-700" },
-  QC_APPROVED:      { label: "QC Approved",      className: "bg-purple-50 text-purple-700" },
-  GRN_CREATED:      { label: "GRN Created",      className: "bg-orange-50 text-orange-700" },
-  POSTED:           { label: "Posted",           className: "bg-green-50 text-green-700" },
+  DRAFT:            { label: "Nháp",            className: "bg-gray-100 text-gray-600" },
+  PENDING_COUNT:    { label: "Chờ kiểm đếm",    className: "bg-indigo-50 text-indigo-700" },
+  SUBMITTED:        { label: "Đã nộp",          className: "bg-blue-50 text-blue-700" },
+  PENDING_INCIDENT: { label: "Có sự cố",        className: "bg-yellow-50 text-yellow-700" },
+  QC_APPROVED:      { label: "QC Đạt",          className: "bg-purple-50 text-purple-700" },
+  GRN_CREATED:      { label: "GRN Created",     className: "bg-orange-50 text-orange-700" },
+  PENDING_APPROVAL: { label: "Chờ duyệt",       className: "bg-amber-50 text-amber-700 ring-1 ring-amber-200" },
+  GRN_APPROVED:     { label: "Đã duyệt",        className: "bg-green-50 text-green-700" },
+  GRN_REJECTED:     { label: "Bị từ chối",      className: "bg-red-50 text-red-600" },
+  POSTED:           { label: "Đã nhập kho",     className: "bg-blue-50 text-blue-700" },
 };
 
 // Style chung cho tất cả action button — gọn, đồng nhất
@@ -19,12 +22,15 @@ const BTN_INDIGO = `${BTN} bg-indigo-50 border-indigo-200 text-indigo-700 hover:
 const BTN_PURPLE = `${BTN} bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100`;
 const BTN_YELLOW = `${BTN} bg-yellow-50 border-yellow-200 text-yellow-700 hover:bg-yellow-100`;
 
+const BTN_GREEN = `${BTN} bg-green-50 border-green-200 text-green-700 hover:bg-green-100`;
+
 interface Props {
   userRole: string;
   onDetail: (r: ReceivingOrder) => void;
   onSubmitConfirm: (r: ReceivingOrder) => void;
   onScan: (r: ReceivingOrder) => void;
   onGenerateGrn: (r: ReceivingOrder) => void;
+  onSubmitGrn: (r: ReceivingOrder) => void;
   onViewIncident: (r: ReceivingOrder) => void;
   loadingId: number | null;
   submitLoadingId: number | null;
@@ -38,6 +44,7 @@ export function getReceivingColumns({
   onSubmitConfirm,
   onScan,
   onGenerateGrn,
+  onSubmitGrn,
   onViewIncident,
   loadingId,
   submitLoadingId,
@@ -151,6 +158,38 @@ export function getReceivingColumns({
                 <span className={ICO}>receipt_long</span>
                 {isLoading ? "..." : "Gen GRN"}
               </button>
+            );
+          }
+          if (r.status === "GRN_CREATED") {
+            return (
+              <button onClick={() => onSubmitGrn(r)} className={BTN_GREEN}>
+                <span className={ICO}>send</span>
+                Gửi Manager
+              </button>
+            );
+          }
+          if (r.status === "PENDING_APPROVAL") {
+            return (
+              <span className={`${BTN} bg-amber-50 border-amber-200 text-amber-700 cursor-default opacity-80`}>
+                <span className={ICO}>hourglass_top</span>
+                Đang chờ duyệt
+              </span>
+            );
+          }
+          if (r.status === "GRN_REJECTED") {
+            return (
+              <button onClick={() => onSubmitGrn(r)} className={`${BTN} bg-red-50 border-red-200 text-red-600 hover:bg-red-100`}>
+                <span className={ICO}>refresh</span>
+                Gửi lại
+              </button>
+            );
+          }
+          if (r.status === "GRN_APPROVED" || r.status === "POSTED") {
+            return (
+              <span className={`${BTN} bg-green-50 border-green-200 text-green-700 cursor-default opacity-80`}>
+                <span className={ICO}>check_circle</span>
+                {r.status === "POSTED" ? "Đã nhập kho" : "Đã duyệt"}
+              </span>
             );
           }
         }

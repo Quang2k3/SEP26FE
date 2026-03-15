@@ -75,15 +75,32 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen flex flex-col" style={{ background: 'transparent' }}>
 
       {/* ════════ TOP HEADER ════════ */}
+      {/*
+        QUAN TRỌNG: backdropFilter KHÔNG được đặt trực tiếp lên <header>.
+        backdropFilter tạo stacking context mới → tất cả position:fixed bên trong
+        layout sẽ bị clip/nhốt, modal không hiển thị đúng viewport.
+        Giải pháp: tách blur ra div::before (absolute) riêng biệt.
+      */}
       <header
         className="h-14 sticky top-0 z-50 flex items-center px-5 gap-4"
         style={{
-          background: 'rgba(255,255,255,0.82)',
-          backdropFilter: 'blur(16px)',
           borderBottom: '1px solid rgba(99,102,241,0.1)',
           boxShadow: '0 1px 16px rgba(99,102,241,0.08)',
+          position: 'relative',
         }}
       >
+        {/* Blur backdrop layer — tách riêng để KHÔNG tạo stacking context cho children */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(255,255,255,0.82)',
+            backdropFilter: 'blur(16px)',
+            zIndex: -1,
+            pointerEvents: 'none',
+          }}
+        />
         {/* Logo */}
         <Link href="/dashboard" className="flex items-center gap-2.5 group flex-shrink-0 mr-2">
           <div

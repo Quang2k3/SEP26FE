@@ -171,9 +171,9 @@ export default function ProfilePage() {
       if (address.trim()) fd.append('address', address.trim());
       if (avatarFile) fd.append('avatar', avatarFile);
 
-      const res = await api.put<ApiResponse<any>>('/profile/update-profile', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      // KHÔNG set Content-Type thủ công — browser tự gán multipart/form-data; boundary=...
+      // Nếu override thủ công sẽ mất boundary và BE không parse được file
+      const res = await api.put<ApiResponse<any>>('/profile/update-profile', fd);
       const updated = res.data.data;
       if (updated) {
         setUserData(updated);

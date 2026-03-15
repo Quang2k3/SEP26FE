@@ -1,12 +1,15 @@
 // BE ReceivingOrderStatus enum — đúng với BE
 export type ReceivingStatus =
   | "DRAFT"
-  | "PENDING_COUNT"     // sau khi submit (DRAFT → PENDING_COUNT)
-  | "SUBMITTED"         // sau khi finalize-count (PENDING_COUNT → SUBMITTED)
+  | "PENDING_COUNT"     // sau khi submit
+  | "SUBMITTED"         // sau khi finalize-count
   | "PENDING_INCIDENT"
   | "QC_APPROVED"
-  | "GRN_CREATED"
-  | "POSTED";
+  | "GRN_CREATED"       // GRN đã tạo, chờ Keeper gửi Manager
+  | "PENDING_APPROVAL"  // Keeper đã gửi, chờ Manager duyệt
+  | "GRN_APPROVED"      // Manager đã duyệt
+  | "GRN_REJECTED"      // Manager từ chối
+  | "POSTED";           // Đã nhập kho
 
 export interface ReceivingItem {
   receivingItemId: number;
