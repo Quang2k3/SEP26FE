@@ -1,11 +1,14 @@
 services:
+  # Next.js Frontend
   frontend:
+    build: .
     image: ghcr.io/quang2k3/sep26fe:latest
     container_name: sep26fe
     restart: unless-stopped
     ports:
       - "3000:3000"
 
+  # Auto-update: polls GHCR every 60s for new images
   watchtower:
     image: containrrr/watchtower
     container_name: watchtower
@@ -21,10 +24,6 @@ services:
       - DOCKER_CONFIG=/
     command: sep26fe
 
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared
-    restart: unless-stopped
-    command: tunnel run
-    environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+  # NOTE: Cloudflare Tunnel (wms-tunnel) is already running as a Windows service.
+  # Add a public hostname in Cloudflare dashboard: https://one.dash.cloudflare.com/
+  #   - Domain: cleanhousewms.id.vn -> http://localhost:3000
