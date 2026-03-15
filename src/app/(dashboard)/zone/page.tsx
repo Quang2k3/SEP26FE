@@ -1,202 +1,326 @@
 'use client';
 
-import React, { Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import ZoneFormModal, { ZoneData } from '@/components/zone/ZoneFormModal'; // Đảm bảo import đúng đường dẫn Modal của bạn
+import { useEffect, useState, useMemo, useCallback, Suspense } from 'react';
+import api from '@/config/axios';
+import { fetchZones } from '@/services/zoneService';
+import { getStoredSession } from '@/services/authService';
+import type { Zone } from '@/interfaces/zone';
+import type { ApiResponse } from '@/interfaces/common';
+import { useConfirm } from '@/components/ui/ModalProvider';
+import Portal from '@/components/ui/Portal';
+import toast from 'react-hot-toast';
 
-// Dữ liệu tĩnh mô phỏng (Mock Data)
-const MOCK_ZONES = [
-  { code: 'ZN-101', name: 'North Wing Cold', type: 'Cold Storage', capacity: 45, status: 'Active' },
-  { code: 'ZN-102', name: 'South Dry Goods', type: 'Dry Storage', capacity: 90, status: 'Full' },
-  { code: 'ZN-103', name: 'Hazardous Buffer', type: 'Hazardous', capacity: 15, status: 'Maintenance' },
-  { code: 'ZN-104', name: 'Main Loading Dock', type: 'Transit', capacity: 60, status: 'Active' },
-];
+// ─── API ──────────────────────────────────────────────────────────────────────
 
-function ZoneListContent() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  
-  // Bắt URL param để biết đang mở Modal Tạo hay Sửa
-  const currentAction = searchParams.get('action'); // 'create' hoặc 'edit'
-  const currentId = searchParams.get('id'); // VD: 'ZN-101'
+async function apiCreateZone(zoneCode: string, zoneName: string): Promise<Zone> {
+  const { data } = await api.post<ApiResponse<Zone>>('/zones', { zoneCode, zoneName });
+  return data.data;
+}
 
-  // Đóng Modal bằng cách xóa query params, trở về URL sạch
-  const closeModal = () => {
-    router.push('/zone');
+async function apiUpdateZone(zoneId: number, zoneName: string): Promise<Zone> {
+  const { data } = await api.put<ApiResponse<Zone>>(`/zones/${zoneId}`, { zoneName });
+  return data.data;
+}
+
+async function apiDeactivateZone(zoneId: number): Promise<void> {
+  await api.patch(`/zones/${zoneId}/deactivate`);
+}
+
+// ─── Zone Modal ───────────────────────────────────────────────────────────────
+
+function ZoneModal({ zone, onClose, onSaved }: {
+  zone: Zone | null; // null = create mode
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isEdit = zone !== null;
+  const [zoneCode, setZoneCode] = useState(zone?.zoneCode ?? '');
+  const [zoneName, setZoneName] = useState(zone?.zoneName ?? '');
+  const [saving,   setSaving]   = useState(false);
+
+  const handleSave = async () => {
+    if (!zoneCode.trim())  { toast.error('Nhập mã zone'); return; }
+    if (!zoneName.trim())  { toast.error('Nhập tên zone'); return; }
+    setSaving(true);
+    try {
+      if (isEdit) {
+        await apiUpdateZone(zone.zoneId, zoneName.trim());
+        toast.success(`Đã cập nhật zone ${zone.zoneCode}`);
+      } else {
+        await apiCreateZone(zoneCode.trim().toUpperCase(), zoneName.trim());
+        toast.success(`Đã tạo zone ${zoneCode.toUpperCase()}`);
+      }
+      onSaved();
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Lỗi lưu zone');
+    } finally { setSaving(false); }
   };
 
-  // Xử lý khi bấm nút Save trong Modal
-  const handleSaveZone = (data: ZoneData) => {
-    console.log(`API Call: ${currentAction === 'edit' ? 'Cập nhật' : 'Tạo mới'} Zone với dữ liệu:`, data);
-    // Sau này bạn gọi API ở đây
-    closeModal();
-  };
+  const inputCls = 'w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white';
 
   return (
-    <div className="max-w-7xl mx-auto w-full flex flex-col gap-6 p-4 md:p-8 bg-gray-50/50 min-h-screen font-sans relative">
-      
-      {/* Khối nền nội dung - Sẽ bị mờ (blur) đi khi Modal mở */}
-      <div className={`flex flex-col gap-6 transition-all duration-300 ${currentAction ? 'opacity-30 blur-[2px] pointer-events-none' : 'opacity-100'}`}>
-        
-        {/* Page Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Zone Management</h1>
-            <p className="mt-1 text-sm text-gray-500">Configure and monitor all warehouse sections.</p>
+    <Portal>
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+        style={{ background: 'rgba(17,24,39,0.55)', backdropFilter: 'blur(6px)' }}
+        onClick={e => e.target === e.currentTarget && onClose()}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isEdit ? 'bg-amber-50' : 'bg-indigo-50'}`}>
+                <span className={`material-symbols-outlined text-[18px] ${isEdit ? 'text-amber-500' : 'text-indigo-500'}`}>
+                  {isEdit ? 'edit' : 'add_box'}
+                </span>
+              </div>
+              <h3 className="text-sm font-bold text-gray-900">{isEdit ? `Sửa zone ${zone.zoneCode}` : 'Tạo zone mới'}</h3>
+            </div>
+            <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">
+              <span className="material-symbols-outlined text-[18px]">close</span>
+            </button>
           </div>
-          {/* Nút Create Zone chuyển hướng URL */}
-          <button 
-            onClick={() => router.push('/zone?action=create')}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 shadow-sm outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          >
-            <span className="material-symbols-outlined text-sm">add</span>
-            Create Zone
-          </button>
-        </div>
-
-        {/* Filters & Search */}
-        <div className="flex flex-wrap gap-3 items-center bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-          <div className="flex flex-1 max-w-md items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500 transition-all">
-            <span className="material-symbols-outlined text-gray-400 text-xl">search</span>
-            <input 
-              className="w-full bg-transparent border-none p-0 text-sm text-gray-900 focus:outline-none placeholder-gray-400" 
-              placeholder="Search zones by code or name..." 
-              type="text"
-            />
+          <div className="p-5 space-y-4">
+            <div>
+              <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+                Mã Zone {!isEdit && <span className="text-red-400">*</span>}
+              </label>
+              <input value={zoneCode} onChange={e => setZoneCode(e.target.value)}
+                disabled={isEdit} placeholder="VD: Z-HC"
+                className={`${inputCls} ${isEdit ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : ''}`} />
+              {!isEdit && (
+                <p className="text-[10px] text-gray-400 mt-1">
+                  Convention: <span className="font-mono font-semibold">Z-{'{categoryCode}'}</span> để hệ thống tự gợi ý putaway
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+                Tên Zone <span className="text-red-400">*</span>
+              </label>
+              <input value={zoneName} onChange={e => setZoneName(e.target.value)}
+                placeholder="VD: Khu Household Care"
+                className={inputCls} />
+            </div>
           </div>
-          <button className="flex items-center justify-between gap-2 border border-gray-200 rounded-md px-4 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors">
-            All Types
-            <span className="material-symbols-outlined text-gray-400 text-lg">expand_more</span>
-          </button>
-          <button className="flex items-center justify-between gap-2 border border-gray-200 rounded-md px-4 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors">
-            Any Status
-            <span className="material-symbols-outlined text-gray-400 text-lg">expand_more</span>
-          </button>
-        </div>
-
-        {/* Stats Summary */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-center">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Zones</span>
-            <span className="text-3xl font-bold text-gray-900 mt-1">42</span>
-          </div>
-          <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-center">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Active Capacity</span>
-            <span className="text-3xl font-bold text-gray-900 mt-1">78%</span>
-          </div>
-          <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-center">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Maintenance</span>
-            <span className="text-3xl font-bold text-amber-600 mt-1">03</span>
-          </div>
-          <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-center">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Critically Full</span>
-            <span className="text-3xl font-bold text-red-600 mt-1">05</span>
-          </div>
-        </div>
-
-        {/* Main Table */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Zone Code</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Zone Name</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-48">Capacity</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {MOCK_ZONES.map((zone, index) => (
-                  <tr key={index} className="hover:bg-gray-50 transition-colors group">
-                    <td className="px-6 py-4 text-sm font-bold text-blue-600 hover:underline cursor-pointer">{zone.code}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{zone.name}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{zone.type}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className={`h-2 rounded-full ${zone.capacity > 85 ? 'bg-red-500' : zone.capacity > 60 ? 'bg-amber-500' : 'bg-blue-600'}`} 
-                            style={{ width: `${zone.capacity}%` }}
-                          ></div>
-                        </div>
-                        <span className="text-xs font-medium text-gray-600 whitespace-nowrap">{zone.capacity}%</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        zone.status === 'Full' ? 'bg-red-100 text-red-800' :
-                        zone.status === 'Active' ? 'bg-green-100 text-green-800' :
-                        'bg-amber-100 text-amber-800'
-                      }`}>
-                        {zone.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="flex items-center justify-center gap-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                        {/* Nút View (Sau này sẽ đưa sang trang chi tiết Zone, xem danh sách Bin bên trong) */}
-                        <button
-                          onClick={() => router.push(`/zone/${zone.code}`)}
-                          className="text-gray-400 hover:text-blue-600 transition-colors"
-                          title="View Details"
-                        >
-                          <span className="material-symbols-outlined text-lg">visibility</span>
-                        </button>
-                        
-                        {/* Nút Edit - Chuyển URL sang chế độ edit */}
-                        <button 
-                          onClick={() => router.push(`/zone?action=edit&id=${zone.code}`)}
-                          className="text-gray-400 hover:text-blue-600 transition-colors"
-                          title="Edit Zone"
-                        >
-                          <span className="material-symbols-outlined text-lg">edit</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2.5 bg-gray-50/50">
+            <button onClick={onClose}
+              className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+              Huỷ
+            </button>
+            <button onClick={handleSave} disabled={saving}
+              className="px-5 py-2.5 text-sm font-semibold text-white rounded-xl flex items-center gap-1.5 disabled:opacity-60 active:scale-95 transition-all"
+              style={{ background: 'linear-gradient(135deg,#4f46e5,#6366f1)' }}>
+              {saving
+                ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Đang lưu...</>
+                : <><span className="material-symbols-outlined text-[15px]">save</span>{isEdit ? 'Lưu thay đổi' : 'Tạo zone'}</>}
+            </button>
           </div>
         </div>
       </div>
+    </Portal>
+  );
+}
 
-      {/* TÍCH HỢP MODAL 2-TRONG-1 (CREATE & EDIT) */}
-      <ZoneFormModal 
-        isOpen={currentAction === 'create' || currentAction === 'edit'} 
-        mode={currentAction === 'edit' ? 'edit' : 'create'}
-        initialData={
-          currentAction === 'edit' 
-            ? { 
-                code: currentId || '', 
-                name: 'High-Density Storage A', // Demo data
-                type: 'Bulk Storage', 
-                description: 'Main bulk storage area...', 
-                isActive: true 
-              } 
-            : null
-        }
-        onClose={closeModal} 
-        onSubmit={handleSaveZone}
-      />
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
+function ZoneListContent() {
+  const confirm   = useConfirm();
+  const session   = getStoredSession();
+  const isManager = session?.user?.roleCodes?.includes('MANAGER') ?? false;
+
+  const [zones,       setZones]       = useState<Zone[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [search,      setSearch]      = useState('');
+  const [filterActive, setFilterActive] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+  const [editZone,    setEditZone]    = useState<Zone | null | undefined>(undefined); // undefined=closed, null=create
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Load tất cả zones bao gồm inactive
+      const warehouseId = session?.user?.warehouseIds?.[0];
+      if (!warehouseId) { setZones([]); return; }
+      const { data } = await api.get<ApiResponse<any>>('/zones', {
+        params: { warehouseId, activeOnly: false, size: 200 }
+      });
+      const content = data.data?.content ?? data.data ?? [];
+      setZones(Array.isArray(content) ? content : []);
+    } catch { toast.error('Không tải được zones'); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const displayZones = useMemo(() => {
+    let list = [...zones];
+    if (filterActive === 'ACTIVE')   list = list.filter(z => z.active);
+    if (filterActive === 'INACTIVE') list = list.filter(z => !z.active);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(z => z.zoneCode.toLowerCase().includes(q) || z.zoneName.toLowerCase().includes(q));
+    }
+    return list;
+  }, [zones, filterActive, search]);
+
+  const handleDeactivate = (zone: Zone) => {
+    confirm({
+      title: `Vô hiệu hóa ${zone.zoneCode}?`,
+      description: 'Zone sẽ không xuất hiện trong danh sách gợi ý putaway nữa.',
+      variant: 'danger', icon: 'block', confirmText: 'Vô hiệu hóa',
+      onConfirm: async () => {
+        try {
+          await apiDeactivateZone(zone.zoneId);
+          toast.success(`Đã vô hiệu hóa ${zone.zoneCode}`);
+          load();
+        } catch (e: any) { toast.error(e?.response?.data?.message ?? 'Lỗi'); }
+      },
+    });
+  };
+
+  const stats = useMemo(() => ({
+    total:    zones.length,
+    active:   zones.filter(z => z.active).length,
+    inactive: zones.filter(z => !z.active).length,
+  }), [zones]);
+
+  return (
+    <div className="w-full font-sans space-y-4">
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Quản lý Zone</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Các khu vực lưu kho · Convention mã: <span className="font-mono text-indigo-600">Z-{'{categoryCode}'}</span></p>
+        </div>
+        {isManager && (
+          <button onClick={() => setEditZone(null)}
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white rounded-xl active:scale-95 transition-all"
+            style={{ background: 'linear-gradient(135deg,#4f46e5,#6366f1)', boxShadow: '0 4px 14px rgba(79,70,229,0.25)' }}>
+            <span className="material-symbols-outlined text-[16px]">add</span>
+            Tạo Zone
+          </button>
+        )}
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: 'Tổng Zone',    val: stats.total,    color: 'text-gray-800',   bg: 'bg-white border-gray-200' },
+          { label: 'Đang hoạt động', val: stats.active, color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
+          { label: 'Vô hiệu',     val: stats.inactive,  color: 'text-gray-500',   bg: 'bg-gray-50 border-gray-200' },
+        ].map(s => (
+          <div key={s.label} className={`rounded-xl border px-4 py-3 ${s.bg}`}>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{s.label}</p>
+            <p className={`text-2xl font-extrabold mt-0.5 ${s.color}`}>{s.val}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[16px]">search</span>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Tìm mã hoặc tên zone..."
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white" />
+        </div>
+        <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+          {([['ALL','Tất cả'],['ACTIVE','Hoạt động'],['INACTIVE','Vô hiệu']] as const).map(([key, label]) => (
+            <button key={key} onClick={() => setFilterActive(key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${filterActive === key ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <button onClick={load} disabled={loading}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm text-indigo-600 border border-indigo-200 bg-white rounded-xl hover:bg-indigo-50 disabled:opacity-50 transition-colors">
+          <span className={`material-symbols-outlined text-[15px] ${loading ? 'animate-spin' : ''}`}>refresh</span>
+          Làm mới
+        </button>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <span className="material-symbols-outlined animate-spin text-indigo-400 text-[36px]">progress_activity</span>
+          </div>
+        ) : displayZones.length === 0 ? (
+          <div className="flex flex-col items-center py-16 gap-2">
+            <span className="material-symbols-outlined text-gray-200 text-[48px]">grid_view</span>
+            <p className="text-sm text-gray-400">{search ? 'Không tìm thấy zone' : 'Chưa có zone nào'}</p>
+          </div>
+        ) : (
+          <>
+            {/* Header */}
+            <div className="grid bg-gray-50 border-b border-gray-100" style={{ gridTemplateColumns: '1fr 2fr 1fr 1fr auto' }}>
+              {['Mã Zone', 'Tên Zone', 'Trạng thái', 'Ngày tạo', ''].map(h => (
+                <div key={h} className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">{h}</div>
+              ))}
+            </div>
+            <div className="divide-y divide-gray-50">
+              {displayZones.map(zone => (
+                <div key={zone.zoneId} className="grid items-center hover:bg-gray-50/60 transition-colors"
+                  style={{ gridTemplateColumns: '1fr 2fr 1fr 1fr auto' }}>
+                  <div className="px-4 py-3.5 flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
+                      <span className="material-symbols-outlined text-indigo-500 text-[14px]">warehouse</span>
+                    </div>
+                    <span className="text-sm font-bold text-gray-900 font-mono">{zone.zoneCode}</span>
+                  </div>
+                  <div className="px-4 py-3.5">
+                    <p className="text-sm text-gray-700">{zone.zoneName}</p>
+                  </div>
+                  <div className="px-4 py-3.5">
+                    <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full ${
+                      zone.active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${zone.active ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                      {zone.active ? 'Hoạt động' : 'Vô hiệu'}
+                    </span>
+                  </div>
+                  <div className="px-4 py-3.5">
+                    <span className="text-xs text-gray-400">
+                      {zone.createdAt ? new Date(zone.createdAt).toLocaleDateString('vi-VN') : '—'}
+                    </span>
+                  </div>
+                  <div className="px-4 py-3.5 flex items-center gap-1">
+                    {isManager && (
+                      <>
+                        <button onClick={() => setEditZone(zone)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                          title="Sửa">
+                          <span className="material-symbols-outlined text-[15px]">edit</span>
+                        </button>
+                        {zone.active && (
+                          <button onClick={() => handleDeactivate(zone)}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                            title="Vô hiệu hóa">
+                            <span className="material-symbols-outlined text-[15px]">block</span>
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
+              <p className="text-xs text-gray-400">{displayZones.length} / {zones.length} zones</p>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Modal */}
+      {editZone !== undefined && (
+        <ZoneModal zone={editZone} onClose={() => setEditZone(undefined)} onSaved={load} />
+      )}
     </div>
   );
 }
 
-// Bọc Suspense cho Next.js Server Components
 export default function ZonePage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50/50">
-        <div className="flex flex-col items-center gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <div className="text-sm font-medium text-gray-500">Loading Zones...</div>
-        </div>
-      </div>
-    }>
+    <Suspense fallback={<div className="flex justify-center py-16"><span className="material-symbols-outlined animate-spin text-indigo-400 text-[32px]">progress_activity</span></div>}>
       <ZoneListContent />
     </Suspense>
   );
