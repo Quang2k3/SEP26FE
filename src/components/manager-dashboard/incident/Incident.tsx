@@ -62,10 +62,10 @@ export default function IncidentListPage() {
   async function handleApprove(incident: Incident) {
     try {
       await approveIncident(incident.incidentId);
-      toast.success("Duyệt Incident thành công");
+      toast.success("Duyệt sự cố thành công");
       loadIncidents();
     } catch {
-      toast.error("Duyệt thất bại");
+      toast.error("Duyệt sự cố thất bại");
     }
   }
 
@@ -83,10 +83,10 @@ export default function IncidentListPage() {
       async onOk() {
         try {
           await rejectIncident(incident.incidentId, reason);
-          toast.success("Đã từ chối Incident");
+          toast.success("Đã từ chối sự cố");
           loadIncidents();
         } catch {
-          toast.error("Từ chối thất bại");
+          toast.error("Từ chối sự cố thất bại");
         }
       },
     });

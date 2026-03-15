@@ -126,7 +126,7 @@ function BinDetailModal({ bin, task, pendingForBin, onClose, onAdd, remainingFn 
     if (!selectedSku) return;
     const q = parseFloat(qty);
     if (!q || q <= 0) { toast.error('Nhập số lượng hợp lệ'); return; }
-    if (q > maxQty) { toast.error(`Tối đa ${maxQty}`); return; }
+    if (q > maxQty) { toast.error(`Số lượng tối đa là ${maxQty}`); return; }
     onAdd(selectedSku.skuId, selectedSku.skuCode, selectedSku.skuName, q);
     setQty('');
     // Move to next sku if current is done
@@ -463,7 +463,7 @@ export default function PutawayPage() {
       await allocatePutaway(task.putawayTaskId, pending.map(p => ({
         skuId: p.skuId, locationId: p.locationId, qty: p.qty,
       })));
-      toast.success(`Đặt chỗ thành công ${pending.length} mục`);
+      toast.success(`Đã phân bổ ${pending.length} mục thành công`);
       const [detail, allocs] = await Promise.all([
         fetchPutawayTask(task.putawayTaskId),
         fetchAllocations(task.putawayTaskId),
@@ -506,7 +506,7 @@ export default function PutawayPage() {
         setConfirming(true);
         try {
           await confirmPutawayTask(task!.putawayTaskId);
-          toast.success('Putaway hoàn thành!');
+          toast.success('Cất hàng hoàn thành!');
           loadTasks();
           setStep('TASK_LIST');
           setTask(null);

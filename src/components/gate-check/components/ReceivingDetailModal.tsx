@@ -208,7 +208,7 @@ export default function ReceivingDetailModal({ open, receiving, onClose, onRefre
           manufactureDate: i.manufactureDate || null,
         })),
       });
-      toast.success("Đã lưu thay đổi");
+      toast.success("Đã lưu thay đổi phiếu");
       onRefresh();
     } catch {
     } finally { setSaving(false); }

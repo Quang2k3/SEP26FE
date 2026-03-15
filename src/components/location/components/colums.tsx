@@ -62,10 +62,10 @@ export function getLocationColumns(reload: () => void): ColumnsType<Location> {
               if (!checked) {
                 try {
                   await deactivateLocation(record.locationId);
-                  toast.success("Location deactivated");
+                  toast.success("Đã vô hiệu hóa location");
                   reload();
                 } catch {
-                  toast.error("Deactivate failed");
+                  toast.error("Vô hiệu hóa thất bại");
                 }
               }
             }}

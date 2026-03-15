@@ -150,9 +150,9 @@ function CreateLocationModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!zoneId) { toast.error("Chọn Zone"); return; }
+    if (!zoneId) { toast.error("Vui lòng chọn Zone trước"); return; }
     if (step !== "AISLE" && !parentId) {
-      toast.error(`Chọn ${step === "RACK" ? "AISLE" : "RACK"} cha`);
+      toast.error(`Vui lòng chọn ${step === "RACK" ? "dãy (Aisle)" : "kệ (Rack)"} cha trước`);
       return;
     }
     setLoading(true);
