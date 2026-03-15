@@ -318,14 +318,16 @@ export default function PutawayPage() {
   const [confirming, setConfirming]     = useState(false);
 
   // ── Computed: suggested zones & bins from API ──
-  const suggestedZoneIds = new Set(suggestions.map(s => s.matchedZoneId));
+  // Filter: chỉ lấy suggestions có matchedZoneId hợp lệ (bỏ fallback entries)
+  const validSuggestions = suggestions.filter(s => s.matchedZoneId != null && s.suggestedLocationId != null);
+  const suggestedZoneIds = new Set(validSuggestions.map(s => s.matchedZoneId));
   // Map: zoneId → list suggestions (grouped)
-  const suggByZone = suggestions.reduce<Record<number, PutawaySuggestion[]>>((acc, s) => {
+  const suggByZone = validSuggestions.reduce<Record<number, PutawaySuggestion[]>>((acc, s) => {
     (acc[s.matchedZoneId] ??= []).push(s);
     return acc;
   }, {});
   // Map: locationId → suggestion (for bin-level highlight)
-  const suggByBin = suggestions.reduce<Record<number, PutawaySuggestion>>((acc, s) => {
+  const suggByBin = validSuggestions.reduce<Record<number, PutawaySuggestion>>((acc, s) => {
     acc[s.suggestedLocationId] = s;
     return acc;
   }, {});
