@@ -2,27 +2,29 @@ import api from '@/config/axios';
 import type { ApiResponse } from '@/interfaces/common';
 import type { AuthSession, AuthUser, LoginPayload, LoginResponseData, LoginResult } from '@/interfaces/auth';
 
-const STORAGE_TOKEN = 'auth_token';
+const STORAGE_TOKEN      = 'auth_token';
 const STORAGE_TOKEN_TYPE = 'auth_token_type';
 const STORAGE_EXPIRES_AT = 'auth_expires_at';
-const STORAGE_USER = 'auth_user';
+const STORAGE_USER       = 'auth_user';
+
+/**
+ * Buffer 60 giây: coi token hết hạn trước 60s thực tế
+ * Tránh race condition gửi request khi token vừa expire
+ */
+const EXPIRY_BUFFER_MS = 60 * 1000;
 
 export function getStoredSession(): AuthSession | null {
   if (typeof window === 'undefined') return null;
 
-  const token = localStorage.getItem(STORAGE_TOKEN);
-  const tokenType = localStorage.getItem(STORAGE_TOKEN_TYPE) || 'Bearer';
+  const token       = localStorage.getItem(STORAGE_TOKEN);
+  const tokenType   = localStorage.getItem(STORAGE_TOKEN_TYPE) || 'Bearer';
   const expiresAtStr = localStorage.getItem(STORAGE_EXPIRES_AT);
-  const userStr = localStorage.getItem(STORAGE_USER);
+  const userStr     = localStorage.getItem(STORAGE_USER);
 
-  if (!token || !expiresAtStr || !userStr) {
-    return null;
-  }
+  if (!token || !expiresAtStr || !userStr) return null;
 
   const expiresAt = Number(expiresAtStr);
-  if (!expiresAt || Number.isNaN(expiresAt)) {
-    return null;
-  }
+  if (!expiresAt || Number.isNaN(expiresAt)) return null;
 
   try {
     const user: AuthUser = JSON.parse(userStr);
@@ -34,21 +36,24 @@ export function getStoredSession(): AuthSession | null {
 
 export function isTokenExpired(): boolean {
   if (typeof window === 'undefined') return true;
-
   const session = getStoredSession();
   if (!session) return true;
-
-  return session.expiresAt <= Date.now();
+  return session.expiresAt - EXPIRY_BUFFER_MS <= Date.now();
 }
 
+/**
+ * Trả về session nếu còn hợp lệ (có buffer 60s).
+ * KHÔNG tự động clearAuthToken ở đây để tránh xóa nhầm khi SSR/hydration.
+ * Việc clear và redirect được xử lý tập trung tại ProtectedDashboardLayout.
+ */
 export function getValidSession(): AuthSession | null {
   if (typeof window === 'undefined') return null;
 
   const session = getStoredSession();
   if (!session) return null;
 
-  if (session.expiresAt <= Date.now()) {
-    clearAuthToken();
+  // Hết hạn (có buffer)
+  if (session.expiresAt - EXPIRY_BUFFER_MS <= Date.now()) {
     return null;
   }
 
@@ -62,10 +67,10 @@ export function isAuthenticated(): boolean {
 export function saveAuthSession(session: AuthSession) {
   if (typeof window === 'undefined') return;
 
-  localStorage.setItem(STORAGE_TOKEN, session.token);
+  localStorage.setItem(STORAGE_TOKEN,      session.token);
   localStorage.setItem(STORAGE_TOKEN_TYPE, session.tokenType);
   localStorage.setItem(STORAGE_EXPIRES_AT, String(session.expiresAt));
-  localStorage.setItem(STORAGE_USER, JSON.stringify(session.user));
+  localStorage.setItem(STORAGE_USER,       JSON.stringify(session.user));
 
   const maxAgeSec = Math.max(0, Math.floor((session.expiresAt - Date.now()) / 1000));
   document.cookie = `auth_token=${session.token}; path=/; max-age=${maxAgeSec}`;
@@ -94,7 +99,6 @@ export function getTokenType(): string | null {
 export function getAuthorizationHeaderValue(): string | null {
   const session = getValidSession();
   if (!session) return null;
-
   return `${session.tokenType} ${session.token}`;
 }
 
@@ -103,23 +107,22 @@ export async function login(payload: LoginPayload): Promise<LoginResult> {
   const body = response.data;
   const data = body?.data;
 
-  if (!data) {
-    throw new Error('Không nhận được dữ liệu đăng nhập từ server');
-  }
+  if (!data) throw new Error('Không nhận được dữ liệu đăng nhập từ server');
 
   if (data.requiresVerification === true) {
     return { session: null, raw: body };
   }
 
-  const token = data.token;
+  const token     = data.token;
   const tokenType = data.tokenType || 'Bearer';
   const expiresIn = data.expiresIn ?? 0;
-  const user = data.user;
+  const user      = data.user;
 
   if (!token) throw new Error('Không nhận được token từ server');
-  if (!user) throw new Error('Không nhận được thông tin user từ server');
+  if (!user)  throw new Error('Không nhận được thông tin user từ server');
 
-  // BE có thể trả ms hoặc seconds — tự detect
+  // BE trả expiresIn theo ms (vd: 604800000 = 7 ngày)
+  // Nếu nhỏ hơn 100_000 thì đang trả seconds → nhân 1000
   const rawExpiry = Number(expiresIn);
   const expiresAt = Date.now() + (rawExpiry > 100_000 ? rawExpiry : rawExpiry * 1000);
 
@@ -160,15 +163,14 @@ export async function verifyOtp(payload: VerifyOtpPayload): Promise<LoginResult>
   const response = await api.post<ApiResponse<LoginResponseData>>('/auth/verify-otp', payload);
   const body = response.data;
 
-  const token = body?.data?.token;
+  const token     = body?.data?.token;
   const tokenType = body?.data?.tokenType || 'Bearer';
   const expiresIn = body?.data?.expiresIn ?? 0;
-  const user = body?.data?.user;
+  const user      = body?.data?.user;
 
   if (!token) throw new Error('Không nhận được token từ server');
-  if (!user) throw new Error('Không nhận được user từ server');
+  if (!user)  throw new Error('Không nhận được user từ server');
 
-  // BE có thể trả ms hoặc seconds — tự detect
   const rawExpiry = Number(expiresIn);
   const expiresAt = Date.now() + (rawExpiry > 100_000 ? rawExpiry : rawExpiry * 1000);
 
@@ -189,28 +191,16 @@ export interface UpdateProfilePayload {
 
 export async function updateProfile(payload: UpdateProfilePayload): Promise<ApiResponse<unknown>> {
   const formData = new FormData();
-  
-  // Required fields
   formData.append('fullName', payload.fullName);
   formData.append('phone', payload.phone);
-  
-  // Optional fields - always send, use empty string if not provided
-  // Format: yyyy-MM-dd for dateOfBirth
   formData.append('gender', payload.gender || '');
   formData.append('dateOfBirth', payload.dateOfBirth || '');
   formData.append('address', payload.address || '');
-  
-  // Avatar - chỉ append nếu có file, còn không thì bỏ trống field này
-  if (payload.avatar) {
-    formData.append('avatar', payload.avatar);
-  }
+  if (payload.avatar) formData.append('avatar', payload.avatar);
 
   const response = await api.put<ApiResponse<unknown>>('/profile/update-profile', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
+    headers: { 'Content-Type': 'multipart/form-data' },
   });
-
   return response.data;
 }
 

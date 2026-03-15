@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import type { ZoneData, ZoneFormModalProps } from '@/interfaces/modals';
+import Portal from '@/components/ui/Portal';
 
 export default function ZoneFormModal({ isOpen, mode, initialData, onClose, onSubmit }: ZoneFormModalProps) {
   const [formData, setFormData] = useState<ZoneData>({
@@ -29,6 +30,7 @@ export default function ZoneFormModal({ isOpen, mode, initialData, onClose, onSu
   const isEdit = mode === 'edit';
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col border border-gray-100">
         
@@ -135,5 +137,6 @@ export default function ZoneFormModal({ isOpen, mode, initialData, onClose, onSu
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

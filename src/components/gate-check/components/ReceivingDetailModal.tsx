@@ -12,6 +12,7 @@ import {
 import type { ReceivingOrder, ReceivingItem } from "@/interfaces/receiving";
 import { STATUS_BADGE } from "./columns";
 import toast from "react-hot-toast";
+import Portal from '@/components/ui/Portal';
 
 const ITEMS_PER_PAGE = 6;
 
@@ -220,6 +221,7 @@ export default function ReceivingDetailModal({ open, receiving, onClose, onRefre
   const pagedItems = detailItems.slice(itemPage * ITEMS_PER_PAGE, (itemPage + 1) * ITEMS_PER_PAGE);
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       {/* Modal — wider for comfort */}
       <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col max-h-[94vh]">
@@ -568,5 +570,6 @@ export default function ReceivingDetailModal({ open, receiving, onClose, onRefre
 
       </div>
     </div>
+    </Portal>
   );
 }

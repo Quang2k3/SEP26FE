@@ -8,6 +8,7 @@ import { fetchWarehouses, type Warehouse } from "@/services/warehouseService";
 import { searchSkus, type SkuOption } from "@/services/skuService";
 import { createDraftReceivingOrder } from "@/services/receivingOrdersService";
 import toast from "react-hot-toast";
+import Portal from '@/components/ui/Portal';
 
 interface ItemRow {
   id: string; // local key
@@ -197,6 +198,7 @@ export default function CreateReceivingOrderModal({
   if (!open) return null;
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="w-full max-w-2xl bg-white rounded-xl shadow-xl border border-gray-100 flex flex-col max-h-[90vh]">
         {/* Header */}
@@ -426,5 +428,6 @@ export default function CreateReceivingOrderModal({
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

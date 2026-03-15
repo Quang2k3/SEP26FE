@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { CreateCategoryModalProps } from '@/interfaces/modals';
+import Portal from '@/components/ui/Portal';
 
 export default function CreateCategoryModal({ onClose }: CreateCategoryModalProps) {
   const handleSubmit = (e: React.FormEvent) => {
@@ -11,6 +12,7 @@ export default function CreateCategoryModal({ onClose }: CreateCategoryModalProp
   };
 
   return (
+    <Portal>
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm font-sans"
     >
@@ -109,5 +111,6 @@ export default function CreateCategoryModal({ onClose }: CreateCategoryModalProp
 
       </div>
     </div>
+    </Portal>
   );
 }

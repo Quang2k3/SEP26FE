@@ -17,6 +17,7 @@ import type {
 import type { Zone } from "@/interfaces/zone";
 import { AdminPage } from "../layout/AdminPage";
 import { Button } from "../ui/Button";
+import Portal from "@/components/ui/Portal";
 import toast from "react-hot-toast";
 import { getStoredSession } from "@/services/authService";
 import { useConfirm } from "../ui/ModalProvider";
@@ -54,7 +55,6 @@ function CreateModal({ zones, onClose, onDone }: {
   const [loadingParents, setLoadingParents] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Load parent list khi đổi zone hoặc type
   useEffect(() => {
     if (!zoneId) { setParents([]); return; }
     const parentType = locType === "RACK" ? "AISLE" : locType === "BIN" ? "RACK" : null;
@@ -107,140 +107,142 @@ function CreateModal({ zones, onClose, onDone }: {
   const inp = "w-full px-3 py-2.5 border border-indigo-100 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white";
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-      style={{ background: "rgba(79,70,229,0.12)", backdropFilter: "blur(8px)" }}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl border border-indigo-100 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
-              <span className="material-symbols-outlined text-indigo-500 text-[18px]">add_location</span>
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-gray-900">Tạo Location mới</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Zone → AISLE → RACK → BIN</p>
-            </div>
-          </div>
-          <button type="button" onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">
-            <span className="material-symbols-outlined text-[18px]">close</span>
-          </button>
-        </div>
-
-        <div className="px-6 py-3 border-b border-gray-100 flex gap-2">
-          {(["AISLE","RACK","BIN","STAGING"] as LocationType[]).map(t => (
-            <button key={t} type="button"
-              onClick={() => { setLocType(t); setParentId(""); setCode(""); }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all
-                ${locType === t ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-500 hover:bg-indigo-50 hover:text-indigo-700"}`}>
-              {t}
-            </button>
-          ))}
-        </div>
-        <p className="px-6 py-2 text-xs text-indigo-600 bg-indigo-50/60 border-b border-indigo-100/50">{desc[locType]}</p>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Zone <span className="text-red-500">*</span></label>
-              <div className="relative">
-                <select required value={zoneId}
-                  onChange={e => { setZoneId(e.target.value); setParentId(""); }}
-                  className={`${inp} appearance-none pr-8`}>
-                  <option value="">Chọn Zone...</option>
-                  {zones.map(z => (
-                    <option key={z.zoneId} value={z.zoneId}>{z.zoneCode} — {z.zoneName}</option>
-                  ))}
-                </select>
-                <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[16px]">expand_more</span>
+    <Portal>
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+        style={{ background: "rgba(79,70,229,0.12)", backdropFilter: "blur(8px)" }}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl border border-indigo-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
+                <span className="material-symbols-outlined text-indigo-500 text-[18px]">add_location</span>
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Tạo Location mới</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Zone → AISLE → RACK → BIN</p>
               </div>
             </div>
+            <button type="button" onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">
+              <span className="material-symbols-outlined text-[18px]">close</span>
+            </button>
+          </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mã code <span className="text-red-500">*</span></label>
-              <input required value={code} onChange={e => setCode(e.target.value)}
-                placeholder={locType === "AISLE" ? "AISLE-HC-A1" : locType === "RACK" ? "RACK-HC-R1" : "BIN-HC-01"}
-                className={`${inp} font-mono`} />
-            </div>
+          <div className="px-6 py-3 border-b border-gray-100 flex gap-2">
+            {(["AISLE","RACK","BIN","STAGING"] as LocationType[]).map(t => (
+              <button key={t} type="button"
+                onClick={() => { setLocType(t); setParentId(""); setCode(""); }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all
+                  ${locType === t ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-500 hover:bg-indigo-50 hover:text-indigo-700"}`}>
+                {t}
+              </button>
+            ))}
+          </div>
+          <p className="px-6 py-2 text-xs text-indigo-600 bg-indigo-50/60 border-b border-indigo-100/50">{desc[locType]}</p>
 
-            {(locType === "RACK" || locType === "BIN") && (
-              <div className="space-y-1.5 sm:col-span-2">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  {locType === "RACK" ? "AISLE cha" : "RACK cha"} <span className="text-red-500">*</span>
-                </label>
+          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Zone <span className="text-red-500">*</span></label>
                 <div className="relative">
-                  <select required value={parentId} onChange={e => setParentId(e.target.value)}
-                    disabled={loadingParents}
+                  <select required value={zoneId}
+                    onChange={e => { setZoneId(e.target.value); setParentId(""); }}
                     className={`${inp} appearance-none pr-8`}>
-                    <option value="">
-                      {loadingParents ? "Đang tải..." : `Chọn ${locType === "RACK" ? "AISLE" : "RACK"}...`}
-                    </option>
-                    {parents.map(p => (
-                      <option key={p.locationId} value={p.locationId}>{p.locationCode}</option>
+                    <option value="">Chọn Zone...</option>
+                    {zones.map(z => (
+                      <option key={z.zoneId} value={z.zoneId}>{z.zoneCode} — {z.zoneName}</option>
                     ))}
                   </select>
                   <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[16px]">expand_more</span>
                 </div>
-                {!loadingParents && parents.length === 0 && zoneId && (
-                  <p className="text-[11px] text-amber-600 flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[12px]">warning</span>
-                    Chưa có {locType === "RACK" ? "AISLE" : "RACK"} trong zone này — tạo trước.
-                  </p>
-                )}
               </div>
-            )}
 
-            {(locType === "BIN" || locType === "RACK") && (
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Max Weight (kg){locType === "BIN" && <span className="text-red-500"> *</span>}
-                </label>
-                <input type="number" step="0.01" min="0.01"
-                  required={locType === "BIN"}
-                  value={maxWeight} onChange={e => setMaxWeight(e.target.value)}
-                  placeholder="VD: 50" className={inp} />
-                {locType === "BIN" && (
-                  <p className="text-[11px] text-gray-400">Bắt buộc để putaway hoạt động</p>
-                )}
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mã code <span className="text-red-500">*</span></label>
+                <input required value={code} onChange={e => setCode(e.target.value)}
+                  placeholder={locType === "AISLE" ? "AISLE-HC-A1" : locType === "RACK" ? "RACK-HC-R1" : "BIN-HC-01"}
+                  className={`${inp} font-mono`} />
               </div>
-            )}
+
+              {(locType === "RACK" || locType === "BIN") && (
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    {locType === "RACK" ? "AISLE cha" : "RACK cha"} <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <select required value={parentId} onChange={e => setParentId(e.target.value)}
+                      disabled={loadingParents}
+                      className={`${inp} appearance-none pr-8`}>
+                      <option value="">
+                        {loadingParents ? "Đang tải..." : `Chọn ${locType === "RACK" ? "AISLE" : "RACK"}...`}
+                      </option>
+                      {parents.map(p => (
+                        <option key={p.locationId} value={p.locationId}>{p.locationCode}</option>
+                      ))}
+                    </select>
+                    <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[16px]">expand_more</span>
+                  </div>
+                  {!loadingParents && parents.length === 0 && zoneId && (
+                    <p className="text-[11px] text-amber-600 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[12px]">warning</span>
+                      Chưa có {locType === "RACK" ? "AISLE" : "RACK"} trong zone này — tạo trước.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {(locType === "BIN" || locType === "RACK") && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Max Weight (kg){locType === "BIN" && <span className="text-red-500"> *</span>}
+                  </label>
+                  <input type="number" step="0.01" min="0.01"
+                    required={locType === "BIN"}
+                    value={maxWeight} onChange={e => setMaxWeight(e.target.value)}
+                    placeholder="VD: 50" className={inp} />
+                  {locType === "BIN" && (
+                    <p className="text-[11px] text-gray-400">Bắt buộc để putaway hoạt động</p>
+                  )}
+                </div>
+              )}
+
+              {locType === "BIN" && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Max Volume (m³)</label>
+                  <input type="number" step="0.01" min="0.01"
+                    value={maxVolume} onChange={e => setMaxVolume(e.target.value)}
+                    placeholder="VD: 1.5 (tuỳ chọn)" className={inp} />
+                </div>
+              )}
+            </div>
 
             {locType === "BIN" && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Max Volume (m³)</label>
-                <input type="number" step="0.01" min="0.01"
-                  value={maxVolume} onChange={e => setMaxVolume(e.target.value)}
-                  placeholder="VD: 1.5 (tuỳ chọn)" className={inp} />
-              </div>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <div className={`w-9 h-5 rounded-full relative transition-colors ${isPickingFace ? "bg-indigo-500" : "bg-gray-200"}`}
+                  onClick={() => setIsPickingFace(v => !v)}>
+                  <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isPickingFace ? "translate-x-4" : "translate-x-0.5"}`} />
+                </div>
+                <span className="text-sm text-gray-700">Picking Face</span>
+              </label>
             )}
-          </div>
 
-          {locType === "BIN" && (
-            <label className="flex items-center gap-3 cursor-pointer">
-              <div className={`w-9 h-5 rounded-full relative transition-colors ${isPickingFace ? "bg-indigo-500" : "bg-gray-200"}`}
-                onClick={() => setIsPickingFace(v => !v)}>
-                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isPickingFace ? "translate-x-4" : "translate-x-0.5"}`} />
-              </div>
-              <span className="text-sm text-gray-700">Picking Face</span>
-            </label>
-          )}
-
-          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-            <button type="button" onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50">
-              Huỷ
-            </button>
-            <button type="submit" disabled={submitting}
-              className="px-5 py-2 text-sm font-semibold text-white rounded-xl flex items-center gap-2 disabled:opacity-60 active:scale-95"
-              style={{ background: "linear-gradient(135deg,#4f46e5,#6366f1)" }}>
-              {submitting
-                ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Đang tạo...</>
-                : <><span className="material-symbols-outlined text-[15px]">add</span>Tạo {locType}</>
-              }
-            </button>
-          </div>
-        </form>
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+              <button type="button" onClick={onClose}
+                className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50">
+                Huỷ
+              </button>
+              <button type="submit" disabled={submitting}
+                className="px-5 py-2 text-sm font-semibold text-white rounded-xl flex items-center gap-2 disabled:opacity-60 active:scale-95"
+                style={{ background: "linear-gradient(135deg,#4f46e5,#6366f1)" }}>
+                {submitting
+                  ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Đang tạo...</>
+                  : <><span className="material-symbols-outlined text-[15px]">add</span>Tạo {locType}</>
+                }
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+    </Portal>
   );
 }
 
@@ -273,60 +275,62 @@ function EditModal({ location, onClose, onDone }: {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-      style={{ background: "rgba(79,70,229,0.12)", backdropFilter: "blur(8px)" }}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-indigo-100 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-bold text-gray-900">Chỉnh sửa Location</h2>
-            <p className="text-xs text-indigo-500 font-mono mt-0.5">{location.locationCode}</p>
-          </div>
-          <button type="button" onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">
-            <span className="material-symbols-outlined text-[18px]">close</span>
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Max Weight (kg)</label>
-              <input type="number" step="0.01" min="0" value={maxWeight}
-                onChange={e => setMaxWeight(e.target.value)} placeholder="kg" className={inp} />
+    <Portal>
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+        style={{ background: "rgba(79,70,229,0.12)", backdropFilter: "blur(8px)" }}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-indigo-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Chỉnh sửa Location</h2>
+              <p className="text-xs text-indigo-500 font-mono mt-0.5">{location.locationCode}</p>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Max Volume (m³)</label>
-              <input type="number" step="0.01" min="0" value={maxVolume}
-                onChange={e => setMaxVolume(e.target.value)} placeholder="m³" className={inp} />
-            </div>
-          </div>
-          <div className="flex flex-col gap-3">
-            {([
-              { label: "Picking Face", val: isPickingFace, set: setIsPickingFace, color: "bg-indigo-500" },
-              { label: "Staging Area", val: isStaging,     set: setIsStaging,     color: "bg-amber-500"  },
-            ] as const).map(({ label, val, set, color }) => (
-              <label key={label} className="flex items-center gap-3 cursor-pointer">
-                <div className={`w-9 h-5 rounded-full relative transition-colors ${val ? color : "bg-gray-200"}`}
-                  onClick={() => (set as any)((v: boolean) => !v)}>
-                  <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${val ? "translate-x-4" : "translate-x-0.5"}`} />
-                </div>
-                <span className="text-sm text-gray-700">{label}</span>
-              </label>
-            ))}
-          </div>
-          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
             <button type="button" onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50">Huỷ</button>
-            <button type="submit" disabled={submitting}
-              className="px-5 py-2 text-sm font-semibold text-white rounded-xl flex items-center gap-2 disabled:opacity-60"
-              style={{ background: "linear-gradient(135deg,#4f46e5,#6366f1)" }}>
-              {submitting
-                ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Lưu...</>
-                : "Lưu thay đổi"}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">
+              <span className="material-symbols-outlined text-[18px]">close</span>
             </button>
           </div>
-        </form>
+          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Max Weight (kg)</label>
+                <input type="number" step="0.01" min="0" value={maxWeight}
+                  onChange={e => setMaxWeight(e.target.value)} placeholder="kg" className={inp} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Max Volume (m³)</label>
+                <input type="number" step="0.01" min="0" value={maxVolume}
+                  onChange={e => setMaxVolume(e.target.value)} placeholder="m³" className={inp} />
+              </div>
+            </div>
+            <div className="flex flex-col gap-3">
+              {([
+                { label: "Picking Face", val: isPickingFace, set: setIsPickingFace, color: "bg-indigo-500" },
+                { label: "Staging Area", val: isStaging,     set: setIsStaging,     color: "bg-amber-500"  },
+              ] as const).map(({ label, val, set, color }) => (
+                <label key={label} className="flex items-center gap-3 cursor-pointer">
+                  <div className={`w-9 h-5 rounded-full relative transition-colors ${val ? color : "bg-gray-200"}`}
+                    onClick={() => (set as any)((v: boolean) => !v)}>
+                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${val ? "translate-x-4" : "translate-x-0.5"}`} />
+                  </div>
+                  <span className="text-sm text-gray-700">{label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+              <button type="button" onClick={onClose}
+                className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50">Huỷ</button>
+              <button type="submit" disabled={submitting}
+                className="px-5 py-2 text-sm font-semibold text-white rounded-xl flex items-center gap-2 disabled:opacity-60"
+                style={{ background: "linear-gradient(135deg,#4f46e5,#6366f1)" }}>
+                {submitting
+                  ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Lưu...</>
+                  : "Lưu thay đổi"}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+    </Portal>
   );
 }
 
@@ -345,7 +349,6 @@ export default function LocationListPage() {
     page: 0, size: DEFAULT_PAGE_SIZE, totalElements: 0, totalPages: 0, last: true,
   });
 
-  // ── Dùng ref thay state để tránh stale closure trong loadLocations ──
   const filtersRef = useRef<LocationQueryParams>({ page: 0, size: DEFAULT_PAGE_SIZE });
   const [filtersUI, setFiltersUI] = useState<LocationQueryParams>({ page: 0, size: DEFAULT_PAGE_SIZE });
 
@@ -365,11 +368,11 @@ export default function LocationListPage() {
         last:          result.last,
       });
     } catch {
-      // axios interceptor đã toast — không toast thêm
+      // axios interceptor đã toast
     } finally {
       setLoading(false);
     }
-  }, []); // dependency rỗng vì dùng ref
+  }, []);
 
   useEffect(() => {
     loadLocations();
@@ -378,7 +381,7 @@ export default function LocationListPage() {
         const arr = Array.isArray(data) ? data : (data as any)?.content ?? [];
         setZones(arr);
       })
-      .catch(() => {}); // silent
+      .catch(() => {});
   }, []); // eslint-disable-line
 
   const handleDeactivate = (loc: Location) => {
@@ -576,7 +579,7 @@ export default function LocationListPage() {
           </table>
         </div>
 
-        {/* Pagination — luôn hiển thị */}
+        {/* Pagination */}
         <div className="px-5 py-3.5 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50/50">
           <p className="text-xs text-gray-400">
             Hiển thị {locations.length} / {pageInfo.totalElements} · Trang {pageInfo.page + 1} / {Math.max(1, totalPages)}

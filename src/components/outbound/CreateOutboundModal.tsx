@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import type { OutboundFormData, CreateOutboundModalProps } from '@/interfaces/modals';
+import Portal from '@/components/ui/Portal';
 
  export default function CreateOutboundModal({
    isOpen,
@@ -39,6 +40,7 @@ import type { OutboundFormData, CreateOutboundModalProps } from '@/interfaces/mo
    };
 
    return (
+     <Portal>
      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200 font-sans">
        <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col border border-gray-100">
          {/* Header */}
@@ -194,6 +196,7 @@ import type { OutboundFormData, CreateOutboundModalProps } from '@/interfaces/mo
          </div>
        </div>
      </div>
+    </Portal>
    );
  }
 

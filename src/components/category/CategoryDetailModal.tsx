@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { CategoryDetailModalProps } from '@/interfaces/modals';
+import Portal from '@/components/ui/Portal';
 
 const MOCK_SKUS = [
   { code: 'SKU-8821', desc: 'Industrial Power Drill v4', stock: 20 },
@@ -11,6 +12,7 @@ const MOCK_SKUS = [
 
 export default function CategoryDetailModal({ onClose, categoryData }: CategoryDetailModalProps) {
   return (
+    <Portal>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm font-sans" onClick={onClose}>
       <div 
         className="bg-white w-full max-w-3xl rounded-xl shadow-2xl relative animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col"
@@ -100,5 +102,6 @@ export default function CategoryDetailModal({ onClose, categoryData }: CategoryD
 
       </div>
     </div>
+    </Portal>
   );
 }

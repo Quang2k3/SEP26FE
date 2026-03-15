@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { EditCategoryModalProps } from '@/interfaces/modals';
+import Portal from '@/components/ui/Portal';
 
 export default function EditCategoryModal({ onClose, categoryData }: EditCategoryModalProps) {
   const handleSubmit = (e: React.FormEvent) => {
@@ -11,6 +12,7 @@ export default function EditCategoryModal({ onClose, categoryData }: EditCategor
   };
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm font-sans">
       <div className="bg-white w-full max-w-lg p-6 md:p-8 relative animate-in fade-in zoom-in-95 duration-200 rounded-xl shadow-2xl">
         
@@ -93,5 +95,6 @@ export default function EditCategoryModal({ onClose, categoryData }: EditCategor
 
       </div>
     </div>
+    </Portal>
   );
 }

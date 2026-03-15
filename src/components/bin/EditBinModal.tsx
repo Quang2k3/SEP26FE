@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import type { EditBinData, EditBinModalProps } from '@/interfaces/modals';
+import Portal from '@/components/ui/Portal';
 
 export default function EditBinModal({ isOpen, initialData, zones, onClose, onSubmit }: EditBinModalProps) {
   const [formData, setFormData] = useState<EditBinData | null>(null);
@@ -20,6 +21,7 @@ export default function EditBinModal({ isOpen, initialData, zones, onClose, onSu
   };
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col border border-gray-100">
         
@@ -176,5 +178,6 @@ export default function EditBinModal({ isOpen, initialData, zones, onClose, onSu
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

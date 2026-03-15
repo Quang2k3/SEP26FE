@@ -15,6 +15,7 @@ import {
 import type { UserSummary, UserListPage, UserStatus } from "@/interfaces/user";
 import { getUserColumns } from "./components/columns";
 import UserFilter from "./components/UserFilter";
+import Portal from '@/components/ui/Portal';
 
 interface AddUserForm {
   email: string;
@@ -202,6 +203,7 @@ useEffect(() => {
 
       {/* ── Modal: Xác nhận toggle status ── */}
       {confirmUser && (
+        <Portal>
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="w-full max-w-sm bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
             {/* Icon header */}
@@ -291,10 +293,12 @@ useEffect(() => {
             </div>
           </div>
         </div>
+        </Portal>
       )}
 
       {/* ── Modal: Thêm người dùng mới ── */}
       {showAddModal && (
+        <Portal>
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-gray-100">
             <div className="flex items-center justify-between p-4 border-b">
@@ -397,10 +401,12 @@ useEffect(() => {
             </form>
           </div>
         </div>
+        </Portal>
       )}
 
       {/* ── Modal: Assign Role ── */}
       {showRoleModal && selectedUser && (
+        <Portal>
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="w-full max-w-sm bg-white rounded-xl shadow-xl border">
             <div className="flex justify-between items-center p-4 border-b">
@@ -457,6 +463,7 @@ useEffect(() => {
             </div>
           </div>
         </div>
+        </Portal>
       )}
     </AdminPage>
   );

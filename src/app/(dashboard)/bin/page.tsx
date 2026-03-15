@@ -6,6 +6,7 @@ import api from "@/config/axios";
 import type { ApiResponse } from "@/interfaces/common";
 import { useConfirm } from "@/components/ui/ModalProvider";
 import { getStoredSession } from "@/services/authService";
+import Portal from "@/components/ui/Portal";
 import toast from "react-hot-toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -44,7 +45,6 @@ interface PageResponse<T> {
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
 async function fetchZones(): Promise<Zone[]> {
-  // Backend yêu cầu warehouseId bắt buộc — lấy từ session JWT
   const session = getStoredSession();
   const warehouseId = session?.user?.warehouseIds?.[0];
   if (!warehouseId) return [];
@@ -91,7 +91,7 @@ async function deactivateLocation(locationId: number): Promise<void> {
   await api.patch(`/locations/${locationId}/deactivate`);
 }
 
-// ─── Occupancy badge ──────────────────────────────────────────────────────────
+// ─── Type badge ───────────────────────────────────────────────────────────────
 function TypeBadge({ type }: { type: string }) {
   const map: Record<string, string> = {
     AISLE: "bg-purple-50 text-purple-700",
@@ -129,7 +129,6 @@ function CreateLocationModal({
   const [parents, setParents] = useState<Location[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Load parents when zone + step changes
   useEffect(() => {
     if (!zoneId) return;
     const parentType =
@@ -150,10 +149,7 @@ function CreateLocationModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!zoneId) {
-      toast.error("Chọn Zone");
-      return;
-    }
+    if (!zoneId) { toast.error("Chọn Zone"); return; }
     if (step !== "AISLE" && !parentId) {
       toast.error(`Chọn ${step === "RACK" ? "AISLE" : "RACK"} cha`);
       return;
@@ -192,134 +188,79 @@ function CreateLocationModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-      style={{
-        background: "rgba(79,70,229,0.12)",
-        backdropFilter: "blur(8px)",
-      }}
-    >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-indigo-100">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-              <span className="material-symbols-outlined text-indigo-500 text-[20px]">
-                add_location
-              </span>
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-gray-900">
-                Tạo Location mới
-              </h2>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Zone → AISLE → RACK → BIN
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400"
-          >
-            <span className="material-symbols-outlined text-[20px]">close</span>
-          </button>
-        </div>
-
-        {/* Step selector */}
-        <div className="px-6 py-3 border-b border-gray-100 flex gap-2">
-          {(["AISLE", "RACK", "BIN"] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => {
-                setStep(s);
-                setCode("");
-                setParentId("");
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all
-                ${step === s ? "bg-indigo-600 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-indigo-50 hover:text-indigo-700"}`}
-            >
-              <span className="material-symbols-outlined text-[14px]">
-                {stepIcon[s]}
-              </span>
-              {s}
-            </button>
-          ))}
-        </div>
-        <p className="px-6 py-2 text-xs text-gray-400 bg-gray-50 border-b border-gray-100">
-          {stepDesc[step]}
-        </p>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {/* Zone */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                Zone <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <select
-                  required
-                  value={zoneId}
-                  onChange={(e) => {
-                    setZoneId(e.target.value);
-                    setParentId("");
-                  }}
-                  className="w-full px-3 py-2.5 border border-indigo-100 rounded-lg text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 appearance-none"
-                >
-                  <option value="">Chọn Zone...</option>
-                  {zones.map((z) => (
-                    <option key={z.zoneId} value={z.zoneId}>
-                      {z.zoneCode} — {z.zoneName}
-                    </option>
-                  ))}
-                </select>
-                <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[18px]">
-                  expand_more
+    <Portal>
+      <div
+        className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+        style={{
+          background: "rgba(79,70,229,0.12)",
+          backdropFilter: "blur(8px)",
+        }}
+      >
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-indigo-100">
+          {/* Header */}
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+                <span className="material-symbols-outlined text-indigo-500 text-[20px]">
+                  add_location
                 </span>
               </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-900">
+                  Tạo Location mới
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Zone → AISLE → RACK → BIN
+                </p>
+              </div>
             </div>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400"
+            >
+              <span className="material-symbols-outlined text-[20px]">close</span>
+            </button>
+          </div>
 
-            {/* Location Code */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                Mã code <span className="text-red-500">*</span>
-              </label>
-              <input
-                required
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder={
-                  step === "AISLE"
-                    ? "VD: AISLE-HC-A1"
-                    : step === "RACK"
-                      ? "VD: RACK-HC-R1"
-                      : "VD: BIN-HC-A1-01"
-                }
-                className="w-full px-3 py-2.5 border border-indigo-100 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-mono uppercase"
-              />
-            </div>
+          {/* Step selector */}
+          <div className="px-6 py-3 border-b border-gray-100 flex gap-2">
+            {(["AISLE", "RACK", "BIN"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => { setStep(s); setCode(""); setParentId(""); }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all
+                  ${step === s ? "bg-indigo-600 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-indigo-50 hover:text-indigo-700"}`}
+              >
+                <span className="material-symbols-outlined text-[14px]">
+                  {stepIcon[s]}
+                </span>
+                {s}
+              </button>
+            ))}
+          </div>
+          <p className="px-6 py-2 text-xs text-gray-400 bg-gray-50 border-b border-gray-100">
+            {stepDesc[step]}
+          </p>
 
-            {/* Parent — chỉ hiện khi RACK hoặc BIN */}
-            {(step === "RACK" || step === "BIN") && (
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="p-6 space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              {/* Zone */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  {step === "RACK" ? "AISLE cha" : "RACK cha"}{" "}
-                  <span className="text-red-500">*</span>
+                  Zone <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <select
                     required
-                    value={parentId}
-                    onChange={(e) => setParentId(e.target.value)}
+                    value={zoneId}
+                    onChange={(e) => { setZoneId(e.target.value); setParentId(""); }}
                     className="w-full px-3 py-2.5 border border-indigo-100 rounded-lg text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 appearance-none"
                   >
-                    <option value="">
-                      Chọn {step === "RACK" ? "AISLE" : "RACK"}...
-                    </option>
-                    {parents.map((p) => (
-                      <option key={p.locationId} value={p.locationId}>
-                        {p.locationCode}
+                    <option value="">Chọn Zone...</option>
+                    {zones.map((z) => (
+                      <option key={z.zoneId} value={z.zoneId}>
+                        {z.zoneCode} — {z.zoneName}
                       </option>
                     ))}
                   </select>
@@ -327,103 +268,151 @@ function CreateLocationModal({
                     expand_more
                   </span>
                 </div>
-                {parents.length === 0 && zoneId && (
-                  <p className="text-[11px] text-amber-600">
-                    Chưa có {step === "RACK" ? "AISLE" : "RACK"} trong zone này.
-                    Tạo {step === "RACK" ? "AISLE" : "RACK"} trước.
-                  </p>
-                )}
               </div>
-            )}
 
-            {/* Max weight — chỉ BIN */}
-            {step === "BIN" && (
+              {/* Location Code */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Max weight (kg) <span className="text-red-500">*</span>
+                  Mã code <span className="text-red-500">*</span>
                 </label>
                 <input
                   required
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={maxWeight}
-                  onChange={(e) => setMaxWeight(e.target.value)}
-                  placeholder="VD: 50"
-                  className="w-full px-3 py-2.5 border border-indigo-100 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder={
+                    step === "AISLE"
+                      ? "VD: AISLE-HC-A1"
+                      : step === "RACK"
+                        ? "VD: RACK-HC-R1"
+                        : "VD: BIN-HC-A1-01"
+                  }
+                  className="w-full px-3 py-2.5 border border-indigo-100 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-mono uppercase"
                 />
-                <p className="text-[11px] text-gray-400">
-                  Dùng để validate putaway — phải điền để dùng được
-                </p>
               </div>
-            )}
+
+              {/* Parent */}
+              {(step === "RACK" || step === "BIN") && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    {step === "RACK" ? "AISLE cha" : "RACK cha"}{" "}
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      required
+                      value={parentId}
+                      onChange={(e) => setParentId(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-indigo-100 rounded-lg text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 appearance-none"
+                    >
+                      <option value="">
+                        Chọn {step === "RACK" ? "AISLE" : "RACK"}...
+                      </option>
+                      {parents.map((p) => (
+                        <option key={p.locationId} value={p.locationId}>
+                          {p.locationCode}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[18px]">
+                      expand_more
+                    </span>
+                  </div>
+                  {parents.length === 0 && zoneId && (
+                    <p className="text-[11px] text-amber-600">
+                      Chưa có {step === "RACK" ? "AISLE" : "RACK"} trong zone này.
+                      Tạo {step === "RACK" ? "AISLE" : "RACK"} trước.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Max weight */}
+              {step === "BIN" && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Max weight (kg) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    required
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={maxWeight}
+                    onChange={(e) => setMaxWeight(e.target.value)}
+                    placeholder="VD: 50"
+                    className="w-full px-3 py-2.5 border border-indigo-100 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                  <p className="text-[11px] text-gray-400">
+                    Dùng để validate putaway — phải điền để dùng được
+                  </p>
+                </div>
+              )}
+
+              {step === "BIN" && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Max volume (m³)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={maxVolume}
+                    onChange={(e) => setMaxVolume(e.target.value)}
+                    placeholder="VD: 1.5 (tuỳ chọn)"
+                    className="w-full px-3 py-2.5 border border-indigo-100 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+              )}
+            </div>
 
             {step === "BIN" && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Max volume (m³)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={maxVolume}
-                  onChange={(e) => setMaxVolume(e.target.value)}
-                  placeholder="VD: 1.5 (tuỳ chọn)"
-                  className="w-full px-3 py-2.5 border border-indigo-100 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                />
-              </div>
-            )}
-          </div>
-
-          {step === "BIN" && (
-            <label className="flex items-center gap-3 cursor-pointer group">
-              <div
-                className={`w-10 h-6 rounded-full relative transition-colors ${isPickingFace ? "bg-indigo-500" : "bg-gray-200"}`}
-                onClick={() => setIsPickingFace((v) => !v)}
-              >
+              <label className="flex items-center gap-3 cursor-pointer group">
                 <div
-                  className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${isPickingFace ? "translate-x-5" : "translate-x-1"}`}
-                />
-              </div>
-              <span className="text-sm text-gray-700">
-                Picking Face (cho phép lấy hàng trực tiếp)
-              </span>
-            </label>
-          )}
+                  className={`w-10 h-6 rounded-full relative transition-colors ${isPickingFace ? "bg-indigo-500" : "bg-gray-200"}`}
+                  onClick={() => setIsPickingFace((v) => !v)}
+                >
+                  <div
+                    className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${isPickingFace ? "translate-x-5" : "translate-x-1"}`}
+                  />
+                </div>
+                <span className="text-sm text-gray-700">
+                  Picking Face (cho phép lấy hàng trực tiếp)
+                </span>
+              </label>
+            )}
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50"
-            >
-              Huỷ
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-6 py-2 text-sm font-semibold text-white rounded-xl flex items-center gap-2 disabled:opacity-60 transition-all active:scale-95"
-              style={{ background: "linear-gradient(135deg,#4f46e5,#6366f1)" }}
-            >
-              {loading ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Đang tạo...
-                </>
-              ) : (
-                <>
-                  <span className="material-symbols-outlined text-[16px]">
-                    add
-                  </span>
-                  Tạo {step}
-                </>
-              )}
-            </button>
-          </div>
-        </form>
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50"
+              >
+                Huỷ
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-6 py-2 text-sm font-semibold text-white rounded-xl flex items-center gap-2 disabled:opacity-60 transition-all active:scale-95"
+                style={{ background: "linear-gradient(135deg,#4f46e5,#6366f1)" }}
+              >
+                {loading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Đang tạo...
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-[16px]">add</span>
+                    Tạo {step}
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+    </Portal>
   );
 }
 
@@ -433,7 +422,6 @@ function BinListContent() {
   const router = useRouter();
   const confirm = useConfirm();
 
-  // Role check — chỉ MANAGER mới được tạo / deactivate location
   const isManager = (() => {
     const session = getStoredSession();
     return session?.user?.roleCodes?.includes("MANAGER") ?? false;
@@ -447,7 +435,6 @@ function BinListContent() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
 
-  // Filters
   const [filterZone, setFilterZone] = useState("");
   const [filterType, setFilterType] = useState("BIN");
   const [keyword, setKeyword] = useState("");
@@ -478,15 +465,8 @@ function BinListContent() {
     [filterZone, filterType, keyword, pageSize],
   );
 
-  useEffect(() => {
-    load(0);
-  }, [load]);
-
-  useEffect(() => {
-    fetchZones()
-      .then(setZones)
-      .catch(() => {});
-  }, []);
+  useEffect(() => { load(0); }, [load]);
+  useEffect(() => { fetchZones().then(setZones).catch(() => {}); }, []);
 
   const handleDeactivate = (loc: Location) => {
     confirm({
@@ -532,15 +512,11 @@ function BinListContent() {
         )}
       </div>
 
-      {/* Hierarchy hint — chỉ hiện với MANAGER */}
       {isManager && (
         <div className="flex items-center gap-2 px-4 py-3 bg-indigo-50 rounded-2xl border border-indigo-100 text-sm text-indigo-700">
-          <span className="material-symbols-outlined text-[16px] text-indigo-400">
-            info
-          </span>
+          <span className="material-symbols-outlined text-[16px] text-indigo-400">info</span>
           <span>
-            Thứ tự tạo: <strong>AISLE</strong> → <strong>RACK</strong> (chọn AISLE
-            cha) → <strong>BIN</strong> (chọn RACK cha, điền maxWeightKg)
+            Thứ tự tạo: <strong>AISLE</strong> → <strong>RACK</strong> (chọn AISLE cha) → <strong>BIN</strong> (chọn RACK cha, điền maxWeightKg)
           </span>
         </div>
       )}
@@ -548,9 +524,7 @@ function BinListContent() {
       {/* Filters */}
       <div className="bg-white rounded-2xl border border-indigo-100/60 shadow-sm p-4 flex flex-wrap gap-3 items-center">
         <div className="flex flex-1 min-w-[200px] items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 focus-within:ring-2 focus-within:ring-indigo-300">
-          <span className="material-symbols-outlined text-gray-400 text-[18px]">
-            search
-          </span>
+          <span className="material-symbols-outlined text-gray-400 text-[18px]">search</span>
           <input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
@@ -567,14 +541,10 @@ function BinListContent() {
           >
             <option value="">Tất cả Zone</option>
             {zones.map((z) => (
-              <option key={z.zoneId} value={z.zoneId}>
-                {z.zoneCode}
-              </option>
+              <option key={z.zoneId} value={z.zoneId}>{z.zoneCode}</option>
             ))}
           </select>
-          <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[16px]">
-            expand_more
-          </span>
+          <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[16px]">expand_more</span>
         </div>
         <div className="relative">
           <select
@@ -588,9 +558,7 @@ function BinListContent() {
             <option value="BIN">BIN</option>
             <option value="STAGING">STAGING</option>
           </select>
-          <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[16px]">
-            expand_more
-          </span>
+          <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[16px]">expand_more</span>
         </div>
         <button
           onClick={() => load(0)}
@@ -604,16 +572,12 @@ function BinListContent() {
       {/* Table */}
       <div className="bg-white rounded-2xl border border-indigo-100/60 shadow-sm overflow-hidden">
         <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
-          <p className="text-sm font-semibold text-gray-700">
-            {total} location
-          </p>
+          <p className="text-sm font-semibold text-gray-700">{total} location</p>
           <button
             onClick={() => load(page)}
             className="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-1 font-medium"
           >
-            <span className="material-symbols-outlined text-[14px]">
-              refresh
-            </span>
+            <span className="material-symbols-outlined text-[14px]">refresh</span>
             Tải lại
           </button>
         </div>
@@ -635,29 +599,21 @@ function BinListContent() {
             </thead>
             <tbody className="divide-y divide-gray-50 text-sm">
               {loading ? (
-                Array(5)
-                  .fill(0)
-                  .map((_, i) => (
-                    <tr key={i} className="animate-pulse">
-                      {Array(7)
-                        .fill(0)
-                        .map((_, j) => (
-                          <td key={j} className="px-5 py-3.5">
-                            <div className="h-3 bg-gray-100 rounded w-24" />
-                          </td>
-                        ))}
-                    </tr>
-                  ))
+                Array(5).fill(0).map((_, i) => (
+                  <tr key={i} className="animate-pulse">
+                    {Array(7).fill(0).map((_, j) => (
+                      <td key={j} className="px-5 py-3.5">
+                        <div className="h-3 bg-gray-100 rounded w-24" />
+                      </td>
+                    ))}
+                  </tr>
+                ))
               ) : locations.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center">
                     <div className="flex flex-col items-center gap-2">
-                      <span className="material-symbols-outlined text-gray-200 text-[48px]">
-                        shelves
-                      </span>
-                      <p className="text-sm text-gray-400">
-                        Chưa có location nào
-                      </p>
+                      <span className="material-symbols-outlined text-gray-200 text-[48px]">shelves</span>
+                      <p className="text-sm text-gray-400">Chưa có location nào</p>
                       {isManager && (
                         <button
                           onClick={() => setShowCreate(true)}
@@ -671,37 +627,22 @@ function BinListContent() {
                 </tr>
               ) : (
                 locations.map((loc) => (
-                  <tr
-                    key={loc.locationId}
-                    className="hover:bg-indigo-50/30 transition-colors group"
-                  >
+                  <tr key={loc.locationId} className="hover:bg-indigo-50/30 transition-colors group">
                     <td className="px-5 py-3.5">
-                      <span className="font-mono font-semibold text-gray-900">
-                        {loc.locationCode}
-                      </span>
+                      <span className="font-mono font-semibold text-gray-900">{loc.locationCode}</span>
                     </td>
-                    <td className="px-5 py-3.5">
-                      <TypeBadge type={loc.locationType} />
-                    </td>
-                    <td className="px-5 py-3.5 text-gray-600">
-                      {loc.zoneCode}
-                    </td>
-                    <td className="px-5 py-3.5 text-gray-400 font-mono text-xs">
-                      {loc.parentLocationCode ?? "—"}
-                    </td>
+                    <td className="px-5 py-3.5"><TypeBadge type={loc.locationType} /></td>
+                    <td className="px-5 py-3.5 text-gray-600">{loc.zoneCode}</td>
+                    <td className="px-5 py-3.5 text-gray-400 font-mono text-xs">{loc.parentLocationCode ?? "—"}</td>
                     <td className="px-5 py-3.5">
                       {loc.maxWeightKg != null ? (
-                        <span className="font-semibold text-gray-800">
-                          {loc.maxWeightKg} kg
-                        </span>
+                        <span className="font-semibold text-gray-800">{loc.maxWeightKg} kg</span>
                       ) : (
                         <span className="text-gray-300 text-xs">—</span>
                       )}
                     </td>
                     <td className="px-5 py-3.5">
-                      <span
-                        className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${loc.active ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}
-                      >
+                      <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${loc.active ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>
                         {loc.active ? "Active" : "Inactive"}
                       </span>
                     </td>
@@ -709,15 +650,11 @@ function BinListContent() {
                       <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         {loc.locationType === "BIN" && (
                           <button
-                            onClick={() =>
-                              router.push(`/bin/occupancy?zoneId=${loc.zoneId}`)
-                            }
+                            onClick={() => router.push(`/bin/occupancy?zoneId=${loc.zoneId}`)}
                             title="Xem occupancy"
                             className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50"
                           >
-                            <span className="material-symbols-outlined text-[16px]">
-                              bar_chart
-                            </span>
+                            <span className="material-symbols-outlined text-[16px]">bar_chart</span>
                           </button>
                         )}
                         {loc.active && isManager && (
@@ -726,9 +663,7 @@ function BinListContent() {
                             title="Vô hiệu hoá"
                             className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50"
                           >
-                            <span className="material-symbols-outlined text-[16px]">
-                              block
-                            </span>
+                            <span className="material-symbols-outlined text-[16px]">block</span>
                           </button>
                         )}
                       </div>
@@ -740,62 +675,31 @@ function BinListContent() {
           </table>
         </div>
 
-        {/* Pagination — luôn hiển thị */}
+        {/* Pagination */}
         <div className="px-5 py-3.5 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50/50">
           <p className="text-xs text-gray-400">
-            Hiển thị {locations.length} / {total} · Trang {page + 1} /{" "}
-            {Math.max(1, totalPages)}
+            Hiển thị {locations.length} / {total} · Trang {page + 1} / {Math.max(1, totalPages)}
           </p>
           <div className="flex items-center gap-1.5">
-            <button
-              disabled={page === 0}
-              onClick={() => load(0)}
-              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 disabled:opacity-40 hover:bg-gray-100 text-xs font-bold"
-            >
-              «
-            </button>
-            <button
-              disabled={page === 0}
-              onClick={() => load(page - 1)}
-              className="px-3 h-8 rounded-lg border border-gray-200 text-xs text-gray-600 disabled:opacity-40 hover:bg-gray-100"
-            >
-              ← Trước
-            </button>
-            {Array.from(
-              { length: Math.min(5, Math.max(1, totalPages)) },
-              (_, i) => {
-                const start = Math.max(
-                  0,
-                  Math.min(page - 2, Math.max(0, totalPages - 5)),
-                );
-                const p = start + i;
-                if (p >= Math.max(1, totalPages)) return null;
-                return (
-                  <button
-                    key={p}
-                    onClick={() => load(p)}
-                    className={`w-8 h-8 rounded-lg border text-xs font-medium transition-colors
-            ${p === page ? "border-indigo-400 bg-indigo-50 text-indigo-700" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
-                  >
-                    {p + 1}
-                  </button>
-                );
-              },
-            )}
-            <button
-              disabled={page >= totalPages - 1}
-              onClick={() => load(page + 1)}
-              className="px-3 h-8 rounded-lg border border-gray-200 text-xs text-gray-600 disabled:opacity-40 hover:bg-gray-100"
-            >
-              Tiếp →
-            </button>
-            <button
-              disabled={page >= totalPages - 1}
-              onClick={() => load(Math.max(0, totalPages - 1))}
-              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 disabled:opacity-40 hover:bg-gray-100 text-xs font-bold"
-            >
-              »
-            </button>
+            <button disabled={page === 0} onClick={() => load(0)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 disabled:opacity-40 hover:bg-gray-100 text-xs font-bold">«</button>
+            <button disabled={page === 0} onClick={() => load(page - 1)}
+              className="px-3 h-8 rounded-lg border border-gray-200 text-xs text-gray-600 disabled:opacity-40 hover:bg-gray-100">← Trước</button>
+            {Array.from({ length: Math.min(5, Math.max(1, totalPages)) }, (_, i) => {
+              const start = Math.max(0, Math.min(page - 2, Math.max(0, totalPages - 5)));
+              const p = start + i;
+              if (p >= Math.max(1, totalPages)) return null;
+              return (
+                <button key={p} onClick={() => load(p)}
+                  className={`w-8 h-8 rounded-lg border text-xs font-medium transition-colors ${p === page ? "border-indigo-400 bg-indigo-50 text-indigo-700" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+                  {p + 1}
+                </button>
+              );
+            })}
+            <button disabled={page >= totalPages - 1} onClick={() => load(page + 1)}
+              className="px-3 h-8 rounded-lg border border-gray-200 text-xs text-gray-600 disabled:opacity-40 hover:bg-gray-100">Tiếp →</button>
+            <button disabled={page >= totalPages - 1} onClick={() => load(Math.max(0, totalPages - 1))}
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 disabled:opacity-40 hover:bg-gray-100 text-xs font-bold">»</button>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-400">
             <span>Hiện</span>
