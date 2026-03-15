@@ -30,6 +30,17 @@ export interface PutawayTaskResponse {
   items: PutawayTaskItemDto[];
 }
 
+export interface BinInventoryItem {
+  skuId: number;
+  skuCode: string;
+  skuName: string;
+  lotId: number | null;
+  lotNumber: string | null;
+  expiryDate: string | null;
+  quantity: number;
+  reservedQty: number;
+}
+
 export interface BinOccupancyResponse {
   locationId: number;
   locationCode: string;
@@ -48,6 +59,8 @@ export interface BinOccupancyResponse {
   isPickingFace: boolean;
   isStaging: boolean;
   active: boolean;
+  // Returned by GET /bins/{locationId}/occupancy (detail endpoint)
+  inventoryItems?: BinInventoryItem[];
 }
 
 export interface PutawaySuggestion {

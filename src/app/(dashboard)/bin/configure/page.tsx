@@ -1,171 +1,508 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import api from '@/config/axios';
+import { fetchZones } from '@/services/zoneService';
+import type { Zone } from '@/interfaces/zone';
+import type { ApiResponse, PageResponse } from '@/interfaces/common';
+import type { BinOccupancyResponse } from '@/services/putawayService';
+import { useConfirm } from '@/components/ui/ModalProvider';
+import toast from 'react-hot-toast';
+import { getStoredSession } from '@/services/authService';
 
-// --- MOCK DATA ---
-const MOCK_CONFIG_BINS = [
-  { id: 'NW-A-101', zone: 'North Wing A', weight: 500, volume: 1.2, units: 100, status: 'OK' },
-  { id: 'NW-A-102', zone: 'North Wing A', weight: 500, volume: 1.2, units: 100, status: 'NEAR LIMIT' },
-  { id: 'SW-B-204', zone: 'South Storage', weight: 1000, volume: 4.0, units: 50, status: 'FULL' },
-  { id: 'CS-04-01', zone: 'Cold Storage', weight: 250, volume: 0.8, units: 200, status: 'EMPTY' },
-];
+// ─── API helpers ──────────────────────────────────────────────────────────────
 
-export default function ConfigureBinCapacityPage() {
-  const [isSaving, setIsSaving] = useState(false);
+async function apiFetchBins(zoneId: number): Promise<BinOccupancyResponse[]> {
+  const { data } = await api.get<ApiResponse<PageResponse<BinOccupancyResponse>>>(
+    '/bins/occupancy', { params: { zoneId, size: 500 } }
+  );
+  return data.data?.content ?? [];
+}
 
-  const handleSave = () => {
-    setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
-      alert('Changes saved successfully!');
-    }, 1000);
-  };
+async function apiUpdateCapacity(locationId: number, maxWeightKg: number, maxVolumeM3: number) {
+  const { data } = await api.patch<ApiResponse<any>>(
+    `/bins/${locationId}/capacity`,
+    { maxWeightKg, maxVolumeM3 }
+  );
+  return data;
+}
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'FULL': return <span className="px-2 py-0.5 rounded text-[10px] font-black bg-red-100 text-red-700 uppercase">Full</span>;
-      case 'NEAR LIMIT': return <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-700 uppercase">Near Limit</span>;
-      case 'EMPTY': return <span className="px-2 py-0.5 rounded text-[10px] font-black bg-gray-100 text-gray-500 uppercase">Empty</span>;
-      default: return <span className="px-2 py-0.5 rounded text-[10px] font-black bg-green-100 text-green-700 uppercase">OK</span>;
+// ─── Edit modal ───────────────────────────────────────────────────────────────
+
+interface EditModalProps {
+  bin: BinOccupancyResponse;
+  onClose: () => void;
+  onSaved: (locationId: number, weight: number, volume: number) => void;
+}
+
+function EditCapacityModal({ bin, onClose, onSaved }: EditModalProps) {
+  const [weight, setWeight] = useState(String(bin.maxWeightKg ?? ''));
+  const [volume, setVolume] = useState(String(bin.maxVolumeM3 ?? ''));
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    const w = parseFloat(weight);
+    const v = parseFloat(volume);
+    if (!w || w <= 0) { toast.error('Tải trọng phải > 0'); return; }
+    if (!v || v <= 0) { toast.error('Thể tích phải > 0'); return; }
+    setSaving(true);
+    try {
+      await apiUpdateCapacity(bin.locationId, w, v);
+      toast.success(`Đã cập nhật dung lượng ${bin.locationCode}`);
+      onSaved(bin.locationId, w, v);
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Lỗi cập nhật');
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
-    <div className="flex-1 flex flex-col p-6 md:p-8 bg-gray-50/50 font-sans overflow-y-auto">
-      
-      {/* PAGE HEADER & ACTIONS */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      style={{ background: 'rgba(17,24,39,0.5)', backdropFilter: 'blur(4px)' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-gray-900">Cấu hình dung lượng</h3>
+            <p className="text-xs text-gray-400 mt-0.5">{bin.locationCode}</p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">
+            <span className="material-symbols-outlined text-[18px]">close</span>
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+              Tải trọng tối đa (kg) <span className="text-red-400">*</span>
+            </label>
+            <div className="relative">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[16px]">scale</span>
+              <input type="number" min={1} step="0.1" value={weight}
+                onChange={e => setWeight(e.target.value)}
+                placeholder="VD: 500"
+                className="w-full pl-9 pr-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+              Thể tích tối đa (m³) <span className="text-red-400">*</span>
+            </label>
+            <div className="relative">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[16px]">view_in_ar</span>
+              <input type="number" min={0.01} step="0.01" value={volume}
+                onChange={e => setVolume(e.target.value)}
+                placeholder="VD: 2.5"
+                className="w-full pl-9 pr-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            </div>
+          </div>
+
+          {/* Preview */}
+          {weight && volume && parseFloat(weight) > 0 && parseFloat(volume) > 0 && (
+            <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-100">
+              <p className="text-[11px] font-bold text-indigo-600 mb-1">Xem trước</p>
+              <div className="flex justify-between text-xs text-indigo-800">
+                <span>Max weight: <strong>{parseFloat(weight)} kg</strong></span>
+                <span>Max volume: <strong>{parseFloat(volume)} m³</strong></span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2.5">
+          <button onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+            Huỷ
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="px-5 py-2 text-sm font-semibold text-white rounded-xl flex items-center gap-1.5 disabled:opacity-60 active:scale-95 transition-all"
+            style={{ background: 'linear-gradient(135deg,#4f46e5,#6366f1)' }}>
+            {saving
+              ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Đang lưu...</>
+              : <><span className="material-symbols-outlined text-[14px]">save</span>Lưu</>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Bulk edit modal ──────────────────────────────────────────────────────────
+
+function BulkEditModal({ count, onClose, onSave }: {
+  count: number;
+  onClose: () => void;
+  onSave: (weight: number, volume: number) => void;
+}) {
+  const [weight, setWeight] = useState('');
+  const [volume, setVolume] = useState('');
+
+  const handleSave = () => {
+    const w = parseFloat(weight);
+    const v = parseFloat(volume);
+    if (!w || w <= 0) { toast.error('Tải trọng phải > 0'); return; }
+    if (!v || v <= 0) { toast.error('Thể tích phải > 0'); return; }
+    onSave(w, v);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      style={{ background: 'rgba(17,24,39,0.5)', backdropFilter: 'blur(4px)' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+            <span className="material-symbols-outlined text-amber-600 text-[16px]">edit_note</span>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-gray-900">Cập nhật hàng loạt</h3>
+            <p className="text-xs text-gray-400">{count} bins được chọn</p>
+          </div>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700 font-medium flex items-center gap-2">
+            <span className="material-symbols-outlined text-[14px]">warning</span>
+            Sẽ ghi đè dung lượng của {count} bins đã chọn
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Tải trọng max (kg)</label>
+            <input type="number" min={1} step="0.1" value={weight} onChange={e => setWeight(e.target.value)}
+              placeholder="VD: 500"
+              className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Thể tích max (m³)</label>
+            <input type="number" min={0.01} step="0.01" value={volume} onChange={e => setVolume(e.target.value)}
+              placeholder="VD: 2.5"
+              className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+          </div>
+        </div>
+        <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2.5">
+          <button onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">Huỷ</button>
+          <button onClick={handleSave}
+            className="px-5 py-2 text-sm font-semibold text-white rounded-xl active:scale-95 transition-all"
+            style={{ background: 'linear-gradient(135deg,#d97706,#f59e0b)' }}>
+            Áp dụng {count} bins
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MAIN PAGE ────────────────────────────────────────────────────────────────
+
+export default function ConfigureBinCapacityPage() {
+  const confirm = useConfirm();
+  const isManager = getStoredSession()?.user?.roleCodes?.includes('MANAGER') ?? false;
+  const [zones, setZones]               = useState<Zone[]>([]);
+  const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
+  const [bins, setBins]                 = useState<BinOccupancyResponse[]>([]);
+  const [loading, setLoading]           = useState(false);
+  const [loadingZones, setLoadingZones] = useState(true);
+  const [editBin, setEditBin]           = useState<BinOccupancyResponse | null>(null);
+  const [selectedIds, setSelectedIds]   = useState<Set<number>>(new Set());
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
+  const [searchTerm, setSearchTerm]     = useState('');
+  const [filterCap, setFilterCap]       = useState<'ALL' | 'SET' | 'UNSET'>('ALL');
+
+  useEffect(() => {
+    fetchZones({ activeOnly: true })
+      .then(z => { setZones(z); if (z.length > 0) loadZone(z[0]); })
+      .finally(() => setLoadingZones(false));
+  }, []);
+
+  const loadZone = useCallback(async (zone: Zone) => {
+    setSelectedZone(zone);
+    setSelectedIds(new Set());
+    setLoading(true);
+    try {
+      const data = await apiFetchBins(zone.zoneId);
+      setBins(data);
+    } catch { toast.error('Không tải được bins'); }
+    finally { setLoading(false); }
+  }, []);
+
+  const displayBins = useMemo(() => {
+    let list = [...bins];
+    if (filterCap === 'SET')   list = list.filter(b => b.maxWeightKg != null);
+    if (filterCap === 'UNSET') list = list.filter(b => b.maxWeightKg == null);
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      list = list.filter(b => b.locationCode.toLowerCase().includes(q));
+    }
+    return list;
+  }, [bins, filterCap, searchTerm]);
+
+  const allSelected = displayBins.length > 0 && displayBins.every(b => selectedIds.has(b.locationId));
+
+  const toggleAll = () => {
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(displayBins.map(b => b.locationId)));
+  };
+
+  const toggleOne = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleSaved = (locationId: number, weight: number, volume: number) => {
+    setBins(prev => prev.map(b =>
+      b.locationId === locationId
+        ? { ...b, maxWeightKg: weight, maxVolumeM3: volume }
+        : b
+    ));
+  };
+
+  const handleBulkSave = async (weight: number, volume: number) => {
+    const ids = [...selectedIds];
+    let success = 0;
+    for (const id of ids) {
+      try {
+        await apiUpdateCapacity(id, weight, volume);
+        success++;
+      } catch { /* continue */ }
+    }
+    setBins(prev => prev.map(b =>
+      selectedIds.has(b.locationId)
+        ? { ...b, maxWeightKg: weight, maxVolumeM3: volume }
+        : b
+    ));
+    setSelectedIds(new Set());
+    toast.success(`Đã cập nhật ${success}/${ids.length} bins`);
+  };
+
+  const stats = useMemo(() => ({
+    total: bins.length,
+    configured: bins.filter(b => b.maxWeightKg != null).length,
+    unconfigured: bins.filter(b => b.maxWeightKg == null).length,
+  }), [bins]);
+
+  return (
+    <div className="w-full font-sans space-y-5">
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">Configure Bin Capacity</h2>
-          <p className="text-gray-500 mt-1">Set limits for weight, volume, and units per storage location.</p>
-        </div>
-        <div className="flex gap-3">
-          <button className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 font-bold rounded-lg text-sm hover:bg-gray-50 transition-all shadow-sm">
-            Discard
-          </button>
-          <button 
-            onClick={handleSave}
-            disabled={isSaving}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-sm transition-all shadow-sm flex items-center gap-2"
-          >
-            {isSaving ? <span className="material-symbols-outlined animate-spin text-sm">sync</span> : null}
-            Save Changes
-          </button>
+          <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Cấu hình dung lượng BIN</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Thiết lập tải trọng và thể tích tối đa cho từng ô bin</p>
         </div>
       </div>
 
-      {/* BULK UPDATE SECTION */}
-      <section className="mb-8">
-        <div className="bg-white p-6 rounded-2xl border-2 border-blue-100 shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-          <h3 className="text-sm font-bold text-blue-600 uppercase tracking-widest mb-6">Bulk Update by Zone</h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Target Zone</label>
-              <select className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                <option>Select Zone...</option>
-                <option>North Wing A</option>
-                <option>South Storage</option>
-                <option>Cold Storage</option>
-              </select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Metric to Change</label>
-              <select className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                <option>Max Weight (kg)</option>
-                <option>Max Volume (m³)</option>
-                <option>Max Units</option>
-              </select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">New Value</label>
-              <input 
-                type="text" 
-                placeholder="0.00" 
-                className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-            </div>
-            <button className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg text-sm transition-all shadow-sm">
-              Apply to Zone
+      {/* Read-only banner for non-manager */}
+      {!isManager && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
+          <span className="material-symbols-outlined text-amber-500 text-[18px]">info</span>
+          <p className="text-sm text-amber-700 font-medium">
+            Bạn đang xem ở chế độ <strong>chỉ đọc</strong>. Chỉ Manager mới có thể chỉnh sửa cấu hình dung lượng.
+          </p>
+        </div>
+      )}
+
+      {/* Zone selector */}
+      {loadingZones ? (
+        <div className="flex gap-2">{[1,2,3].map(i => <div key={i} className="h-9 w-24 bg-gray-100 rounded-xl animate-pulse" />)}</div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {zones.map(z => (
+            <button key={z.zoneId} onClick={() => loadZone(z)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border-2 transition-all
+                ${selectedZone?.zoneId === z.zoneId
+                  ? 'bg-gray-900 border-gray-900 text-white shadow-sm'
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-gray-400'
+                }`}>
+              <span className="material-symbols-outlined text-[15px]">warehouse</span>
+              {z.zoneCode}
             </button>
-          </div>
+          ))}
         </div>
-      </section>
+      )}
 
-      {/* DETAILED CONFIGURATION TABLE */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-6">
-        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest">Bin Inventory Configuration</h3>
-          <div className="relative">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[18px]">search</span>
-            <input 
-              type="text" 
-              placeholder="Search bin ID..." 
-              className="pl-9 pr-4 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none w-48"
-            />
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: 'Tổng BIN',      val: stats.total,        color: 'text-gray-800',  bg: 'bg-white border-gray-200' },
+          { label: 'Đã cấu hình',   val: stats.configured,   color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
+          { label: 'Chưa cấu hình', val: stats.unconfigured, color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' },
+        ].map(s => (
+          <div key={s.label} className={`rounded-xl border px-4 py-3 ${s.bg}`}>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{s.label}</p>
+            <p className={`text-2xl font-extrabold mt-0.5 ${s.color}`}>{s.val}</p>
           </div>
+        ))}
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[160px] max-w-xs">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[16px]">search</span>
+          <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+            placeholder="Tìm mã BIN..."
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white" />
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Bin ID</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Zone</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Max Weight (kg)</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Max Volume (m³)</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Max Units</th>
-                <th className="px-6 py-4 text-right text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {MOCK_CONFIG_BINS.map((bin) => (
-                <tr key={bin.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-6 py-4 font-bold text-blue-600 text-sm">{bin.id}</td>
-                  <td className="px-6 py-4 text-xs text-gray-500">{bin.zone}</td>
-                  <td className="px-6 py-4">
-                    <input type="number" defaultValue={bin.weight} className="w-20 px-2 py-1 border border-gray-200 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                  </td>
-                  <td className="px-6 py-4">
-                    <input type="number" defaultValue={bin.volume} className="w-20 px-2 py-1 border border-gray-200 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                  </td>
-                  <td className="px-6 py-4">
-                    <input type="number" defaultValue={bin.units} className="w-20 px-2 py-1 border border-gray-200 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    {getStatusBadge(bin.status)}
-                  </td>
-                </tr>
+        <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+          {([
+            { key: 'ALL',   label: 'Tất cả' },
+            { key: 'SET',   label: 'Đã cấu hình' },
+            { key: 'UNSET', label: 'Chưa cấu hình' },
+          ] as const).map(f => (
+            <button key={f.key} onClick={() => setFilterCap(f.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all
+                ${filterCap === f.key ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {isManager && selectedIds.size > 0 && (
+          <button onClick={() => setShowBulkEdit(true)}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white rounded-xl transition-all active:scale-95"
+            style={{ background: 'linear-gradient(135deg,#d97706,#f59e0b)' }}>
+            <span className="material-symbols-outlined text-[15px]">edit_note</span>
+            Cập nhật {selectedIds.size} bins
+          </button>
+        )}
+
+        {isManager && selectedIds.size > 0 && (
+          <button onClick={() => setSelectedIds(new Set())}
+            className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+            Bỏ chọn tất cả
+          </button>
+        )}
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <span className="material-symbols-outlined animate-spin text-indigo-400 text-[36px]">progress_activity</span>
+          </div>
+        ) : displayBins.length === 0 ? (
+          <div className="flex flex-col items-center py-16 gap-2">
+            <span className="material-symbols-outlined text-gray-200 text-[48px]">inventory_2</span>
+            <p className="text-sm text-gray-400">Không có bins</p>
+          </div>
+        ) : (
+          <>
+            {/* Header */}
+            <div className="grid grid-cols-[auto_2fr_1fr_1fr_1.5fr_1.5fr_auto] bg-gray-50 border-b border-gray-100">
+              <div className="px-4 py-3 flex items-center">
+                {isManager && (
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                    className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400 cursor-pointer" />
+                )}
+              </div>
+              {['Mã BIN', 'Zone', 'Kệ / Dãy', 'Max KG', 'Max m³', ''].map(h => (
+                <div key={h} className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">{h}</div>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </div>
 
-        {/* PAGINATION */}
-        <div className="px-6 py-4 border-t border-gray-50 bg-gray-50/30 flex justify-between items-center">
-          <p className="text-xs text-gray-500">Showing 1-4 of 150 Bins</p>
-          <div className="flex items-center gap-1">
-            <button className="p-1.5 hover:bg-gray-100 rounded text-gray-400"><span className="material-symbols-outlined text-[18px]">chevron_left</span></button>
-            <button className="w-7 h-7 rounded bg-blue-600 text-white text-[10px] font-bold shadow-sm">1</button>
-            <button className="w-7 h-7 rounded hover:bg-gray-100 text-gray-600 text-[10px] font-bold">2</button>
-            <button className="w-7 h-7 rounded hover:bg-gray-100 text-gray-600 text-[10px] font-bold">3</button>
-            <span className="px-1 text-gray-300">...</span>
-            <button className="w-7 h-7 rounded hover:bg-gray-100 text-gray-600 text-[10px] font-bold">15</button>
-            <button className="p-1.5 hover:bg-gray-100 rounded text-gray-400"><span className="material-symbols-outlined text-[18px]">chevron_right</span></button>
-          </div>
-        </div>
+            {/* Rows */}
+            <div className="divide-y divide-gray-50 overflow-y-auto max-h-[55vh]">
+              {displayBins.map(bin => {
+                const isSelected = selectedIds.has(bin.locationId);
+                const hasConfig  = bin.maxWeightKg != null;
+
+                return (
+                  <div key={bin.locationId}
+                    className={`grid grid-cols-[auto_2fr_1fr_1fr_1.5fr_1.5fr_auto] transition-colors
+                      ${isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50/50'}`}>
+
+                    <div className="px-4 py-3 flex items-center">
+                      {isManager && (
+                        <input type="checkbox" checked={isSelected} onChange={() => toggleOne(bin.locationId)}
+                          className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400 cursor-pointer" />
+                      )}
+                    </div>
+
+                    <div className="px-4 py-3 flex items-center gap-2">
+                      <span className="text-sm font-bold text-gray-900">{bin.locationCode}</span>
+                      {bin.isStaging && (
+                        <span className="text-[9px] font-bold bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full">STG</span>
+                      )}
+                    </div>
+
+                    <div className="px-4 py-3 flex items-center">
+                      <span className="text-xs text-gray-500">{bin.zoneCode}</span>
+                    </div>
+
+                    <div className="px-4 py-3 flex items-center">
+                      <span className="text-xs text-gray-500">
+                        {[bin.grandParentLocationCode, bin.parentLocationCode].filter(Boolean).join(' / ') || '—'}
+                      </span>
+                    </div>
+
+                    <div className="px-4 py-3 flex items-center">
+                      {hasConfig
+                        ? <span className="text-sm font-semibold text-gray-800">{Number(bin.maxWeightKg)} kg</span>
+                        : <span className="text-xs text-amber-500 font-medium flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[13px]">warning</span>Chưa đặt
+                          </span>
+                      }
+                    </div>
+
+                    <div className="px-4 py-3 flex items-center">
+                      {bin.maxVolumeM3 != null
+                        ? <span className="text-sm font-semibold text-gray-800">{Number(bin.maxVolumeM3)} m³</span>
+                        : <span className="text-xs text-gray-400">—</span>
+                      }
+                    </div>
+
+                    <div className="px-4 py-3 flex items-center">
+                      {isManager && (
+                        <button
+                          onClick={() => setEditBin(bin)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors">
+                          <span className="material-symbols-outlined text-[16px]">edit</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
+              <p className="text-xs text-gray-400">
+                {displayBins.length} bins{selectedIds.size > 0 ? ` · ${selectedIds.size} được chọn` : ''}
+              </p>
+              {stats.unconfigured > 0 && (
+                <p className="text-xs text-amber-600 font-medium flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[13px]">warning</span>
+                  {stats.unconfigured} bins chưa có cấu hình dung lượng
+                </p>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
-      {/* DEV NOTES / ALERTS */}
-      <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl flex gap-3 shadow-sm">
-        <span className="material-symbols-outlined text-amber-500">warning</span>
-        <div className="text-xs text-amber-800 leading-relaxed">
-          <p className="font-bold mb-0.5">Validation Rules:</p>
-          <p>Weight and volume limits are enforced during Putaway operations. Volume calculations use the standard Euro-pallet (1.2m x 0.8m) as the base unit.</p>
-        </div>
-      </div>
-
+      {/* Modals */}
+      {editBin && (
+        <EditCapacityModal
+          bin={editBin}
+          onClose={() => setEditBin(null)}
+          onSaved={handleSaved}
+        />
+      )}
+      {showBulkEdit && selectedIds.size > 0 && (
+        <BulkEditModal
+          count={selectedIds.size}
+          onClose={() => setShowBulkEdit(false)}
+          onSave={handleBulkSave}
+        />
+      )}
     </div>
   );
 }

@@ -1,183 +1,463 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import api from '@/config/axios';
+import { fetchZones } from '@/services/zoneService';
+import type { Zone } from '@/interfaces/zone';
+import type { ApiResponse, PageResponse } from '@/interfaces/common';
+import type { BinOccupancyResponse, BinInventoryItem } from '@/services/putawayService';
+import toast from 'react-hot-toast';
 
-// --- MOCK DATA (Giữ nguyên logic 40 Bin) ---
-const MOCK_BINS = Array.from({ length: 40 }, (_, i) => {
-  const id = `A-${String(i + 1).padStart(2, '0')}`;
-  let capacity = 0;
-  let status: 'Empty' | 'Low' | 'Busy' | 'Full' | 'Blocked' = 'Empty';
+// ─── API helpers ──────────────────────────────────────────────────────────────
 
-  if ([4, 8, 16, 25, 31, 38].includes(i + 1)) status = 'Blocked';
-  else if ([2, 6, 13, 19, 22, 28, 34, 40].includes(i + 1)) { capacity = Math.floor(Math.random() * 10) + 90; status = 'Full'; }
-  else if ([3, 5, 9, 20, 24, 29].includes(i + 1)) { capacity = Math.floor(Math.random() * 40) + 50; status = 'Busy'; }
-  else if ([7, 10, 14, 21, 26, 30].includes(i + 1)) { capacity = Math.floor(Math.random() * 49) + 1; status = 'Low'; }
+async function apiFetchBins(params: {
+  zoneId?: number;
+  occupancyStatus?: string;
+  page?: number;
+  size?: number;
+}): Promise<{ content: BinOccupancyResponse[]; totalElements: number }> {
+  const { data } = await api.get<ApiResponse<PageResponse<BinOccupancyResponse>>>(
+    '/bins/occupancy', { params: { ...params, size: params.size ?? 200 } }
+  );
+  return { content: data.data?.content ?? [], totalElements: data.data?.totalElements ?? 0 };
+}
 
-  return { 
-    id, 
-    zone: 'Zone A', 
-    capacity, 
-    status,
-    row: `0${Math.floor(i / 10) + 1}`, 
-    aisle: '04', 
-    type: 'Standard Shelf',
-    items: capacity > 0 && status !== 'Blocked' ? [
-      { sku: '10294-B', name: 'Product Alpha', qty: 14 },
-      { sku: '10442-A', name: 'Product Beta', qty: 2 }
-    ] : []
-  };
-});
+async function apiFetchBinDetail(locationId: number): Promise<BinOccupancyResponse | null> {
+  try {
+    const { data } = await api.get<ApiResponse<BinOccupancyResponse>>(`/bins/${locationId}/occupancy`);
+    return data.data ?? null;
+  } catch { return null; }
+}
 
-type Bin = typeof MOCK_BINS[0];
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-export default function BinOccupancyPage() {
-  const [selectedBin, setSelectedBin] = useState<Bin | null>(null);
+function usagePct(bin: BinOccupancyResponse): number {
+  const max = Number(bin.maxWeightKg);
+  if (!max) return Number(bin.occupiedQty) > 0 ? 50 : 0;
+  return Math.min(100, Math.round(((Number(bin.occupiedQty) + Number(bin.reservedQty)) / max) * 100));
+}
 
-  const stats = useMemo(() => {
-    const total = MOCK_BINS.length;
-    const critical = MOCK_BINS.filter(b => b.status === 'Full').length;
-    const empty = MOCK_BINS.filter(b => b.status === 'Empty').length;
-    return { total, critical, empty, avg: 78.4 };
-  }, []);
+const STATUS = {
+  EMPTY:   { label: 'Trống',     dot: 'bg-gray-300',    badge: 'bg-gray-100 text-gray-500',   row: 'hover:bg-gray-50',     bar: '#94a3b8' },
+  PARTIAL: { label: 'Đang dùng', dot: 'bg-amber-400',   badge: 'bg-amber-50 text-amber-700',  row: 'hover:bg-amber-50/40', bar: '#f59e0b' },
+  FULL:    { label: 'Đầy',       dot: 'bg-red-500',     badge: 'bg-red-50 text-red-700',      row: 'hover:bg-red-50/40',   bar: '#ef4444' },
+} as const;
 
-  const getBinStyle = (status: Bin['status']) => {
-    switch (status) {
-      case 'Full': return 'bg-red-500 text-white border-red-600';
-      case 'Busy': return 'bg-amber-300 text-amber-900 border-amber-400';
-      case 'Low': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'Blocked': return 'bg-gray-200 text-gray-400 border-gray-300 diagonal-stripes cursor-not-allowed opacity-60';
-      case 'Empty': default: return 'bg-white text-gray-400 border-gray-300 border-dashed hover:bg-gray-50';
-    }
-  };
+// ─── Bin Detail Sidebar ───────────────────────────────────────────────────────
+
+function BinDetailSidebar({
+  bin, onClose,
+}: { bin: BinOccupancyResponse; onClose: () => void }) {
+  const [detail, setDetail] = useState<BinOccupancyResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    apiFetchBinDetail(bin.locationId).then(d => {
+      setDetail(d);
+      setLoading(false);
+    });
+  }, [bin.locationId]);
+
+  const cfg  = STATUS[bin.occupancyStatus];
+  const pct  = usagePct(bin);
+  const items: BinInventoryItem[] = detail?.inventoryItems ?? [];
 
   return (
-    <div className="flex flex-1 overflow-hidden font-sans bg-gray-50/50">
-      
-      {/* NỘI DUNG CHÍNH (Đã bỏ Header) */}
-      <main className="flex-1 overflow-y-auto p-6 md:p-8 flex flex-col gap-6 min-w-0">
-        
-        <div className="flex justify-between items-end">
+    <aside className="w-80 flex-shrink-0 bg-white border-l border-gray-100 flex flex-col h-full shadow-xl">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
+            <span className="material-symbols-outlined text-indigo-500 text-[18px]">inventory</span>
+          </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Bin Occupancy Overview</h2>
-            <p className="text-sm text-gray-500">Visual mapping of warehouse storage slots.</p>
+            <p className="text-sm font-bold text-gray-900">{bin.locationCode}</p>
+            <p className="text-[11px] text-gray-400">
+              {bin.grandParentLocationCode && `${bin.grandParentLocationCode} › `}
+              {bin.parentLocationCode ?? '—'}
+            </p>
+          </div>
+        </div>
+        <button onClick={onClose}
+          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
+          <span className="material-symbols-outlined text-[18px]">close</span>
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Status + usage */}
+        <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${cfg.badge}`}>
+              {cfg.label}
+            </span>
+            <span className="text-sm font-extrabold text-gray-700 tabular-nums">{pct}%</span>
+          </div>
+          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div className="h-full rounded-full transition-all duration-700"
+              style={{ width: `${pct}%`, background: cfg.bar }} />
+          </div>
+          <div className="grid grid-cols-3 gap-1.5 pt-0.5">
+            {[
+              { label: 'Tối đa', val: bin.maxWeightKg ? `${Number(bin.maxWeightKg)}` : '∞' },
+              { label: 'Đã dùng', val: Number(bin.occupiedQty).toFixed(0) },
+              { label: 'Còn lại', val: bin.availableQty != null ? Number(bin.availableQty).toFixed(0) : '—' },
+            ].map(({ label, val }) => (
+              <div key={label} className="bg-white rounded-lg p-2 text-center border border-gray-100">
+                <p className="text-[9px] text-gray-400 font-medium">{label}</p>
+                <p className="text-xs font-extrabold text-gray-800 mt-0.5">{val}</p>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Thẻ chỉ số */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total Capacity</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{stats.total} Bins</p>
-          </div>
-          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Avg. Occupancy</p>
-            <p className="text-2xl font-bold text-blue-600 mt-1">{stats.avg}%</p>
-          </div>
-          <div className="bg-white p-5 rounded-xl border border-red-100 shadow-sm">
-            <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest">Critical Bins</p>
-            <p className="text-2xl font-bold text-red-600 mt-1">{stats.critical}</p>
-          </div>
-          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Empty Slots</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{stats.empty}</p>
-          </div>
+        {/* Badges */}
+        <div className="flex flex-wrap gap-1.5">
+          {bin.isStaging && (
+            <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full flex items-center gap-1">
+              <span className="material-symbols-outlined text-[11px]">local_shipping</span>Staging
+            </span>
+          )}
+          {bin.isPickingFace && (
+            <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full flex items-center gap-1">
+              <span className="material-symbols-outlined text-[11px]">hand_gesture</span>Picking Face
+            </span>
+          )}
+          {!bin.active && (
+            <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-1 rounded-full">Vô hiệu</span>
+          )}
+          <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-full">
+            {bin.zoneCode}
+          </span>
         </div>
 
-        {/* Lưới Heatmap */}
-        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex-1">
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="font-bold text-gray-800">Zone A Floor Plan</h3>
-            <div className="flex gap-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-              <span className="flex items-center gap-1.5"><div className="w-3 h-3 bg-white border border-dashed border-gray-300 rounded-sm"></div> Empty</span>
-              <span className="flex items-center gap-1.5"><div className="w-3 h-3 bg-blue-100 rounded-sm"></div> Low</span>
-              <span className="flex items-center gap-1.5"><div className="w-3 h-3 bg-amber-300 rounded-sm"></div> Busy</span>
-              <span className="flex items-center gap-1.5"><div className="w-3 h-3 bg-red-500 rounded-sm"></div> Full</span>
+        {/* Inventory items */}
+        <div>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+            <span className="material-symbols-outlined text-[11px]">inventory_2</span>
+            Hàng trong BIN
+          </p>
+
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <span className="material-symbols-outlined animate-spin text-indigo-400 text-[24px]">progress_activity</span>
             </div>
-          </div>
-          
-          <style dangerouslySetInnerHTML={{__html: `
-            .diagonal-stripes {
-              background-image: linear-gradient(45deg, #f3f4f6 25%, #e5e7eb 25%, #e5e7eb 50%, #f3f4f6 50%, #f3f4f6 75%, #e5e7eb 75%, #e5e7eb 100%);
-              background-size: 8px 8px;
-            }
-          `}} />
-
-          <div className="grid grid-cols-5 sm:grid-cols-8 lg:grid-cols-10 gap-3">
-            {MOCK_BINS.map((bin) => {
-              const isSelected = selectedBin?.id === bin.id;
-              const isBlocked = bin.status === 'Blocked';
-
-              return (
-                <div 
-                  key={bin.id}
-                  onClick={() => !isBlocked && setSelectedBin(bin)}
-                  className={`relative aspect-square border-2 rounded-xl flex items-center justify-center transition-all duration-200
-                    ${getBinStyle(bin.status)}
-                    ${isSelected ? 'ring-4 ring-blue-500 border-blue-600 scale-110 z-10' : 'border-transparent'}
-                    ${!isBlocked ? 'cursor-pointer hover:shadow-lg' : ''}
-                  `}
-                >
-                  <span className={`text-[11px] font-bold ${isBlocked ? 'bg-white/80 px-1 rounded text-gray-400' : ''}`}>
-                    {bin.id}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </main>
-
-      {/* CHI TIẾT BÊN PHẢI (Sidebar) */}
-      {selectedBin && (
-        <aside className="w-80 bg-white border-l border-gray-200 flex flex-col shrink-0 animate-in slide-in-from-right-8 duration-300 z-10 shadow-2xl">
-          <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50/50">
-            <h3 className="text-lg font-bold text-gray-900 tracking-tight">Bin Details</h3>
-            <button onClick={() => setSelectedBin(null)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-400 transition-colors">
-              <span className="material-symbols-outlined text-[20px]">close</span>
-            </button>
-          </div>
-
-          <div className="p-6 flex-1 overflow-y-auto flex flex-col gap-8">
-            <div className="flex items-center gap-4">
-              <div className={`w-16 h-16 flex items-center justify-center border-2 rounded-2xl font-bold text-lg ${getBinStyle(selectedBin.status)}`}>
-                {selectedBin.id}
-              </div>
-              <div>
-                <p className="font-bold text-gray-900 leading-tight">Row {selectedBin.row}, Aisle {selectedBin.aisle}</p>
-                <p className="text-xs text-gray-500 mt-1">{selectedBin.type}</p>
-              </div>
+          ) : items.length === 0 ? (
+            <div className="flex flex-col items-center py-6 gap-1.5 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+              <span className="material-symbols-outlined text-gray-300 text-[28px]">inbox</span>
+              <p className="text-xs text-gray-400">BIN trống</p>
             </div>
-
-            <div>
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Occupancy</p>
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div className={`h-full ${selectedBin.capacity >= 90 ? 'bg-red-500' : 'bg-blue-600'}`} style={{ width: `${selectedBin.capacity}%` }}></div>
-                </div>
-                <span className="text-sm font-bold text-gray-900">{selectedBin.capacity}%</span>
-              </div>
-            </div>
-
-            <div className="flex-1">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Inventory</p>
-              <div className="space-y-3">
-                {selectedBin.items.map((item, idx) => (
-                  <div key={idx} className="p-3 bg-gray-50 rounded-xl border border-gray-100">
-                    <p className="text-xs font-bold text-blue-600">SKU: {item.sku}</p>
-                    <p className="text-sm font-bold text-gray-800 mt-1">{item.name}</p>
-                    <p className="text-xs text-gray-500 mt-1">Qty: <span className="text-gray-900 font-bold">{item.qty} units</span></p>
+          ) : (
+            <div className="space-y-2">
+              {items.map((inv, i) => (
+                <div key={i} className="bg-white border border-gray-100 rounded-xl p-3 hover:border-indigo-200 transition-colors">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-extrabold text-indigo-600">{inv.skuCode}</p>
+                      <p className="text-xs text-gray-700 font-medium truncate mt-0.5">{inv.skuName}</p>
+                      {inv.lotNumber && (
+                        <p className="text-[10px] text-gray-400 mt-1">
+                          Lô: <span className="font-semibold">{inv.lotNumber}</span>
+                          {inv.expiryDate && (
+                            <span className="ml-1.5">HSD: {new Date(inv.expiryDate).toLocaleDateString('vi-VN')}</span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm font-extrabold text-gray-800">{Number(inv.quantity).toFixed(0)}</p>
+                      <p className="text-[9px] text-gray-400">tồn kho</p>
+                      {Number(inv.reservedQty) > 0 && (
+                        <p className="text-[10px] text-amber-600 font-semibold">
+                          -{Number(inv.reservedQty).toFixed(0)} reserved
+                        </p>
+                      )}
+                    </div>
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// ─── MAIN PAGE ────────────────────────────────────────────────────────────────
+
+type FilterStatus = 'ALL' | 'EMPTY' | 'PARTIAL' | 'FULL';
+
+export default function BinOccupancyPage() {
+  const [zones, setZones]               = useState<Zone[]>([]);
+  const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
+  const [bins, setBins]                 = useState<BinOccupancyResponse[]>([]);
+  const [loading, setLoading]           = useState(false);
+  const [loadingZones, setLoadingZones] = useState(true);
+  const [selectedBin, setSelectedBin]   = useState<BinOccupancyResponse | null>(null);
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>('ALL');
+  const [searchTerm, setSearchTerm]     = useState('');
+  const [sortBy, setSortBy]             = useState<'code' | 'usage' | 'status'>('code');
+
+  // ── Load zones ──
+  useEffect(() => {
+    fetchZones({ activeOnly: true })
+      .then(z => {
+        setZones(z);
+        if (z.length > 0) loadBins(z[0]);
+      })
+      .catch(() => toast.error('Không tải được zone'))
+      .finally(() => setLoadingZones(false));
+  }, []);
+
+  const loadBins = useCallback(async (zone: Zone) => {
+    setSelectedZone(zone);
+    setSelectedBin(null);
+    setLoading(true);
+    try {
+      const { content } = await apiFetchBins({ zoneId: zone.zoneId, size: 500 });
+      setBins(content);
+    } catch { toast.error('Không tải được bins'); }
+    finally { setLoading(false); }
+  }, []);
+
+  // ── Stats ──
+  const stats = useMemo(() => {
+    const total   = bins.length;
+    const empty   = bins.filter(b => b.occupancyStatus === 'EMPTY').length;
+    const partial = bins.filter(b => b.occupancyStatus === 'PARTIAL').length;
+    const full    = bins.filter(b => b.occupancyStatus === 'FULL').length;
+    const totalCap = bins.reduce((s, b) => s + Number(b.maxWeightKg ?? 0), 0);
+    const totalUsed = bins.reduce((s, b) => s + Number(b.occupiedQty ?? 0), 0);
+    const avgPct = totalCap > 0 ? Math.round((totalUsed / totalCap) * 100) : 0;
+    return { total, empty, partial, full, avgPct };
+  }, [bins]);
+
+  // ── Filter + search + sort ──
+  const displayBins = useMemo(() => {
+    let list = [...bins];
+    if (filterStatus !== 'ALL') list = list.filter(b => b.occupancyStatus === filterStatus);
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      list = list.filter(b =>
+        b.locationCode.toLowerCase().includes(q) ||
+        b.parentLocationCode?.toLowerCase().includes(q) ||
+        b.grandParentLocationCode?.toLowerCase().includes(q) ||
+        b.zoneCode.toLowerCase().includes(q)
+      );
+    }
+    list.sort((a, b) => {
+      if (sortBy === 'code')   return a.locationCode.localeCompare(b.locationCode);
+      if (sortBy === 'status') return a.occupancyStatus.localeCompare(b.occupancyStatus);
+      if (sortBy === 'usage')  return usagePct(b) - usagePct(a);
+      return 0;
+    });
+    return list;
+  }, [bins, filterStatus, searchTerm, sortBy]);
+
+  const STATUS_FILTERS: { key: FilterStatus; label: string; count: number; cls: string }[] = [
+    { key: 'ALL',     label: 'Tất cả',    count: stats.total,   cls: 'bg-gray-800 text-white' },
+    { key: 'EMPTY',   label: 'Trống',     count: stats.empty,   cls: 'bg-gray-100 text-gray-700' },
+    { key: 'PARTIAL', label: 'Đang dùng', count: stats.partial, cls: 'bg-amber-100 text-amber-700' },
+    { key: 'FULL',    label: 'Đầy',       count: stats.full,    cls: 'bg-red-100 text-red-700' },
+  ];
+
+  return (
+    <div className="w-full h-full font-sans flex flex-col gap-4">
+
+      {/* ── Page header ── */}
+      <div className="flex-shrink-0">
+        <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Bin Occupancy</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Tình trạng chiếm dụng từng ô bin trong kho</p>
+      </div>
+
+      {/* ── Zone selector ── */}
+      {loadingZones ? (
+        <div className="flex gap-2">
+          {[1,2,3].map(i => <div key={i} className="h-9 w-24 bg-gray-100 rounded-xl animate-pulse" />)}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2 flex-shrink-0">
+          {zones.map(z => (
+            <button key={z.zoneId}
+              onClick={() => loadBins(z)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border-2 transition-all
+                ${selectedZone?.zoneId === z.zoneId
+                  ? 'bg-gray-900 border-gray-900 text-white shadow-sm'
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-gray-400'
+                }`}>
+              <span className="material-symbols-outlined text-[15px]">warehouse</span>
+              {z.zoneCode}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Stats cards ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 flex-shrink-0">
+        {[
+          { label: 'Tổng BIN',    val: stats.total,   sub: 'bins',          color: 'text-gray-800',   bg: 'bg-white border-gray-200' },
+          { label: 'Trống',       val: stats.empty,   sub: 'bins',          color: 'text-gray-600',   bg: 'bg-white border-gray-200' },
+          { label: 'Đang dùng',   val: stats.partial, sub: 'bins',          color: 'text-amber-700',  bg: 'bg-amber-50 border-amber-200' },
+          { label: 'Đầy',         val: stats.full,    sub: 'bins',          color: 'text-red-700',    bg: 'bg-red-50 border-red-200' },
+          { label: 'Trung bình',  val: `${stats.avgPct}%`, sub: 'chiếm dụng', color: stats.avgPct >= 80 ? 'text-red-700' : stats.avgPct >= 50 ? 'text-amber-700' : 'text-emerald-700', bg: 'bg-white border-gray-200' },
+        ].map(s => (
+          <div key={s.label} className={`rounded-xl border px-4 py-3 ${s.bg}`}>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{s.label}</p>
+            <p className={`text-2xl font-extrabold mt-0.5 tabular-nums ${s.color}`}>{s.val}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">{s.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Toolbar ── */}
+      <div className="flex flex-wrap items-center gap-3 flex-shrink-0">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[200px] max-w-xs">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[16px]">search</span>
+          <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+            placeholder="Tìm BIN, kệ, dãy..."
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white" />
+          {searchTerm && (
+            <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+              <span className="material-symbols-outlined text-[16px]">close</span>
+            </button>
+          )}
+        </div>
+
+        {/* Status filter */}
+        <div className="flex items-center gap-1.5 bg-gray-100 rounded-xl p-1">
+          {STATUS_FILTERS.map(f => (
+            <button key={f.key}
+              onClick={() => setFilterStatus(f.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5
+                ${filterStatus === f.key ? f.cls + ' shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              {f.label}
+              <span className="tabular-nums opacity-70">{f.count}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Sort */}
+        <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
+          className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-600">
+          <option value="code">Sắp xếp: Mã BIN</option>
+          <option value="usage">Sắp xếp: % Chiếm dụng</option>
+          <option value="status">Sắp xếp: Trạng thái</option>
+        </select>
+
+        <button onClick={() => selectedZone && loadBins(selectedZone)}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm text-indigo-600 border border-indigo-200 bg-white rounded-xl hover:bg-indigo-50 transition-colors disabled:opacity-50">
+          <span className={`material-symbols-outlined text-[15px] ${loading ? 'animate-spin' : ''}`}>refresh</span>
+          Làm mới
+        </button>
+      </div>
+
+      {/* ── Main content ── */}
+      <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
+
+        {/* Table */}
+        <div className="flex-1 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+          {loading ? (
+            <div className="flex-1 flex items-center justify-center">
+              <span className="material-symbols-outlined animate-spin text-indigo-400 text-[36px]">progress_activity</span>
+            </div>
+          ) : displayBins.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-2">
+              <span className="material-symbols-outlined text-gray-200 text-[48px]">grid_off</span>
+              <p className="text-sm text-gray-400">Không có kết quả</p>
+            </div>
+          ) : (
+            <div className="overflow-y-auto">
+              {/* Table header */}
+              <div className="sticky top-0 bg-gray-50 border-b border-gray-100 grid grid-cols-[2fr_1fr_1fr_1.5fr_1fr_1fr] gap-0 z-10">
+                {['Mã BIN', 'Zone', 'Kệ / Dãy', 'Chiếm dụng', 'Trạng thái', 'Còn lại'].map(h => (
+                  <div key={h} className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">{h}</div>
                 ))}
               </div>
-            </div>
 
-            <div className="flex flex-col gap-2 mt-auto">
-              <button className="w-full py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-sm transition-colors text-sm">Optimize Bin</button>
-              <button className="w-full py-2.5 bg-white border border-gray-300 text-gray-700 font-bold rounded-xl hover:bg-gray-50 shadow-sm transition-colors text-sm">Move Stock</button>
+              {/* Rows */}
+              <div className="divide-y divide-gray-50">
+                {displayBins.map(bin => {
+                  const cfg  = STATUS[bin.occupancyStatus];
+                  const pct  = usagePct(bin);
+                  const isSelected = selectedBin?.locationId === bin.locationId;
+
+                  return (
+                    <div key={bin.locationId}
+                      onClick={() => setSelectedBin(prev => prev?.locationId === bin.locationId ? null : bin)}
+                      className={`grid grid-cols-[2fr_1fr_1fr_1.5fr_1fr_1fr] gap-0 cursor-pointer transition-colors
+                        ${isSelected ? 'bg-indigo-50' : cfg.row}`}>
+
+                      {/* Bin code */}
+                      <div className="px-4 py-3 flex items-center gap-2.5">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
+                        <span className="text-sm font-bold text-gray-900">{bin.locationCode}</span>
+                        {bin.isStaging && (
+                          <span className="text-[9px] font-bold bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full">STG</span>
+                        )}
+                      </div>
+
+                      {/* Zone */}
+                      <div className="px-4 py-3 flex items-center">
+                        <span className="text-xs text-gray-500">{bin.zoneCode}</span>
+                      </div>
+
+                      {/* Rack / Aisle */}
+                      <div className="px-4 py-3 flex items-center">
+                        <span className="text-xs text-gray-500">
+                          {[bin.grandParentLocationCode, bin.parentLocationCode].filter(Boolean).join(' / ') || '—'}
+                        </span>
+                      </div>
+
+                      {/* Usage bar */}
+                      <div className="px-4 py-3 flex items-center gap-2.5">
+                        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all"
+                            style={{ width: `${pct}%`, background: cfg.bar }} />
+                        </div>
+                        <span className="text-xs font-bold text-gray-700 tabular-nums w-9 text-right">{pct}%</span>
+                      </div>
+
+                      {/* Status badge */}
+                      <div className="px-4 py-3 flex items-center">
+                        <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${cfg.badge}`}>
+                          {cfg.label}
+                        </span>
+                      </div>
+
+                      {/* Available */}
+                      <div className="px-4 py-3 flex items-center">
+                        <span className="text-xs font-semibold text-gray-700 tabular-nums">
+                          {bin.availableQty != null ? Number(bin.availableQty).toFixed(0) : '—'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Footer count */}
+              <div className="px-4 py-3 border-t border-gray-100 bg-gray-50">
+                <p className="text-xs text-gray-400">
+                  Hiển thị {displayBins.length} / {bins.length} bins
+                  {searchTerm && ` · tìm kiếm "${searchTerm}"`}
+                </p>
+              </div>
             </div>
-          </div>
-        </aside>
-      )}
+          )}
+        </div>
+
+        {/* ── Detail sidebar ── */}
+        {selectedBin && (
+          <BinDetailSidebar
+            bin={selectedBin}
+            onClose={() => setSelectedBin(null)}
+          />
+        )}
+      </div>
     </div>
   );
 }

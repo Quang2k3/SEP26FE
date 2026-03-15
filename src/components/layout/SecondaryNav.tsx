@@ -3,14 +3,22 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { CATEGORY_ACTIONS, ZONE_ACTIONS, BIN_ACTIONS, NavAction } from '@/config/navigation';
+import { getStoredSession } from '@/services/authService';
 
 export default function SecondaryNav() {
   const pathname = usePathname();
-  let actions: NavAction[] = [];
+  const session  = getStoredSession();
+  const userRoles: string[] = session?.user?.roleCodes ?? [];
 
-  if (pathname.startsWith('/category'))  actions = CATEGORY_ACTIONS;
-  else if (pathname.startsWith('/zone')) actions = ZONE_ACTIONS;
-  else if (pathname.startsWith('/bin'))  actions = BIN_ACTIONS;
+  let allActions: NavAction[] = [];
+  if (pathname.startsWith('/category'))  allActions = CATEGORY_ACTIONS;
+  else if (pathname.startsWith('/zone')) allActions = ZONE_ACTIONS;
+  else if (pathname.startsWith('/bin'))  allActions = BIN_ACTIONS;
+
+  // Lọc theo role: nếu action có roles[] thì chỉ hiện với user có ít nhất 1 role khớp
+  const actions = allActions.filter(action =>
+    !action.roles || action.roles.some(r => userRoles.includes(r))
+  );
 
   if (actions.length <= 1) return null;
 

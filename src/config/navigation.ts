@@ -12,10 +12,11 @@ export const ZONE_ACTIONS: NavAction[] = [
 ];
 
 export const BIN_ACTIONS: NavAction[] = [
-  { label: 'Bin List', path: '/bin' },
-  { label: 'Bin Occupancy', path: '/bin/occupancy' },
-  { label: 'Search Empty Bins', path: '/bin/search' },
-  { label: 'Configure Capacity', path: '/bin/configure' },
+  { label: 'Sơ đồ kho',          path: '/bin/floor-plan' },
+  { label: 'Bin Occupancy',       path: '/bin/occupancy' },
+  { label: 'Tìm BIN trống',       path: '/bin/search' },
+  { label: 'Bin List',            path: '/bin',            roles: ['MANAGER'] },
+  { label: 'Configure Capacity',  path: '/bin/configure',  roles: ['MANAGER'] },
 ];
 
 export const INBOUND_ACTIONS: NavAction[] = [
