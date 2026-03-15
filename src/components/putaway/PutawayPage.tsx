@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   fetchPutawayTasks,
   fetchPutawayTask,
+  fetchPutawaySuggestions,
   fetchBinOccupancy,
   fetchAllocations,
   allocatePutaway,
@@ -11,12 +12,14 @@ import {
   confirmPutawayTask,
   type PutawayTaskResponse,
   type PutawayTaskItemDto,
+  type PutawaySuggestion,
   type BinOccupancyResponse,
   type PutawayAllocationResponse,
 } from '@/services/putawayService';
 import { fetchZones } from '@/services/zoneService';
 import type { Zone } from '@/interfaces/zone';
 import { useConfirm } from '@/components/ui/ModalProvider';
+import Portal from '@/components/ui/Portal';
 import toast from 'react-hot-toast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -138,6 +141,7 @@ function BinDetailModal({ bin, task, pendingForBin, onClose, onAdd, remainingFn 
   const pctFull = pct(Number(bin.occupiedQty) + Number(bin.reservedQty), Number(bin.maxWeightKg));
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
       style={{ background: 'rgba(17,24,39,0.5)', backdropFilter: 'blur(4px)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
@@ -276,6 +280,7 @@ function BinDetailModal({ bin, task, pendingForBin, onClose, onAdd, remainingFn 
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 
@@ -293,6 +298,7 @@ export default function PutawayPage() {
 
   // ── Current task context ──
   const [task, setTask]                 = useState<PutawayTaskResponse | null>(null);
+  const [suggestions, setSuggestions]   = useState<PutawaySuggestion[]>([]);
   const [zones, setZones]               = useState<Zone[]>([]);
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
 
@@ -310,6 +316,19 @@ export default function PutawayPage() {
   const [reserved, setReserved]         = useState<PutawayAllocationResponse[]>([]);
   const [submitting, setSubmitting]     = useState(false);
   const [confirming, setConfirming]     = useState(false);
+
+  // ── Computed: suggested zones & bins from API ──
+  const suggestedZoneIds = new Set(suggestions.map(s => s.matchedZoneId));
+  // Map: zoneId → list suggestions (grouped)
+  const suggByZone = suggestions.reduce<Record<number, PutawaySuggestion[]>>((acc, s) => {
+    (acc[s.matchedZoneId] ??= []).push(s);
+    return acc;
+  }, {});
+  // Map: locationId → suggestion (for bin-level highlight)
+  const suggByBin = suggestions.reduce<Record<number, PutawaySuggestion>>((acc, s) => {
+    acc[s.suggestedLocationId] = s;
+    return acc;
+  }, {});
 
   // ── Computed: aisles in selected zone ──
   const aisles = useMemo(() => {
@@ -363,13 +382,15 @@ export default function PutawayPage() {
   // ── Open task ───────────────────────────────────────────────────────────────
   const openTask = async (t: PutawayTaskResponse) => {
     try {
-      const [detail, allocs] = await Promise.all([
+      const [detail, allocs, suggs] = await Promise.all([
         fetchPutawayTask(t.putawayTaskId),
         fetchAllocations(t.putawayTaskId).catch(() => []),
+        fetchPutawaySuggestions(t.putawayTaskId).catch(() => []),
       ]);
       const zList = await fetchZones({ warehouseId: detail.warehouseId, activeOnly: true }).catch(() => []);
       setTask(detail);
       setZones(zList);
+      setSuggestions(suggs);
       setReserved(allocs.filter(a => a.status === 'RESERVED'));
       setPending([]);
       setSelectedZone(null);
@@ -693,25 +714,81 @@ export default function PutawayPage() {
           <TaskSidebar />
           <div className="lg:col-span-3 bg-white rounded-2xl border border-indigo-100/60 shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="text-sm font-bold text-gray-900">Chọn Zone</h3>
-              <p className="text-xs text-gray-400 mt-0.5">Mỗi zone gồm nhiều dãy (Aisle), mỗi dãy gồm nhiều kệ (Rack), mỗi kệ gồm các ô (Bin)</p>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900">Chọn Zone</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">Mỗi zone gồm nhiều dãy (Aisle), mỗi dãy gồm nhiều kệ (Rack), mỗi kệ gồm các ô (Bin)</p>
+                </div>
+                {suggestedZoneIds.size > 0 && (
+                  <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-1.5 flex-shrink-0">
+                    <span className="material-symbols-outlined text-emerald-500 text-[15px]">recommend</span>
+                    <p className="text-[11px] font-semibold text-emerald-700">
+                      {suggestedZoneIds.size} zone được gợi ý theo FEFO
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="p-5 grid grid-cols-2 sm:grid-cols-3 gap-3">
               {zones.length === 0
                 ? <p className="col-span-3 text-sm text-gray-400 text-center py-10">Không có zone nào</p>
-                : zones.map(zone => (
-                  <button key={zone.zoneId} onClick={() => selectZone(zone)}
-                    className="group p-5 rounded-2xl border-2 border-gray-200 bg-white text-left transition-all hover:border-indigo-400 hover:bg-indigo-50/50 hover:shadow-md active:scale-95">
-                    <div className="w-11 h-11 rounded-xl bg-gray-100 group-hover:bg-indigo-100 flex items-center justify-center mb-3 transition-colors">
-                      <span className="material-symbols-outlined text-[22px] text-gray-500 group-hover:text-indigo-600 transition-colors">warehouse</span>
-                    </div>
-                    <p className="text-sm font-bold text-gray-800">{zone.zoneCode}</p>
-                    <p className="text-[11px] text-gray-400 mt-0.5 truncate">{zone.zoneName}</p>
-                    <div className="mt-2 flex items-center gap-1 text-[11px] text-indigo-500 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                      <span className="material-symbols-outlined text-[13px]">arrow_forward</span>Vào zone
-                    </div>
-                  </button>
-                ))
+                : zones.map(zone => {
+                  const isSuggested = suggestedZoneIds.has(zone.zoneId);
+                  const zoneSuggs   = suggByZone[zone.zoneId] ?? [];
+                  // Unique SKUs suggested for this zone
+                  const suggSkus    = [...new Set(zoneSuggs.map(s => s.skuCode))];
+                  const availCap    = zoneSuggs.reduce((s, sg) => s + sg.availableCapacity, 0);
+                  return (
+                    <button key={zone.zoneId} onClick={() => selectZone(zone)}
+                      className={`group p-5 rounded-2xl border-2 text-left transition-all hover:shadow-md active:scale-95 relative
+                        ${isSuggested
+                          ? 'border-emerald-400 bg-emerald-50/60 hover:border-emerald-500 hover:bg-emerald-50'
+                          : 'border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50/50'
+                        }`}>
+
+                      {/* Suggested badge */}
+                      {isSuggested && (
+                        <div className="absolute -top-2.5 left-3 flex items-center gap-1 bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                          <span className="material-symbols-outlined text-[11px]">recommend</span>
+                          Gợi ý
+                        </div>
+                      )}
+
+                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-3 transition-colors
+                        ${isSuggested ? 'bg-emerald-100 group-hover:bg-emerald-200' : 'bg-gray-100 group-hover:bg-indigo-100'}`}>
+                        <span className={`material-symbols-outlined text-[22px] transition-colors
+                          ${isSuggested ? 'text-emerald-600' : 'text-gray-500 group-hover:text-indigo-600'}`}>warehouse</span>
+                      </div>
+
+                      <p className="text-sm font-bold text-gray-800">{zone.zoneCode}</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5 truncate">{zone.zoneName}</p>
+
+                      {/* Suggestion detail */}
+                      {isSuggested && (
+                        <div className="mt-2.5 space-y-1">
+                          <div className="flex flex-wrap gap-1">
+                            {suggSkus.slice(0, 3).map(sku => (
+                              <span key={sku} className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">{sku}</span>
+                            ))}
+                            {suggSkus.length > 3 && (
+                              <span className="text-[10px] text-emerald-600">+{suggSkus.length - 3}</span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-emerald-600 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[11px]">inventory_2</span>
+                            {zoneSuggs.length} bin · còn {availCap} chỗ
+                          </p>
+                        </div>
+                      )}
+
+                      {!isSuggested && (
+                        <div className="mt-2 flex items-center gap-1 text-[11px] text-indigo-500 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="material-symbols-outlined text-[13px]">arrow_forward</span>Vào zone
+                        </div>
+                      )}
+                    </button>
+                  );
+                })
               }
             </div>
           </div>
@@ -874,11 +951,17 @@ export default function PutawayPage() {
                   return (
                     <button key={bin.locationId}
                       onClick={() => !isFull && openBinModal(bin)}
+                      title={suggByBin[bin.locationId] ? `Gợi ý: ${suggByBin[bin.locationId].reason}` : undefined}
                       disabled={isFull}
                       title={isFull ? 'Bin đã đầy' : `${bin.locationCode} — click để xem & đặt hàng`}
                       className={`group relative rounded-xl p-2.5 text-left border-2 transition-all active:scale-95 disabled:cursor-not-allowed ${bgClass}`}>
                       <p className={`text-[11px] font-bold truncate mb-1.5 ${textClass}`}>{bin.locationCode}</p>
                       {/* Mini progress bar */}
+                      {suggByBin[bin.locationId] && (
+                        <div className="absolute top-1 right-1 w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center shadow-sm">
+                          <span className="material-symbols-outlined text-white text-[9px]">star</span>
+                        </div>
+                      )}
                       <div className="h-1 bg-gray-100 rounded-full overflow-hidden mb-1">
                         <div className={`h-full rounded-full ${barClass}`} style={{ width: `${pctFull}%` }} />
                       </div>
