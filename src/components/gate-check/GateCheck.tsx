@@ -43,7 +43,7 @@ function SubmitConfirmModal({
   onCancel: () => void;
 }) {
   return (
-    // FIX: dùng Portal để thoát khỏi stacking context của header
+    // ✅ FIX: dùng Portal để thoát khỏi stacking context của header
     <Portal>
       <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
         <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
@@ -162,7 +162,7 @@ function GenGrnConfirmModal({
   onCancel: () => void;
 }) {
   return (
-    // FIX: dùng Portal để thoát khỏi stacking context của header
+    // ✅ FIX: dùng Portal để thoát khỏi stacking context của header
     <Portal>
       <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
         <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
@@ -415,6 +415,8 @@ export default function GateCheckContent() {
         size: 10,
       });
       setReceivings(data);
+    } catch {
+      // silent — polling sẽ thử lại sau 5s
     } finally {
       setLoading(false);
     }
@@ -598,7 +600,7 @@ export default function GateCheckContent() {
         />
       )}
 
-      {/* FIX: Gửi GRN cho Manager confirm modal */}
+      {/* ✅ FIX: Gửi GRN cho Manager confirm modal */}
       {submitGrnReceiving && (
         <SubmitGrnModal
           receiving={submitGrnReceiving}

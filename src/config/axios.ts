@@ -18,6 +18,15 @@ const SILENT_ENDPOINTS = [
   '/receiving-sessions/',  // polling getSession mỗi 3s
   '/locations',            // MANAGER only — KEEPER sẽ 403, không toast
   '/zones',                // MANAGER only — KEEPER sẽ 403, không toast
+  // Notification polling — background calls, lỗi không nên toast
+  // (chạy mỗi 30s, 500 từ BE không cần thông báo user)
+];
+
+// Endpoints chỉ silent 500/503 (server errors) — vẫn toast 4xx để báo user
+const SILENT_SERVER_ERROR_ENDPOINTS = [
+  '/outbound',             // outbound filter có thể chưa ổn định
+  '/grns',                 // GRN list background refresh
+  '/incidents',            // incident polling background
 ];
 
 function isPublicEndpoint(url?: string) {
@@ -104,6 +113,9 @@ api.interceptors.response.use(
       if (url.includes('/stream') || url.includes('/receiving-sessions/')) {
         return Promise.reject(error);
       }
+      // 500 từ background polling endpoints — silent
+      const isSilentServerError = SILENT_SERVER_ERROR_ENDPOINTS.some(p => url?.includes(p));
+      if (isSilentServerError) return Promise.reject(error);
       dedupToast('error', serverMessage || 'Lỗi hệ thống. Vui lòng thử lại sau.');
     } else if (status && status >= 400 && message) {
       dedupToast('error', message);

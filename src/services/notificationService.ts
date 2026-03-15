@@ -65,19 +65,20 @@ async function fetchReceivingByStatus(status: string, size = 8): Promise<Notific
 
 async function fetchGrnPendingApproval(size = 8): Promise<NotificationItem[]> {
   try {
-    const { data } = await api.get<ApiResponse<any>>('/grns', { params: { page: 0, size } });
+    // Dùng receiving-orders với status PENDING_APPROVAL (đã được test hoạt động)
+    const { data } = await api.get<ApiResponse<any>>('/receiving-orders', {
+      params: { status: 'PENDING_APPROVAL', page: 0, size }
+    });
     const content: any[] = data.data?.content ?? [];
-    return content
-      .filter((g: any) => g.status === 'PENDING_APPROVAL')
-      .map((g: any) => ({
-        id: `grn-${g.grnId}`,
-        code: g.grnCode,
-        subtitle: g.supplierName ?? `Phiếu #${g.grnId}`,
-        createdAt: g.createdAt,
-        status: g.status,
-        type: 'grn_pending_approval' as NotificationType,
-        navigateTo: '/manager-dashboard/grn',
-      }));
+    return content.map((r: any) => ({
+      id: `grn-${r.receivingId}`,
+      code: r.receivingCode,
+      subtitle: r.supplierName ?? `Phiếu #${r.receivingId}`,
+      createdAt: r.createdAt,
+      status: r.status,
+      type: 'grn_pending_approval' as NotificationType,
+      navigateTo: '/manager-dashboard/grn',
+    }));
   } catch { return []; }
 }
 
@@ -96,7 +97,9 @@ async function fetchOutboundPendingApproval(size = 8): Promise<NotificationItem[
       type: 'outbound_pending_approval' as NotificationType,
       navigateTo: '/outbound',
     }));
-  } catch { return []; }
+  } catch {
+    return []; // silent — outbound API có thể chưa có filter status
+  }
 }
 
 async function fetchOpenIncidents(size = 8): Promise<NotificationItem[]> {
