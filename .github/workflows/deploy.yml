@@ -65,10 +65,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          no-cache: true
           build-args: |
             NEXT_PUBLIC_API_BASE_URL=https://api.cleanhousewms.id.vn/v1
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Summary
         run: |
