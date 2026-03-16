@@ -7,6 +7,7 @@ import type { Zone } from '@/interfaces/zone';
 import type { ApiResponse, PageResponse } from '@/interfaces/common';
 import type { BinOccupancyResponse, BinInventoryItem } from '@/services/putawayService';
 import toast from 'react-hot-toast';
+import Pagination from '@/components/ui/Pagination';
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
@@ -199,6 +200,8 @@ export default function BinOccupancyPage() {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('ALL');
   const [searchTerm, setSearchTerm]     = useState('');
   const [sortBy, setSortBy]             = useState<'code' | 'usage' | 'status'>('code');
+  const [page, setPage]                 = useState(0);
+  const PAGE_SIZE = 8;
 
   // ── Load zones ──
   useEffect(() => {
@@ -214,6 +217,7 @@ export default function BinOccupancyPage() {
   const loadBins = useCallback(async (zone: Zone) => {
     setSelectedZone(zone);
     setSelectedBin(null);
+    setPage(0);
     setLoading(true);
     try {
       const { content } = await apiFetchBins({ zoneId: zone.zoneId, size: 500 });
@@ -255,6 +259,9 @@ export default function BinOccupancyPage() {
     });
     return list;
   }, [bins, filterStatus, searchTerm, sortBy]);
+
+  const totalPages = Math.ceil(displayBins.length / PAGE_SIZE);
+  const pagedBins  = displayBins.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const STATUS_FILTERS: { key: FilterStatus; label: string; count: number; cls: string }[] = [
     { key: 'ALL',     label: 'Tất cả',    count: stats.total,   cls: 'bg-gray-800 text-white' },
@@ -330,7 +337,7 @@ export default function BinOccupancyPage() {
         <div className="flex items-center gap-1.5 bg-gray-100 rounded-xl p-1">
           {STATUS_FILTERS.map(f => (
             <button key={f.key}
-              onClick={() => setFilterStatus(f.key)}
+              onClick={() => { setFilterStatus(f.key); setPage(0); }}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5
                 ${filterStatus === f.key ? f.cls + ' shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
               {f.label}
@@ -340,7 +347,7 @@ export default function BinOccupancyPage() {
         </div>
 
         {/* Sort */}
-        <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
+        <select value={sortBy} onChange={e => { setSortBy(e.target.value as typeof sortBy); setPage(0); }}
           className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-600">
           <option value="code">Sắp xếp: Mã BIN</option>
           <option value="usage">Sắp xếp: % Chiếm dụng</option>
@@ -370,7 +377,8 @@ export default function BinOccupancyPage() {
               <p className="text-sm text-gray-400">Không có kết quả</p>
             </div>
           ) : (
-            <div className="overflow-y-auto">
+            <div className="flex flex-col flex-1 min-h-0">
+            <div className="flex-1 overflow-y-auto">
               {/* Table header */}
               <div className="sticky top-0 bg-gray-50 border-b border-gray-100 grid grid-cols-[2fr_1fr_1fr_1.5fr_1fr_1fr] gap-0 z-10">
                 {['Mã BIN', 'Zone', 'Kệ / Dãy', 'Chiếm dụng', 'Trạng thái', 'Còn lại'].map(h => (
@@ -380,7 +388,7 @@ export default function BinOccupancyPage() {
 
               {/* Rows */}
               <div className="divide-y divide-gray-50">
-                {displayBins.map(bin => {
+                {pagedBins.map(bin => {
                   const cfg  = STATUS[bin.occupancyStatus];
                   const pct  = usagePct(bin);
                   const isSelected = selectedBin?.locationId === bin.locationId;
@@ -439,13 +447,13 @@ export default function BinOccupancyPage() {
                 })}
               </div>
 
-              {/* Footer count */}
-              <div className="px-4 py-3 border-t border-gray-100 bg-gray-50">
-                <p className="text-xs text-gray-400">
-                  Hiển thị {displayBins.length} / {bins.length} bins
-                  {searchTerm && ` · tìm kiếm "${searchTerm}"`}
-                </p>
-              </div>
+            </div>
+              <Pagination
+                page={page} totalPages={totalPages}
+                totalItems={displayBins.length} pageSize={PAGE_SIZE}
+                onPage={setPage}
+                extraInfo={searchTerm ? `tìm "${searchTerm}"` : undefined}
+              />
             </div>
           )}
         </div>

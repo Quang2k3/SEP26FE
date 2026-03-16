@@ -6,6 +6,7 @@ import {
   fetchLocations,
   updateLocation,
   deactivateLocation,
+  reactivateLocation,
 } from "@/services/locationService";
 import { fetchZones } from "@/services/zoneService";
 import type {
@@ -335,7 +336,7 @@ function EditModal({ location, onClose, onDone }: {
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
-export default function LocationListPage() {
+export default function LocationListPage({ defaultType }: { defaultType?: LocationType }) {
   const session     = getStoredSession();
   const warehouseId = session?.user?.warehouseIds?.[0];
   const confirm     = useConfirm();
@@ -349,8 +350,8 @@ export default function LocationListPage() {
     page: 0, size: DEFAULT_PAGE_SIZE, totalElements: 0, totalPages: 0, last: true,
   });
 
-  const filtersRef = useRef<LocationQueryParams>({ page: 0, size: DEFAULT_PAGE_SIZE });
-  const [filtersUI, setFiltersUI] = useState<LocationQueryParams>({ page: 0, size: DEFAULT_PAGE_SIZE });
+  const filtersRef = useRef<LocationQueryParams>({ page: 0, size: DEFAULT_PAGE_SIZE, locationType: defaultType });
+  const [filtersUI, setFiltersUI] = useState<LocationQueryParams>({ page: 0, size: DEFAULT_PAGE_SIZE, locationType: defaultType });
 
   const loadLocations = useCallback(async (override?: Partial<LocationQueryParams>) => {
     const params: LocationQueryParams = { ...filtersRef.current, ...override };
@@ -386,15 +387,38 @@ export default function LocationListPage() {
 
   const handleDeactivate = (loc: Location) => {
     confirm({
-      title:       "Vô hiệu hoá location",
-      description: `Vô hiệu hoá ${loc.locationCode}? Không thể nếu còn inventory.`,
+      title:       "Vô hiệu hóa location",
+      description: `Vô hiệu hóa ${loc.locationCode}? Chỉ thực hiện được khi bin trống và không có vị trí con đang hoạt động.`,
       variant:     "danger",
       icon:        "block",
-      confirmText: "Vô hiệu hoá",
+      confirmText: "Vô hiệu hóa",
       onConfirm:   async () => {
-        await deactivateLocation(loc.locationId);
-        toast.success(`Đã vô hiệu hoá ${loc.locationCode}`);
-        loadLocations({ page: pageInfo.page });
+        try {
+          await deactivateLocation(loc.locationId);
+          toast.success(`Đã vô hiệu hóa ${loc.locationCode}`);
+          loadLocations({ page: pageInfo.page });
+        } catch (e: any) {
+          toast.error(e?.response?.data?.message ?? 'Lỗi vô hiệu hóa');
+        }
+      },
+    });
+  };
+
+  const handleReactivate = (loc: Location) => {
+    confirm({
+      title:       "Mở lại location",
+      description: `Mở lại ${loc.locationCode}? Zone cha phải đang hoạt động.`,
+      variant:     "info",
+      icon:        "lock_open",
+      confirmText: "Mở lại",
+      onConfirm:   async () => {
+        try {
+          await reactivateLocation(loc.locationId);
+          toast.success(`Đã mở lại ${loc.locationCode}`);
+          loadLocations({ page: pageInfo.page });
+        } catch (e: any) {
+          toast.error(e?.response?.data?.message ?? 'Lỗi mở lại location');
+        }
       },
     });
   };
@@ -403,7 +427,10 @@ export default function LocationListPage() {
 
   return (
     <AdminPage
-      title="Location Management"
+      title={defaultType
+        ? { ZONE: "Quản lý Zone", AISLE: "Quản lý Dãy (Aisle)", RACK: "Quản lý Kệ (Rack)", BIN: "Quản lý BIN", STAGING: "Quản lý Staging" }[defaultType] ?? "Location Management"
+        : "Location Management"
+      }
       description="Quản lý cấu trúc kho: Zone → AISLE → RACK → BIN"
       actions={
         <Button
@@ -419,29 +446,44 @@ export default function LocationListPage() {
         Thứ tự tạo: <strong>AISLE</strong> → <strong>RACK</strong> (chọn AISLE cha) → <strong>BIN</strong> (chọn RACK cha + Max Weight)
       </div>
 
-      {/* Filters */}
+      {/* Filters — live search */}
       <div className="bg-white rounded-2xl border border-indigo-100/60 shadow-sm p-4 flex flex-wrap gap-3 items-center mb-4">
+        {/* Keyword — debounce 300ms */}
         <div className="flex flex-1 min-w-[180px] items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 focus-within:ring-2 focus-within:ring-indigo-300">
           <span className="material-symbols-outlined text-gray-400 text-[16px]">search</span>
           <input
             value={filtersUI.keyword ?? ""}
             onChange={e => {
-              filtersRef.current = { ...filtersRef.current, keyword: e.target.value };
-              setFiltersUI(f => ({ ...f, keyword: e.target.value }));
+              const kw = e.target.value;
+              filtersRef.current = { ...filtersRef.current, keyword: kw, page: 0 };
+              setFiltersUI(f => ({ ...f, keyword: kw }));
+              // debounce 300ms
+              clearTimeout((window as any).__locKwTimer);
+              (window as any).__locKwTimer = setTimeout(() => loadLocations({ page: 0, keyword: kw }), 300);
             }}
-            onKeyDown={e => e.key === "Enter" && loadLocations({ page: 0 })}
             placeholder="Tìm theo mã code..."
             className="w-full bg-transparent border-none text-sm text-gray-800 focus:outline-none placeholder:text-gray-400"
           />
+          {filtersUI.keyword && (
+            <button onClick={() => {
+              filtersRef.current = { ...filtersRef.current, keyword: undefined, page: 0 };
+              setFiltersUI(f => ({ ...f, keyword: undefined }));
+              loadLocations({ page: 0, keyword: undefined });
+            }} className="text-gray-300 hover:text-gray-500">
+              <span className="material-symbols-outlined text-[14px]">close</span>
+            </button>
+          )}
         </div>
 
+        {/* Zone select — live */}
         <div className="relative">
           <select
             value={filtersUI.zoneId ?? ""}
             onChange={e => {
               const v = e.target.value ? Number(e.target.value) : undefined;
-              filtersRef.current = { ...filtersRef.current, zoneId: v };
+              filtersRef.current = { ...filtersRef.current, zoneId: v, page: 0 };
               setFiltersUI(f => ({ ...f, zoneId: v }));
+              loadLocations({ page: 0, zoneId: v });
             }}
             className="pl-3 pr-8 py-2 border border-gray-200 rounded-xl text-sm text-gray-700 bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-300 cursor-pointer">
             <option value="">Tất cả Zone</option>
@@ -450,31 +492,58 @@ export default function LocationListPage() {
           <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[15px]">expand_more</span>
         </div>
 
-        <div className="relative">
-          <select
-            value={filtersUI.locationType ?? ""}
-            onChange={e => {
-              const v = (e.target.value as LocationType) || undefined;
-              filtersRef.current = { ...filtersRef.current, locationType: v };
-              setFiltersUI(f => ({ ...f, locationType: v }));
-            }}
-            className="pl-3 pr-8 py-2 border border-gray-200 rounded-xl text-sm text-gray-700 bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-300 cursor-pointer">
-            <option value="">Tất cả loại</option>
-            {["AISLE","RACK","BIN","STAGING"].map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[15px]">expand_more</span>
+        {/* Type select — live, ẩn khi có defaultType */}
+        {!defaultType && (
+          <div className="relative">
+            <select
+              value={filtersUI.locationType ?? ""}
+              onChange={e => {
+                const v = (e.target.value as LocationType) || undefined;
+                filtersRef.current = { ...filtersRef.current, locationType: v, page: 0 };
+                setFiltersUI(f => ({ ...f, locationType: v }));
+                loadLocations({ page: 0, locationType: v });
+              }}
+              className="pl-3 pr-8 py-2 border border-gray-200 rounded-xl text-sm text-gray-700 bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-300 cursor-pointer">
+              <option value="">Tất cả loại</option>
+              {["AISLE","RACK","BIN","STAGING"].map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[15px]">expand_more</span>
+          </div>
+        )}
+
+        {/* Active filter pills */}
+        <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+          {([
+            ["ALL",      "Tất cả"],
+            ["ACTIVE",   "Hoạt động"],
+            ["INACTIVE", "Vô hiệu"],
+          ] as const).map(([key, label]) => {
+            const current = filtersUI.active === true ? "ACTIVE" : filtersUI.active === false ? "INACTIVE" : "ALL";
+            return (
+              <button key={key}
+                onClick={() => {
+                  const v = key === "ACTIVE" ? true : key === "INACTIVE" ? false : undefined;
+                  filtersRef.current = { ...filtersRef.current, active: v, page: 0 };
+                  setFiltersUI(f => ({ ...f, active: v }));
+                  loadLocations({ page: 0, active: v });
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  current === key ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                }`}>
+                {label}
+              </button>
+            );
+          })}
         </div>
 
-        <button onClick={() => loadLocations({ page: 0 })}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-indigo-600 border border-indigo-200 rounded-xl hover:bg-indigo-50 transition-colors">
-          <span className="material-symbols-outlined text-[15px]">search</span>Tìm
-        </button>
-
+        {/* Xóa filter */}
         <button onClick={() => {
-          filtersRef.current = { page: 0, size: DEFAULT_PAGE_SIZE };
-          setFiltersUI({ page: 0, size: DEFAULT_PAGE_SIZE });
-          loadLocations({ page: 0, zoneId: undefined, locationType: undefined, keyword: undefined });
-        }} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600">
+          clearTimeout((window as any).__locKwTimer);
+          const reset = { page: 0, size: DEFAULT_PAGE_SIZE, locationType: defaultType };
+          filtersRef.current = reset;
+          setFiltersUI(reset);
+          loadLocations({ page: 0, zoneId: undefined, locationType: defaultType, keyword: undefined, active: undefined });
+        }} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors">
           <span className="material-symbols-outlined text-[14px]">clear</span>Xoá filter
         </button>
       </div>
@@ -555,7 +624,7 @@ export default function LocationListPage() {
                       </td>
                       <td className="px-5 py-3.5">
                         <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${loc.active ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>
-                          {loc.active ? "Active" : "Inactive"}
+                          {loc.active ? "Hoạt động" : "Vô hiệu"}
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-center">
@@ -564,10 +633,15 @@ export default function LocationListPage() {
                             className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50">
                             <span className="material-symbols-outlined text-[15px]">edit</span>
                           </button>
-                          {loc.active && (
-                            <button onClick={() => handleDeactivate(loc)} title="Vô hiệu hoá"
-                              className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50">
+                          {loc.active ? (
+                            <button onClick={() => handleDeactivate(loc)} title="Vô hiệu hóa"
+                              className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
                               <span className="material-symbols-outlined text-[15px]">block</span>
+                            </button>
+                          ) : (
+                            <button onClick={() => handleReactivate(loc)} title="Mở lại"
+                              className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
+                              <span className="material-symbols-outlined text-[15px]">lock_open</span>
                             </button>
                           )}
                         </div>

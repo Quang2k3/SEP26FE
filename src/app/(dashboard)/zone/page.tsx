@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback, Suspense } from 'react';
+import { useRouter } from 'next/navigation';
 import api from '@/config/axios';
 import { fetchZones } from '@/services/zoneService';
 import { getStoredSession } from '@/services/authService';
@@ -24,6 +25,10 @@ async function apiUpdateZone(zoneId: number, zoneName: string): Promise<Zone> {
 
 async function apiDeactivateZone(zoneId: number): Promise<void> {
   await api.patch(`/zones/${zoneId}/deactivate`);
+}
+
+async function apiReactivateZone(zoneId: number): Promise<void> {
+  await api.patch(`/zones/${zoneId}/reactivate`);
 }
 
 // ─── Zone Modal ───────────────────────────────────────────────────────────────
@@ -123,6 +128,7 @@ function ZoneModal({ zone, onClose, onSaved }: {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 function ZoneListContent() {
+  const router    = useRouter();
   const confirm   = useConfirm();
   const session   = getStoredSession();
   const isManager = session?.user?.roleCodes?.includes('MANAGER') ?? false;
@@ -164,14 +170,35 @@ function ZoneListContent() {
   const handleDeactivate = (zone: Zone) => {
     confirm({
       title: `Vô hiệu hóa ${zone.zoneCode}?`,
-      description: 'Zone sẽ không xuất hiện trong danh sách gợi ý putaway nữa.',
+      description: `Vô hiệu hóa ${zone.zoneCode}? Toàn bộ AISLE, RACK, BIN thuộc zone này sẽ bị đóng băng.`,
       variant: 'danger', icon: 'block', confirmText: 'Vô hiệu hóa',
       onConfirm: async () => {
         try {
           await apiDeactivateZone(zone.zoneId);
-          toast.success(`Đã vô hiệu hóa ${zone.zoneCode}`);
+          toast.success(`Đã đóng băng ${zone.zoneCode} và toàn bộ location`);
           load();
-        } catch (e: any) { toast.error(e?.response?.data?.message ?? 'Lỗi'); }
+        } catch (e: any) {
+          const msg = e?.response?.data?.message ?? e?.message ?? 'Lỗi vô hiệu hóa zone';
+          toast.error(msg);
+        }
+      },
+    });
+  };
+
+  const handleReactivate = (zone: Zone) => {
+    confirm({
+      title: `Mở lại ${zone.zoneCode}?`,
+      description: `Mở lại ${zone.zoneCode}? Toàn bộ location thuộc zone sẽ được kích hoạt lại.`,
+      variant: 'info', icon: 'lock_open', confirmText: 'Mở lại',
+      onConfirm: async () => {
+        try {
+          await apiReactivateZone(zone.zoneId);
+          toast.success(`Đã mở lại ${zone.zoneCode} và toàn bộ location`);
+          load();
+        } catch (e: any) {
+          const msg = e?.response?.data?.message ?? e?.message ?? 'Lỗi mở lại zone';
+          toast.error(msg);
+        }
       },
     });
   };
@@ -258,13 +285,14 @@ function ZoneListContent() {
             </div>
             <div className="divide-y divide-gray-50">
               {displayZones.map(zone => (
-                <div key={zone.zoneId} className="grid items-center hover:bg-gray-50/60 transition-colors"
-                  style={{ gridTemplateColumns: '1fr 2fr 1fr 1fr auto' }}>
+                <div key={zone.zoneId} className="grid items-center hover:bg-indigo-50/40 transition-colors cursor-pointer"
+                  style={{ gridTemplateColumns: '1fr 2fr 1fr 1fr auto' }}
+                  onClick={() => router.push(`/zone/${zone.zoneId}`)}>
                   <div className="px-4 py-3.5 flex items-center gap-2">
                     <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
                       <span className="material-symbols-outlined text-indigo-500 text-[14px]">warehouse</span>
                     </div>
-                    <span className="text-sm font-bold text-gray-900 font-mono">{zone.zoneCode}</span>
+                    <span className="text-sm font-bold text-indigo-600 font-mono">{zone.zoneCode}</span>
                   </div>
                   <div className="px-4 py-3.5">
                     <p className="text-sm text-gray-700">{zone.zoneName}</p>
@@ -282,7 +310,7 @@ function ZoneListContent() {
                       {zone.createdAt ? new Date(zone.createdAt).toLocaleDateString('vi-VN') : '—'}
                     </span>
                   </div>
-                  <div className="px-4 py-3.5 flex items-center gap-1">
+                  <div className="px-4 py-3.5 flex items-center gap-1" onClick={e => e.stopPropagation()}>
                     {isManager && (
                       <>
                         <button onClick={() => setEditZone(zone)}
@@ -290,11 +318,17 @@ function ZoneListContent() {
                           title="Sửa">
                           <span className="material-symbols-outlined text-[15px]">edit</span>
                         </button>
-                        {zone.active && (
+                        {zone.active ? (
                           <button onClick={() => handleDeactivate(zone)}
                             className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                             title="Vô hiệu hóa">
                             <span className="material-symbols-outlined text-[15px]">block</span>
+                          </button>
+                        ) : (
+                          <button onClick={() => handleReactivate(zone)}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                            title="Mở lại zone">
+                            <span className="material-symbols-outlined text-[15px]">lock_open</span>
                           </button>
                         )}
                       </>

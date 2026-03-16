@@ -8,6 +8,7 @@ import type { ApiResponse, PageResponse } from '@/interfaces/common';
 import type { BinOccupancyResponse } from '@/services/putawayService';
 import { useConfirm } from '@/components/ui/ModalProvider';
 import toast from 'react-hot-toast';
+import Pagination from '@/components/ui/Pagination';
 import { getStoredSession } from '@/services/authService';
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
@@ -211,6 +212,8 @@ export default function ConfigureBinCapacityPage() {
   const [showBulkEdit, setShowBulkEdit] = useState(false);
   const [searchTerm, setSearchTerm]     = useState('');
   const [filterCap, setFilterCap]       = useState<'ALL' | 'SET' | 'UNSET'>('ALL');
+  const [page, setPage]                 = useState(0);
+  const PAGE_SIZE = 8;
 
   useEffect(() => {
     fetchZones({ activeOnly: true })
@@ -287,6 +290,9 @@ export default function ConfigureBinCapacityPage() {
     unconfigured: bins.filter(b => b.maxWeightKg == null).length,
   }), [bins]);
 
+  const totalPagesCfg  = Math.ceil(displayBins.length / PAGE_SIZE);
+  const pagedBinsCfg   = displayBins.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
   return (
     <div className="w-full font-sans space-y-5">
 
@@ -345,7 +351,7 @@ export default function ConfigureBinCapacityPage() {
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[160px] max-w-xs">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[16px]">search</span>
-          <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+          <input type="text" value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(0); }}
             placeholder="Tìm mã BIN..."
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white" />
         </div>
@@ -408,8 +414,8 @@ export default function ConfigureBinCapacityPage() {
             </div>
 
             {/* Rows */}
-            <div className="divide-y divide-gray-50 overflow-y-auto max-h-[55vh]">
-              {displayBins.map(bin => {
+            <div className="divide-y divide-gray-50">
+              {pagedBinsCfg.map(bin => {
                 const isSelected = selectedIds.has(bin.locationId);
                 const hasConfig  = bin.maxWeightKg != null;
 
@@ -472,18 +478,19 @@ export default function ConfigureBinCapacityPage() {
               })}
             </div>
 
-            {/* Footer */}
-            <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
-              <p className="text-xs text-gray-400">
-                {displayBins.length} bins{selectedIds.size > 0 ? ` · ${selectedIds.size} được chọn` : ''}
-              </p>
-              {stats.unconfigured > 0 && (
-                <p className="text-xs text-amber-600 font-medium flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[13px]">warning</span>
-                  {stats.unconfigured} bins chưa có cấu hình dung lượng
-                </p>
-              )}
-            </div>
+            {/* Footer + pagination */}
+            {stats.unconfigured > 0 && (
+              <div className="px-4 py-2.5 bg-amber-50 border-t border-amber-100 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-amber-500 text-[13px]">warning</span>
+                <p className="text-xs text-amber-600 font-medium">{stats.unconfigured} bins chưa có cấu hình dung lượng</p>
+              </div>
+            )}
+            <Pagination
+              page={page} totalPages={totalPagesCfg}
+              totalItems={displayBins.length} pageSize={PAGE_SIZE}
+              onPage={p => setPage(p)}
+              extraInfo={selectedIds.size > 0 ? `${selectedIds.size} được chọn` : undefined}
+            />
           </>
         )}
       </div>

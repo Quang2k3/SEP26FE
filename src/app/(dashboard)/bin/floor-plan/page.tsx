@@ -177,9 +177,15 @@ function RackBlock({ rackCode, bins, selectedBinId, onSelectBin }: {
   selectedBinId: number | null;
   onSelectBin: (bin: BinDetail) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const PREVIEW = 9; // số bin hiển thị trước khi expand
   const fullCount    = bins.filter(b => b.occupancyStatus === 'FULL').length;
   const partialCount = bins.filter(b => b.occupancyStatus === 'PARTIAL').length;
   const emptyCount   = bins.filter(b => b.occupancyStatus === 'EMPTY').length;
+  const hasMore      = bins.length > PREVIEW;
+  const displayed    = hasMore && !expanded ? bins.slice(0, PREVIEW) : bins;
+  // Adaptive cols: ≤4 bins → 2 cols, ≤9 → 3 cols, >9 → 4 cols
+  const cols = bins.length <= 4 ? 'grid-cols-2' : bins.length <= 9 ? 'grid-cols-3' : 'grid-cols-4';
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
@@ -188,6 +194,7 @@ function RackBlock({ rackCode, bins, selectedBinId, onSelectBin }: {
         <div className="flex items-center gap-2">
           <span className="material-symbols-outlined text-slate-300 text-[14px]">shelves</span>
           <span className="text-xs font-bold text-white tracking-wide">{rackCode}</span>
+          <span className="text-[10px] text-slate-400">{bins.length} bin</span>
         </div>
         <div className="flex items-center gap-1.5">
           {fullCount    > 0 && <span className="text-[9px] bg-red-500    text-white px-1.5 py-0.5 rounded-full font-bold">{fullCount}F</span>}
@@ -197,8 +204,8 @@ function RackBlock({ rackCode, bins, selectedBinId, onSelectBin }: {
       </div>
 
       {/* Bin grid */}
-      <div className="p-2 grid grid-cols-3 gap-1.5">
-        {bins.map(bin => (
+      <div className={`p-2 grid ${cols} gap-1.5`}>
+        {displayed.map(bin => (
           <BinCell
             key={bin.locationId}
             bin={bin}
@@ -207,6 +214,16 @@ function RackBlock({ rackCode, bins, selectedBinId, onSelectBin }: {
           />
         ))}
       </div>
+
+      {/* Show more / less */}
+      {hasMore && (
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className="w-full px-3 py-1.5 text-[11px] font-semibold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border-t border-slate-100 transition-colors flex items-center justify-center gap-1">
+          <span className="material-symbols-outlined text-[13px]">{expanded ? 'expand_less' : 'expand_more'}</span>
+          {expanded ? 'Thu gọn' : `+${bins.length - PREVIEW} bin nữa`}
+        </button>
+      )}
     </div>
   );
 }
@@ -220,38 +237,85 @@ function AisleSection({ aisleCode, racks, bins, selectedBinId, onSelectBin }: {
   selectedBinId: number | null;
   onSelectBin: (bin: BinDetail) => void;
 }) {
-  const aisleBins  = bins.filter(b => b.grandParentLocationCode === aisleCode);
-  const fullCount  = aisleBins.filter(b => b.occupancyStatus === 'FULL').length;
-  const totalCount = aisleBins.length;
-  const pctFull    = totalCount ? Math.round((fullCount / totalCount) * 100) : 0;
+  const [collapsed, setCollapsed] = useState(false);
+  const aisleBins    = bins.filter(b => b.grandParentLocationCode === aisleCode);
+  const fullCount    = aisleBins.filter(b => b.occupancyStatus === 'FULL').length;
+  const partialCount = aisleBins.filter(b => b.occupancyStatus === 'PARTIAL').length;
+  const emptyCount   = aisleBins.filter(b => b.occupancyStatus === 'EMPTY').length;
+  const totalCount   = aisleBins.length;
+  const pctFull      = totalCount ? Math.round((fullCount / totalCount) * 100) : 0;
+  // Nhiều rack → dùng scroll ngang thay vì grid để tránh vỡ layout
+  const useScroll    = racks.length > 5;
 
   return (
-    <div className="space-y-2">
-      {/* Aisle label */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 bg-slate-800 text-white px-3 py-1.5 rounded-lg">
+    <div className="rounded-2xl border border-slate-200 overflow-hidden bg-slate-50/50">
+      {/* Aisle header — clickable to collapse */}
+      <button
+        onClick={() => setCollapsed(v => !v)}
+        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-100/70 transition-colors text-left">
+        <div className="flex items-center gap-2 bg-slate-800 text-white px-3 py-1.5 rounded-lg flex-shrink-0">
           <span className="material-symbols-outlined text-[14px] text-slate-300">view_column</span>
           <span className="text-xs font-extrabold tracking-widest uppercase">{aisleCode}</span>
         </div>
-        <div className="flex-1 h-px bg-slate-200" />
-        <span className="text-[11px] text-slate-400 font-medium">{racks.length} kệ · {totalCount} bin · {pctFull}% đầy</span>
-      </div>
+        {/* Mini status pills */}
+        <div className="flex items-center gap-1.5">
+          {fullCount    > 0 && <span className="text-[10px] bg-red-100    text-red-700    px-2 py-0.5 rounded-full font-semibold">{fullCount} đầy</span>}
+          {partialCount > 0 && <span className="text-[10px] bg-amber-100  text-amber-700  px-2 py-0.5 rounded-full font-semibold">{partialCount} đang dùng</span>}
+          {emptyCount   > 0 && <span className="text-[10px] bg-slate-100  text-slate-600  px-2 py-0.5 rounded-full font-semibold">{emptyCount} trống</span>}
+        </div>
+        <span className="text-[11px] text-slate-400 font-medium ml-auto flex-shrink-0">
+          {racks.length} kệ · {totalCount} bin · {pctFull}% đầy
+        </span>
+        <span className={`material-symbols-outlined text-slate-400 text-[18px] flex-shrink-0 transition-transform ${collapsed ? '' : 'rotate-180'}`}>
+          expand_less
+        </span>
+      </button>
 
-      {/* Racks in aisle */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 pl-4">
-        {racks.map(rackCode => {
-          const rackBins = aisleBins.filter(b => b.parentLocationCode === rackCode);
-          return (
-            <RackBlock
-              key={rackCode}
-              rackCode={rackCode}
-              bins={rackBins}
-              selectedBinId={selectedBinId}
-              onSelectBin={onSelectBin}
-            />
-          );
-        })}
-      </div>
+      {/* Racks — hidden when collapsed */}
+      {!collapsed && (
+        <div className="px-4 pb-4 pt-2">
+          {useScroll ? (
+            // Nhiều rack (>5): scroll ngang, mỗi rack có min-width cố định
+            <div className="overflow-x-auto pb-2">
+              <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
+                {racks.map(rackCode => {
+                  const rackBins = aisleBins.filter(b => b.parentLocationCode === rackCode);
+                  return (
+                    <div key={rackCode} style={{ width: 180, flexShrink: 0 }}>
+                      <RackBlock
+                        rackCode={rackCode}
+                        bins={rackBins}
+                        selectedBinId={selectedBinId}
+                        onSelectBin={onSelectBin}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1.5 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[12px]">swipe</span>
+                Kéo ngang để xem thêm kệ
+              </p>
+            </div>
+          ) : (
+            // Ít rack (≤5): grid responsive bình thường
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+              {racks.map(rackCode => {
+                const rackBins = aisleBins.filter(b => b.parentLocationCode === rackCode);
+                return (
+                  <RackBlock
+                    key={rackCode}
+                    rackCode={rackCode}
+                    bins={rackBins}
+                    selectedBinId={selectedBinId}
+                    onSelectBin={onSelectBin}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -544,7 +608,7 @@ export default function FloorPlanPage() {
               <p className="text-sm text-slate-400">Zone này chưa có BIN nào</p>
             </div>
           ) : (
-            <div className="p-5 space-y-8">
+            <div className="p-5 space-y-3">
               {/* Zone title */}
               <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
                 <span className="material-symbols-outlined text-slate-400 text-[18px]">warehouse</span>
@@ -566,6 +630,10 @@ export default function FloorPlanPage() {
                       {cfg.label}
                     </span>
                   ))}
+                  <span className="text-[10px] text-slate-400 border-l border-slate-200 pl-3 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[11px]">info</span>
+                    Click dãy để thu gọn
+                  </span>
                 </div>
               </div>
 

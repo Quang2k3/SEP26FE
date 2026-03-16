@@ -78,3 +78,10 @@ export async function updateLocation(
 export async function deactivateLocation(locationId: number) {
   await api.patch(`/locations/${locationId}/deactivate`);
 }
+
+/**
+ * REACTIVATE location
+ */
+export async function reactivateLocation(locationId: number) {
+  await api.patch(`/locations/${locationId}/reactivate`);
+}

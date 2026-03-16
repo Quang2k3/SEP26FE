@@ -92,6 +92,10 @@ async function deactivateLocation(locationId: number): Promise<void> {
   await api.patch(`/locations/${locationId}/deactivate`);
 }
 
+async function reactivateLocation(locationId: number): Promise<void> {
+  await api.patch(`/locations/${locationId}/reactivate`);
+}
+
 // ─── Type badge ───────────────────────────────────────────────────────────────
 function TypeBadge({ type }: { type: string }) {
   const map: Record<string, string> = {
@@ -438,6 +442,7 @@ function BinListContent() {
 
   const [filterZone, setFilterZone] = useState("");
   const [filterType, setFilterType] = useState("BIN");
+  const [filterActive, setFilterActive] = useState<"ALL" | "ACTIVE" | "INACTIVE">("ACTIVE");
   const [keyword, setKeyword] = useState("");
 
   const PAGE_SIZE = pageSize;
@@ -449,8 +454,8 @@ function BinListContent() {
         const result = await fetchLocations({
           zoneId: filterZone ? Number(filterZone) : undefined,
           locationType: filterType || undefined,
+          active: filterActive === "ACTIVE" ? true : filterActive === "INACTIVE" ? false : undefined,
           keyword: keyword || undefined,
-          active: true,
           page: p,
           size: pageSize,
         });
@@ -463,7 +468,7 @@ function BinListContent() {
         setLoading(false);
       }
     },
-    [filterZone, filterType, keyword, pageSize],
+    [filterZone, filterType, filterActive, keyword, pageSize],
   );
 
   useEffect(() => { load(0); }, [load]);
@@ -471,15 +476,38 @@ function BinListContent() {
 
   const handleDeactivate = (loc: Location) => {
     confirm({
-      title: "Vô hiệu hoá location",
-      description: `Vô hiệu hoá ${loc.locationCode}? Không thể deactivate nếu còn hàng trong bin.`,
+      title: "Vô hiệu hóa location",
+      description: `Vô hiệu hóa ${loc.locationCode}? Lưu ý: chỉ có thể thực hiện khi bin đang trống và không có vị trí con active.`,
       variant: "danger",
       icon: "block",
-      confirmText: "Vô hiệu hoá",
+      confirmText: "Vô hiệu hóa",
       onConfirm: async () => {
-        await deactivateLocation(loc.locationId);
-        toast.success(`Đã vô hiệu hoá ${loc.locationCode}`);
-        load(page);
+        try {
+          await deactivateLocation(loc.locationId);
+          toast.success(`Đã vô hiệu hóa ${loc.locationCode}`);
+          load(page);
+        } catch (e: any) {
+          toast.error(e?.response?.data?.message ?? 'Lỗi vô hiệu hóa');
+        }
+      },
+    });
+  };
+
+  const handleReactivate = (loc: Location) => {
+    confirm({
+      title: "Mở lại location",
+      description: `Mở lại ${loc.locationCode}? Zone cha phải đang hoạt động.`,
+      variant: "info",
+      icon: "lock_open",
+      confirmText: "Mở lại",
+      onConfirm: async () => {
+        try {
+          await reactivateLocation(loc.locationId);
+          toast.success(`Đã mở lại ${loc.locationCode}`);
+          load(page);
+        } catch (e: any) {
+          toast.error(e?.response?.data?.message ?? 'Lỗi mở lại location');
+        }
       },
     });
   };
@@ -569,6 +597,18 @@ function BinListContent() {
           </select>
           <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[16px]">expand_more</span>
         </div>
+        {/* Active filter */}
+        <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+          {(["ALL", "ACTIVE", "INACTIVE"] as const).map((k) => (
+            <button key={k}
+              onClick={() => setFilterActive(k)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                filterActive === k ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}>
+              {k === "ALL" ? "Tất cả" : k === "ACTIVE" ? "Hoạt động" : "Vô hiệu"}
+            </button>
+          ))}
+        </div>
         <button
           onClick={() => load(0)}
           className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-indigo-600 border border-indigo-200 rounded-xl hover:bg-indigo-50 transition-colors"
@@ -652,7 +692,7 @@ function BinListContent() {
                     </td>
                     <td className="px-5 py-3.5">
                       <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${loc.active ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>
-                        {loc.active ? "Active" : "Inactive"}
+                        {loc.active ? "Hoạt động" : "Vô hiệu"}
                       </span>
                     </td>
                     <td className="px-5 py-3.5 text-center">
@@ -666,14 +706,24 @@ function BinListContent() {
                             <span className="material-symbols-outlined text-[16px]">bar_chart</span>
                           </button>
                         )}
-                        {loc.active && isManager && (
-                          <button
-                            onClick={() => handleDeactivate(loc)}
-                            title="Vô hiệu hoá"
-                            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50"
-                          >
-                            <span className="material-symbols-outlined text-[16px]">block</span>
-                          </button>
+                        {isManager && (
+                          loc.active ? (
+                            <button
+                              onClick={() => handleDeactivate(loc)}
+                              title="Vô hiệu hóa"
+                              className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">block</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleReactivate(loc)}
+                              title="Mở lại"
+                              className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">lock_open</span>
+                            </button>
+                          )
                         )}
                       </div>
                     </td>

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { CATEGORY_ACTIONS, ZONE_ACTIONS, BIN_ACTIONS, NavAction } from '@/config/navigation';
+import { CATEGORY_ACTIONS, ZONE_ACTIONS, BIN_ACTIONS, LOCATION_ACTIONS, WAREHOUSE_ACTIONS, NavAction } from '@/config/navigation';
 import { getStoredSession } from '@/services/authService';
 
 export default function SecondaryNav() {
@@ -11,9 +11,10 @@ export default function SecondaryNav() {
   const userRoles: string[] = session?.user?.roleCodes ?? [];
 
   let allActions: NavAction[] = [];
-  if (pathname.startsWith('/category'))  allActions = CATEGORY_ACTIONS;
-  else if (pathname.startsWith('/zone')) allActions = ZONE_ACTIONS;
-  else if (pathname.startsWith('/bin'))  allActions = BIN_ACTIONS;
+  if (pathname.startsWith('/category'))    allActions = CATEGORY_ACTIONS;
+  else if (pathname.startsWith('/bin'))    allActions = BIN_ACTIONS;
+  // Zone + Location cùng section "Kho hàng" → dùng WAREHOUSE_ACTIONS
+  else if (pathname.startsWith('/zone') || pathname.startsWith('/location')) allActions = WAREHOUSE_ACTIONS;
 
   // Lọc theo role: nếu action có roles[] thì chỉ hiện với user có ít nhất 1 role khớp
   const actions = allActions.filter(action =>

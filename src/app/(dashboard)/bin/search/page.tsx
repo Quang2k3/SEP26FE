@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import api from '@/config/axios';
 import { fetchZones } from '@/services/zoneService';
 import type { Zone } from '@/interfaces/zone';
 import type { ApiResponse, PageResponse } from '@/interfaces/common';
 import toast from 'react-hot-toast';
+import Pagination from '@/components/ui/Pagination';
 import { useEffect } from 'react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -51,6 +52,8 @@ export default function SearchEmptyBinPage() {
   const [loading, setLoading]         = useState(false);
   const [searched, setSearched]       = useState(false);
   const [selectedBin, setSelectedBin] = useState<EmptyBinResult | null>(null);
+  const [page, setPage]               = useState(0);
+  const PAGE_SIZE = 8;
 
   useEffect(() => {
     fetchZones({ activeOnly: true }).then(setZones).catch(() => {});
@@ -60,6 +63,7 @@ export default function SearchEmptyBinPage() {
     setLoading(true);
     setSearched(true);
     setSelectedBin(null);
+    setPage(0);
     try {
       const { content, totalElements } = await searchEmptyBins({
         zoneId: selectedZoneId !== '' ? Number(selectedZoneId) : undefined,
@@ -84,6 +88,9 @@ export default function SearchEmptyBinPage() {
     setSearched(false);
     setSelectedBin(null);
   };
+
+  const totalPages  = Math.ceil(results.length / PAGE_SIZE);
+  const pagedResults = results.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   return (
     <div className="w-full font-sans space-y-5">
@@ -194,8 +201,8 @@ export default function SearchEmptyBinPage() {
                     <div key={h} className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">{h}</div>
                   ))}
                 </div>
-                <div className="divide-y divide-gray-50 overflow-y-auto max-h-[60vh]">
-                  {results.map(bin => {
+                <div className="divide-y divide-gray-50">
+                  {pagedResults.map(bin => {
                     const isSelected = selectedBin?.locationId === bin.locationId;
                     return (
                       <div key={bin.locationId}
@@ -236,9 +243,11 @@ export default function SearchEmptyBinPage() {
                     );
                   })}
                 </div>
-                <div className="px-4 py-3 border-t border-gray-100 bg-gray-50">
-                  <p className="text-xs text-gray-400">Hiển thị {results.length} kết quả</p>
-                </div>
+                <Pagination
+                  page={page} totalPages={totalPages}
+                  totalItems={results.length} pageSize={PAGE_SIZE}
+                  onPage={setPage}
+                />
               </>
             )}
           </div>

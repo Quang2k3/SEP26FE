@@ -251,7 +251,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <div className={`overflow-hidden transition-all duration-200 ease-out
                       ${isOpen ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'}`}>
                       <div className="mt-0.5 ml-4 pl-3 border-l border-indigo-200/60 space-y-0.5 py-0.5">
-                        {section.children.map(child => {
+                        {section.children.filter(child => !child.roles || child.roles.some(r => userRoles.includes(r))).map(child => {
                           const active = pathname === child.path;
                           return (
                             <Link

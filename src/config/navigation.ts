@@ -1,22 +1,32 @@
 import type { NavAction } from '@/interfaces/navigation';
 
-export const CATEGORY_ACTIONS: NavAction[] = [
-  { label: 'Category List', path: '/category' },
-  { label: 'Category Tree View', path: '/category/tree' },
-  { label: 'Category to Zone', path: '/category/to-zone' },
-  { label: 'Assign Category to SKU', path: '/category/assign-sku' },
+// ── MANAGER ───────────────────────────────────────────────────────────────────
+
+// Kho hàng: gộp Zone + Location (AISLE/RACK/BIN/STAGING) vào 1 section
+// Zone là entry point → từ zone drill vào location bên trong
+// Zone là entry point — Dãy/Kệ/BIN quản lý trong Zone Detail
+export const WAREHOUSE_ACTIONS: NavAction[] = [
+  { label: 'Danh sách Zone', path: '/zone' },
 ];
 
-export const ZONE_ACTIONS: NavAction[] = [
-  { label: 'Zone List', path: '/zone' },
+export const CATEGORY_ACTIONS: NavAction[] = [
+  { label: 'Danh sách',     path: '/category' },
+  { label: 'Gắn Zone',      path: '/category/to-zone' },
 ];
+
+export const MANAGER_DASHBOARD: NavAction[] = [
+  { label: 'Duyệt nhập kho',  path: '/manager-dashboard/grn' },
+  { label: 'Sự cố',           path: '/manager-dashboard/incident' },
+  { label: 'Báo cáo QC',      path: '/manager-dashboard/qc-report' },
+];
+
+// ── KEEPER ────────────────────────────────────────────────────────────────────
 
 export const BIN_ACTIONS: NavAction[] = [
-  { label: 'Sơ đồ kho',          path: '/bin/floor-plan' },
-  { label: 'Bin Occupancy',       path: '/bin/occupancy' },
-  { label: 'Tìm BIN trống',       path: '/bin/search' },
-  { label: 'Bin List',            path: '/bin',            roles: ['MANAGER'] },
-  { label: 'Configure Capacity',  path: '/bin/configure',  roles: ['MANAGER'] },
+  { label: 'Sơ đồ kho',      path: '/bin/floor-plan' },
+  { label: 'Bin Occupancy',   path: '/bin/occupancy' },
+  { label: 'Tìm BIN trống',   path: '/bin/search' },
+  { label: 'Cấu hình',        path: '/bin/configure',  roles: ['MANAGER'] },
 ];
 
 export const INBOUND_ACTIONS: NavAction[] = [
@@ -24,18 +34,23 @@ export const INBOUND_ACTIONS: NavAction[] = [
 ];
 
 export const OUTBOUND_ACTIONS: NavAction[] = [
-  { label: 'Shipment List', path: '/outbound' },
+  { label: 'Danh sách xuất',  path: '/outbound' },
 ];
 
-export const MANAGER_DASHBOARD: NavAction[] = [
-  { label: 'Duyệt đơn nhập kho', path: '/manager-dashboard/grn' },
-  { label: 'Pending Incidents', path: '/manager-dashboard/incident' },
-  { label: 'QC Reports', path: '/manager-dashboard/qc-report' },
+// ── Keep for SecondaryNav ─────────────────────────────────────────────────────
+export const ZONE_ACTIONS: NavAction[] = [
+  { label: 'Zone List', path: '/zone' },
 ];
 
-export const USER_MANAGEMENT_ACTIONS: NavAction[] = [];
+export const LOCATION_ACTIONS: NavAction[] = [
+  { label: 'Tổng quan',    path: '/location' },
+  { label: 'Dãy (Aisle)', path: '/location/aisle' },
+  { label: 'Kệ (Rack)',   path: '/location/rack' },
+  { label: 'BIN',         path: '/location/bin' },
+  { label: 'Staging',     path: '/location/staging' },
+];
 
-// ── Phân quyền sidebar theo role ──
+// ── Phân quyền sidebar theo role ──────────────────────────────────────────────
 export type RoleCode = 'MANAGER' | 'KEEPER' | 'QC';
 
 export interface SidebarSection {
@@ -44,10 +59,11 @@ export interface SidebarSection {
   icon: string;
   path?: string;
   children?: NavAction[];
-  roles: RoleCode[]; // role nào được thấy menu này
+  roles: RoleCode[];
 }
 
 export const SIDEBAR_SECTIONS: SidebarSection[] = [
+  // ── Tất cả roles ─────────────────────────────
   {
     key: 'dashboard',
     name: 'Dashboard',
@@ -55,74 +71,78 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
     icon: 'space_dashboard',
     roles: ['MANAGER', 'KEEPER', 'QC'],
   },
+
+  // ── Manager ──────────────────────────────────
   {
-    key: 'inbound',
-    name: 'Inbound',
-    icon: 'input_circle',
-    children: INBOUND_ACTIONS,
-    roles: ['KEEPER', 'QC'],  // Manager dùng "Duyệt đơn nhập kho" thay thế
+    key: 'manager-dashboard',
+    name: 'Quản lý nhập kho',
+    icon: 'admin_panel_settings',
+    children: MANAGER_DASHBOARD,
+    roles: ['MANAGER'],
   },
   {
-    key: 'outbound',
-    name: 'Outbound',
+    key: 'outbound-manager',
+    name: 'Xuất kho',
     icon: 'output_circle',
     children: OUTBOUND_ACTIONS,
-    roles: ['MANAGER', 'KEEPER'],
+    roles: ['MANAGER'],
   },
   {
     key: 'qc-inspections',
-    name: 'QC Inspections',
+    name: 'Kiểm định QC',
     icon: 'verified',
     path: '/qc-inspections',
     roles: ['MANAGER', 'QC'],
+  },
+  {
+    key: 'warehouse',
+    name: 'Kho hàng',
+    icon: 'warehouse',
+    path: '/zone',
+    roles: ['MANAGER'],
+  },
+  {
+    key: 'bin-manager',
+    name: 'Bin & Sơ đồ',
+    icon: 'inventory_2',
+    children: BIN_ACTIONS,
+    roles: ['MANAGER'],
+  },
+  {
+    key: 'category',
+    name: 'Danh mục',
+    icon: 'category',
+    children: CATEGORY_ACTIONS,
+    roles: ['MANAGER'],
+  },
+  {
+    key: 'user-management',
+    name: 'Người dùng',
+    icon: 'person',
+    path: '/user-management',
+    roles: ['MANAGER'],
+  },
+
+  // ── Keeper ────────────────────────────────────
+  {
+    key: 'inbound',
+    name: 'Nhập kho',
+    icon: 'input_circle',
+    children: INBOUND_ACTIONS,
+    roles: ['KEEPER', 'QC'],
   },
   {
     key: 'tasks',
     name: 'Putaway',
     icon: 'shelves',
     path: '/tasks',
-    roles: ['KEEPER'],      // Chỉ KEEPER thực hiện cất hàng
+    roles: ['KEEPER'],
   },
   {
     key: 'bin',
-    name: 'Bin',
+    name: 'Kho & BIN',
     icon: 'inventory_2',
     children: BIN_ACTIONS,
-    roles: ['MANAGER', 'KEEPER'],
-  },
-  {
-    key: 'category',
-    name: 'Category',
-    icon: 'category',
-    children: CATEGORY_ACTIONS,
-    roles: ['MANAGER'],
-  },
-  {
-    key: 'zone',
-    name: 'Zone',
-    icon: 'grid_view',
-    children: ZONE_ACTIONS,
-    roles: ['MANAGER'],
-  },
-  {
-    key: 'location',
-    name: 'Location Management',
-    icon: 'location_on',
-    path: '/location',
-    roles: ['MANAGER'],
-  },
-  {
-    key: 'user-management',
-    name: 'User Management',
-    icon: 'person',
-    path: '/user-management',
-    roles: ['MANAGER'],
-  },
-  {
-    key: 'manager-dashboard',
-    name: 'Manager Dashboard',
-    icon: 'admin_panel_settings',
-    children: MANAGER_DASHBOARD,
-    roles: ['MANAGER'],
+    roles: ['KEEPER'],
   },
 ];
