@@ -121,16 +121,17 @@ export default function DashboardPage() {
     setLoadingStats(true);
     try {
       if (isManager) {
-        const [rcv, grns, qc] = await Promise.all([
+        const [rcv, grns, qc, pendingGrn] = await Promise.all([
           fetchReceivingOrders({ page: 0, size: 1 }),
           fetchGrns({ page: 0, size: 1 }),
           fetchReceivingOrders({ status: 'SUBMITTED', page: 0, size: 1 }),
+          // BE-C1 FIX impact: đếm GRN chờ duyệt qua receiving-orders PENDING_APPROVAL
+          // dùng totalElements thay vì filter client-side (fetchGrns size:1 chỉ thấy 1 record)
+          fetchReceivingOrders({ status: 'PENDING_APPROVAL', page: 0, size: 1 }),
         ]);
-        // GRN chờ duyệt = status PENDING_APPROVAL
-        const pendingApproval = grns.content.filter(g => g.status === 'PENDING_APPROVAL').length;
         setManagerStats({
           totalReceiving:    rcv.totalElements ?? 0,
-          pendingGrnApproval: pendingApproval,
+          pendingGrnApproval: pendingGrn.totalElements ?? 0,
           totalGrn:          grns.totalElements ?? 0,
           pendingQC:         qc.totalElements ?? 0,
         });

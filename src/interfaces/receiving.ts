@@ -1,8 +1,8 @@
 // BE ReceivingOrderStatus enum — đúng với BE
 export type ReceivingStatus =
   | "DRAFT"
-  | "PENDING_COUNT"     // sau khi submit
-  | "SUBMITTED"         // sau khi finalize-count
+  | "PENDING_COUNT"     // Keeper đã submit → QC bắt đầu kiểm đếm (scan) ở bước này
+  | "SUBMITTED"         // Keeper finalizeCount (ít dùng) — cũng chấp nhận QC scan
   | "PENDING_INCIDENT"
   | "QC_APPROVED"
   | "GRN_CREATED"       // GRN đã tạo, chờ Keeper gửi Manager

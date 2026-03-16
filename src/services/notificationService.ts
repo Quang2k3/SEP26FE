@@ -150,7 +150,20 @@ export async function fetchNotificationsForRole(
 
   await Promise.all(channels.map(async (type) => {
     let items: NotificationItem[] = [];
-    if (type === 'receiving_pending_qc')      items = await fetchReceivingByStatus('SUBMITTED');
+    // FIX: QC cần thấy cả PENDING_COUNT (Keeper nộp xong = chờ QC kiểm)
+    // và SUBMITTED (Keeper finalizeCount). Merge 2 list, dedup theo receivingId.
+    if (type === 'receiving_pending_qc') {
+      const [pendingCount, submitted] = await Promise.all([
+        fetchReceivingByStatus('PENDING_COUNT'),
+        fetchReceivingByStatus('SUBMITTED'),
+      ]);
+      const seen = new Set<string>();
+      items = [...pendingCount, ...submitted].filter(i => {
+        if (seen.has(i.id)) return false;
+        seen.add(i.id);
+        return true;
+      });
+    }
     if (type === 'grn_pending_approval')       items = await fetchGrnPendingApproval();
     if (type === 'outbound_pending_approval')  items = await fetchOutboundPendingApproval();
     if (type === 'incident_open')              items = await fetchOpenIncidents();

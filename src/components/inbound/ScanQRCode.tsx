@@ -30,12 +30,15 @@ interface Props {
 
 // Trạng thái sau khi finalize theo role
 const FINALIZED_STATUS: Record<string, string[]> = {
+  // PENDING_COUNT đã bị khóa với Keeper — QC mới được scan ở bước này
   KEEPER: ['SUBMITTED', 'PENDING_INCIDENT', 'QC_APPROVED', 'GRN_CREATED', 'PENDING_APPROVAL', 'GRN_APPROVED', 'POSTED'],
+  // FIX: QC scan từ PENDING_COUNT (Keeper nộp xong = chờ kiểm đếm), kết quả có thể là
+  // QC_APPROVED (toàn pass) hoặc PENDING_INCIDENT (có hàng lỗi)
   QC:     ['QC_APPROVED', 'PENDING_INCIDENT', 'GRN_CREATED', 'PENDING_APPROVAL', 'GRN_APPROVED', 'POSTED'],
 };
 
 const FINALIZED_MSG: Record<string, string> = {
-  SUBMITTED:        '✅ Kiểm đếm hoàn tất — đã gửi sang QC',
+  SUBMITTED:        '✅ Keeper đã chốt kiểm đếm — chờ QC xử lý',
   PENDING_INCIDENT: '⚠️ Kiểm đếm xong — phát hiện sự cố, chờ xử lý',
   QC_APPROVED:      '✅ QC xác nhận đạt — có thể tạo GRN',
   GRN_CREATED:      '✅ Kiểm đếm xong — GRN đã được tạo',

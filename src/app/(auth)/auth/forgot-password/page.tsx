@@ -21,7 +21,9 @@ export default function AuthForgotPasswordPage() {
       await requestPasswordReset(email);
       setMessage('Vui lòng kiểm tra email để đặt lại mật khẩu.');
     } catch (err: any) {
-      console.error('Forgot password error:', err);
+      // BUG-10 FIX: hiển thị lỗi lên UI thay vì chỉ console.error
+      const serverMsg = err?.response?.data?.message;
+      setError(serverMsg || 'Gửi yêu cầu thất bại. Vui lòng kiểm tra lại email hoặc thử lại sau.');
     } finally {
       setIsLoading(false);
     }

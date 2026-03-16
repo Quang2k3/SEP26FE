@@ -3,7 +3,9 @@ import type { ApiResponse } from '@/interfaces/common';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type GrnStatus = 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'POSTED';
+// BE-C1 FIX impact: GRN bắt đầu với status GRN_CREATED thay vì PENDING_APPROVAL
+// Thêm GRN_CREATED vào union type để TypeScript không báo lỗi
+export type GrnStatus = 'GRN_CREATED' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'POSTED';
 
 export interface GrnItem {
   grnItemId: number;

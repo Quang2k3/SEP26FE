@@ -156,11 +156,12 @@ export function getReceivingColumns({
 
         if (userRole === "KEEPER") {
           if (r.status === "PENDING_COUNT") {
+            // Đơn đang chờ QC kiểm đếm — Keeper không được tạo QR nữa
             return (
-              <button onClick={() => onScan(r)} className={BTN_INDIGO}>
-                <span className={ICO}>qr_code_scanner</span>
-                Scan
-              </button>
+              <span className={`${BTN} bg-indigo-50 border-indigo-200 text-indigo-500 cursor-not-allowed opacity-70`}>
+                <span className={ICO}>lock</span>
+                Chờ QC kiểm
+              </span>
             );
           }
           if (r.status === "SUBMITTED") {
@@ -231,10 +232,17 @@ export function getReceivingColumns({
           }
         }
 
-        if (userRole === "QC" && (r.status === "SUBMITTED" || r.status === "PENDING_INCIDENT")) {
+        // FIX: QC scan ở PENDING_COUNT (Keeper đã submit, chờ QC kiểm) + SUBMITTED + PENDING_INCIDENT
+        if (userRole === "QC" && (
+          r.status === "PENDING_COUNT" ||
+          r.status === "SUBMITTED" ||
+          r.status === "PENDING_INCIDENT"
+        )) {
           return (
             <button onClick={() => onScan(r)} className={BTN_YELLOW}>
-              <span className={ICO}>{r.status === "PENDING_INCIDENT" ? "warning" : "verified"}</span>
+              <span className={ICO}>
+                {r.status === "PENDING_INCIDENT" ? "warning" : "verified"}
+              </span>
               {r.status === "PENDING_INCIDENT" ? "Xử lý sự cố" : "QC Scan"}
             </button>
           );
