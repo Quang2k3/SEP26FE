@@ -1,8 +1,8 @@
 services:
-  # Next.js Frontend
+  # Next.js Frontend — always pull pre-built image from GHCR
   frontend:
-    build: .
     image: ghcr.io/quang2k3/sep26fe:latest
+    pull_policy: always
     container_name: sep26fe
     restart: unless-stopped
     ports:
