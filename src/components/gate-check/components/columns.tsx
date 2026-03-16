@@ -32,6 +32,7 @@ interface Props {
   onGenerateGrn: (r: ReceivingOrder) => void;
   onSubmitGrn: (r: ReceivingOrder) => void;
   onViewIncident: (r: ReceivingOrder) => void;
+  onDelete?: (r: ReceivingOrder) => void;
   loadingId: number | null;
   submitLoadingId: number | null;
 }
@@ -46,6 +47,7 @@ export function getReceivingColumns({
   onGenerateGrn,
   onSubmitGrn,
   onViewIncident,
+  onDelete,
   loadingId,
   submitLoadingId,
 }: Props): Column<ReceivingOrder>[] {
@@ -104,10 +106,19 @@ export function getReceivingColumns({
       title: "Chi tiết",
       align: "center",
       render: (r) => (
-        <button onClick={() => onDetail(r)} className={BTN_GHOST}>
-          <span className={ICO}>{r.status === "DRAFT" ? "edit" : "visibility"}</span>
-          {r.status === "DRAFT" ? "Sửa" : "Xem"}
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={() => onDetail(r)} className={BTN_GHOST}>
+            <span className={ICO}>{r.status === "DRAFT" ? "edit" : "visibility"}</span>
+            {r.status === "DRAFT" ? "Sửa" : "Xem"}
+          </button>
+          {r.status === "DRAFT" && onDelete && (
+            <button onClick={() => onDelete(r)}
+              className={`${BTN} bg-red-50 border-red-100 text-red-400 hover:text-red-600 hover:bg-red-100`}
+              title="Xóa phiếu nháp">
+              <span className={ICO}>delete</span>
+            </button>
+          )}
+        </div>
       ),
     },
 
@@ -186,9 +197,27 @@ export function getReceivingColumns({
           }
           if (r.status === "GRN_REJECTED") {
             return (
-              <button onClick={() => onSubmitGrn(r)} className={`${BTN} bg-red-50 border-red-200 text-red-600 hover:bg-red-100`}>
-                <span className={ICO}>refresh</span>
-                Gửi lại
+              <div className="flex items-center gap-1">
+                <button onClick={() => onDetail(r)}
+                  className={`${BTN} bg-red-50 border-red-200 text-red-600 hover:bg-red-100`}
+                  title="Xem lý do từ chối">
+                  <span className={ICO}>info</span>
+                  Lý do
+                </button>
+                <button onClick={() => onSubmitGrn(r)}
+                  className={`${BTN} bg-orange-50 border-orange-200 text-orange-600 hover:bg-orange-100`}>
+                  <span className={ICO}>refresh</span>
+                  Gửi lại
+                </button>
+              </div>
+            );
+          }
+          if (r.status === "PENDING_INCIDENT") {
+            return (
+              <button onClick={() => onViewIncident(r)}
+                className={`${BTN} bg-yellow-50 border-yellow-200 text-yellow-700 hover:bg-yellow-100`}>
+                <span className={ICO}>warning</span>
+                Xem sự cố
               </button>
             );
           }
@@ -202,11 +231,11 @@ export function getReceivingColumns({
           }
         }
 
-        if (userRole === "QC" && r.status === "SUBMITTED") {
+        if (userRole === "QC" && (r.status === "SUBMITTED" || r.status === "PENDING_INCIDENT")) {
           return (
             <button onClick={() => onScan(r)} className={BTN_YELLOW}>
-              <span className={ICO}>verified</span>
-              QC Scan
+              <span className={ICO}>{r.status === "PENDING_INCIDENT" ? "warning" : "verified"}</span>
+              {r.status === "PENDING_INCIDENT" ? "Xử lý sự cố" : "QC Scan"}
             </button>
           );
         }

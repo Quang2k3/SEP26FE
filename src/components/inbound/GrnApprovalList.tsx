@@ -309,6 +309,19 @@ function DetailModal({ receiving, onClose, onRefresh }: {
               </div>
             )}
 
+            {/* Lý do từ chối */}
+            {!loadingGrn && localStatus === 'GRN_REJECTED' && grn?.note && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <p className="text-[11px] font-bold text-red-600 uppercase tracking-widest mb-1 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[13px]">info</span>
+                  Lý do từ chối
+                </p>
+                <p className="text-sm text-red-700">
+                  {grn.note.includes(': ') ? grn.note.split(': ').slice(1).join(': ') : grn.note}
+                </p>
+              </div>
+            )}
+
             {/* Từ chối / Đã nhập kho → chỉ đóng */}
             {!loadingGrn && (localStatus === 'GRN_REJECTED' || localStatus === 'POSTED') && (
               <button onClick={onClose}

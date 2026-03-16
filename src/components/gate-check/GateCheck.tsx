@@ -452,10 +452,11 @@ export default function GateCheckContent() {
     setSubmitLoadingId(submitConfirmReceiving.receivingId);
     try {
       await submitReceivingOrder(submitConfirmReceiving.receivingId);
-      toast.success(`Đã submit ${submitConfirmReceiving.receivingCode} → Pending Count`);
+      toast.success(`Đã submit ${submitConfirmReceiving.receivingCode} → Chờ kiểm đếm`);
       setSubmitConfirmReceiving(null);
       loadReceivings(page);
-    } catch {
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Lỗi submit phiếu');
     } finally {
       setSubmitLoadingId(null);
     }
@@ -481,7 +482,8 @@ export default function GateCheckContent() {
       toast.success(`Đã tạo GRN cho ${grnConfirmReceiving.receivingCode}`);
       setGrnConfirmReceiving(null);
       loadReceivings(page);
-    } catch {
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Lỗi tạo GRN');
     } finally {
       setGrnLoadingId(null);
     }
@@ -507,6 +509,26 @@ export default function GateCheckContent() {
     }
   };
 
+  // ── Delete DRAFT ─────────────────────────────────────────────────────────────
+  const handleDelete = (r: ReceivingOrder) => {
+    confirm({
+      title: `Xóa phiếu ${r.receivingCode}?`,
+      description: 'Phiếu nháp sẽ bị xóa vĩnh viễn. Không thể hoàn tác.',
+      variant: 'danger',
+      icon: 'delete',
+      confirmText: 'Xóa phiếu',
+      onConfirm: async () => {
+        try {
+          await deleteReceivingOrder(r.receivingId);
+          toast.success(`Đã xóa phiếu ${r.receivingCode}`);
+          loadReceivings(page);
+        } catch (e: any) {
+          toast.error(e?.response?.data?.message ?? 'Lỗi xóa phiếu');
+        }
+      },
+    });
+  };
+
   const columns = getReceivingColumns({
     userRole,
     onDetail: r => setDetailReceiving(r),
@@ -515,6 +537,7 @@ export default function GateCheckContent() {
     onGenerateGrn: handleGrnConfirm,
     onSubmitGrn: handleSubmitGrn,   // ✅ FIX: truyền đúng handler
     onViewIncident: () => router.push("/manager-dashboard/incident"),
+    onDelete: handleDelete,
     loadingId: grnDetailLoading,
     submitLoadingId,
   });

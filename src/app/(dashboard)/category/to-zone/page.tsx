@@ -1,143 +1,246 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import api from '@/config/axios';
+import { getStoredSession } from '@/services/authService';
+import type { ApiResponse } from '@/interfaces/common';
+import toast from 'react-hot-toast';
 
-// --- MOCK DATA ---
-const INITIAL_CATEGORIES = [
-  { id: 'cat-1', name: 'ELECTRONICS', unit: '42 units', tags: ['Fragile', 'Secure'] },
-  { id: 'cat-2', name: 'CHEMICALS', unit: '18 units', tags: ['Hazardous', 'Vent'] },
-  { id: 'cat-3', name: 'APPAREL', unit: '120 units', tags: ['Standard Rack'] },
-  { id: 'cat-4', name: 'BULK PALLETS', unit: '12 units', tags: ['Heavy', 'Floor Space'] },
-];
+interface Category {
+  categoryId: number;
+  categoryCode: string;
+  categoryName: string;
+  active: boolean;
+}
 
-const INITIAL_ZONES = [
-  { id: 'A', name: 'ZONE A', desc: 'Ambient Floor', icon: 'warehouse', mapped: ['Home Decor'] },
-  { id: 'B', name: 'ZONE B', desc: 'Cold Storage (-20C)', icon: 'ac_unit', mapped: ['Frozen Foods'] },
-  { id: 'C', name: 'ZONE C', desc: 'High Security', icon: 'lock', mapped: [] },
-  { id: 'D', name: 'ZONE D', desc: 'External / Bulk', icon: 'open_in_full', mapped: [] },
-];
+interface Zone {
+  zoneId: number;
+  zoneCode: string;
+  zoneName: string;
+  active: boolean;
+}
 
-export default function CategoryMappingPage() {
-  const [categories] = useState(INITIAL_CATEGORIES);
-  const [zones] = useState(INITIAL_ZONES);
-  const [pendingCount] = useState(3);
+interface MappingStatus {
+  categoryId: number;
+  categoryCode: string;
+  categoryName: string;
+  active: boolean;
+  zoneMapped: boolean;
+  mappedZoneCode: string | null;
+  mappedZoneId: number | null;
+}
+
+async function fetchMappings(warehouseId: number): Promise<MappingStatus[]> {
+  const [catRes, zoneRes] = await Promise.all([
+    api.get<ApiResponse<any>>('/categories'),
+    api.get<ApiResponse<any>>('/zones', { params: { warehouseId, activeOnly: false, size: 200 } }),
+  ]);
+  const cats: Category[] = catRes.data.data?.content ?? catRes.data.data ?? [];
+  const zones: Zone[] = zoneRes.data.data?.content ?? zoneRes.data.data ?? [];
+  const zoneMap = new Map(zones.map(z => [z.zoneCode, z]));
+
+  return cats.map(cat => {
+    const expectedCode = `Z-${cat.categoryCode}`;
+    const zone = zoneMap.get(expectedCode);
+    return {
+      categoryId: cat.categoryId,
+      categoryCode: cat.categoryCode,
+      categoryName: cat.categoryName,
+      active: cat.active,
+      zoneMapped: !!zone,
+      mappedZoneCode: zone?.zoneCode ?? null,
+      mappedZoneId: zone?.zoneId ?? null,
+    };
+  });
+}
+
+async function apiMapToZone(categoryId: number): Promise<void> {
+  await api.post(`/categories/${categoryId}/map-to-zone`);
+}
+
+async function apiMapAllUnmapped(unmapped: MappingStatus[]): Promise<{ ok: number; fail: number }> {
+  let ok = 0, fail = 0;
+  await Promise.all(unmapped.map(async m => {
+    try { await apiMapToZone(m.categoryId); ok++; }
+    catch { fail++; }
+  }));
+  return { ok, fail };
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+export default function CategoryToZonePage() {
+  const [mappings, setMappings] = useState<MappingStatus[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [mappingId, setMappingId] = useState<number | null>(null);
+  const [mappingAll, setMappingAll] = useState(false);
+
+  const warehouseId = getStoredSession()?.user?.warehouseIds?.[0] ?? 0;
+
+  const load = useCallback(async () => {
+    if (!warehouseId) return;
+    setLoading(true);
+    try { setMappings(await fetchMappings(warehouseId)); }
+    catch { toast.error('Không tải được dữ liệu'); }
+    finally { setLoading(false); }
+  }, [warehouseId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleMap = async (m: MappingStatus) => {
+    setMappingId(m.categoryId);
+    try {
+      await apiMapToZone(m.categoryId);
+      toast.success(`Đã tạo zone Z-${m.categoryCode}`);
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Lỗi tạo zone');
+    } finally { setMappingId(null); }
+  };
+
+  const handleMapAll = async () => {
+    const unmapped = mappings.filter(m => !m.zoneMapped && m.active);
+    if (!unmapped.length) { toast('Tất cả category đã có zone rồi', { icon: '✅' }); return; }
+    setMappingAll(true);
+    try {
+      const { ok, fail } = await apiMapAllUnmapped(unmapped);
+      if (fail === 0) toast.success(`Đã tạo ${ok} zone thành công`);
+      else toast(`Tạo ${ok} thành công, ${fail} thất bại`, { icon: '⚠️' });
+      load();
+    } finally { setMappingAll(false); }
+  };
+
+  const mapped   = mappings.filter(m => m.zoneMapped).length;
+  const unmapped = mappings.filter(m => !m.zoneMapped && m.active).length;
 
   return (
-    <div className="flex-1 flex flex-col bg-gray-50/50 font-sans relative overflow-hidden min-h-screen">
-      
-      {/* NỘI DUNG CHÍNH */}
-      <div className="flex-1 overflow-y-auto p-6 md:p-8 pb-36">
-        <div className="mb-8">
-          <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight uppercase italic">Map Category to Zone</h2>
-          <p className="text-gray-500 mt-1 font-medium">Assign product categories to storage zones to optimize warehouse flow.</p>
+    <div className="w-full font-sans space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-extrabold text-gray-900">Gắn Category → Zone</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Mỗi category cần 1 zone <span className="font-mono font-semibold text-indigo-600">Z-{'{categoryCode}'}</span> để putaway suggestion hoạt động
+          </p>
         </div>
-
-        <div className="grid grid-cols-12 gap-8">
-          
-          {/* CỘT TRÁI: DANH SÁCH CHƯA PHÂN BỔ */}
-          <div className="col-span-12 lg:col-span-4 flex flex-col gap-6">
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="p-5 border-b border-gray-100 bg-gray-50/50">
-                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest">Unassigned Categories</h3>
-              </div>
-              
-              <div className="p-5 flex flex-col gap-4">
-                <div className="relative">
-                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[20px]">search</span>
-                  <input type="text" placeholder="Search..." className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                </div>
-
-                <div className="flex flex-col gap-3 text-sm">
-                  {categories.map((cat) => (
-                    <div key={cat.id} className="p-4 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-blue-500 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-black text-gray-900 tracking-wide uppercase">{cat.name}</span>
-                        <span className="material-symbols-outlined text-gray-300 group-hover:text-blue-500">drag_pan</span>
-                      </div>
-                      <p className="text-[11px] text-gray-500 font-bold mb-3">{cat.unit}</p>
-                      <div className="flex flex-wrap gap-1">
-                        {cat.tags.map(tag => (
-                          <span key={tag} className="px-2 py-0.5 bg-gray-100 text-[9px] font-black text-gray-400 rounded-md uppercase">{tag}</span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Quy tắc tóm tắt */}
-            <div className="bg-gray-900 text-white p-6 rounded-2xl shadow-xl border-t-4 border-blue-500">
-              <h4 className="text-xs font-black uppercase tracking-[0.2em] text-blue-400 mb-4">Storage Constraints</h4>
-              <ul className="text-xs space-y-3 font-medium text-gray-400">
-                <li>• Hazardous goods (Chemicals) → <span className="text-white font-bold">Zone D only</span></li>
-                <li>• Electronics → <span className="text-white font-bold">Secure Zone (Zone C)</span></li>
-              </ul>
-            </div>
-          </div>
-
-          {/* CỘT PHẢI: CÁC ZONE TRONG KHO */}
-          <div className="col-span-12 lg:col-span-8">
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {zones.map((zone) => (
-                  <div key={zone.id} className="border-2 border-dashed border-gray-200 rounded-2xl p-6 flex flex-col min-h-[200px] hover:border-blue-200 transition-colors">
-                    <div className="flex justify-between items-start mb-6">
-                      <div>
-                        <h4 className="text-xl font-black text-gray-900 leading-none uppercase">{zone.name}</h4>
-                        <p className="text-[11px] text-gray-400 font-bold mt-1 uppercase tracking-wider">{zone.desc}</p>
-                      </div>
-                      <span className="material-symbols-outlined text-gray-200 text-4xl">{zone.icon}</span>
-                    </div>
-
-                    <div className="flex-1 flex flex-col gap-2">
-                      {zone.mapped.map(m => (
-                        <div key={m} className="flex justify-between items-center bg-gray-50 border border-gray-200 p-2.5 rounded-lg">
-                          <span className="text-xs font-bold text-gray-700">{m}</span>
-                          <button className="text-gray-300 hover:text-red-500 transition-colors"><span className="material-symbols-outlined text-sm">close</span></button>
-                        </div>
-                      ))}
-                      <div className="flex-1 border-2 border-dashed border-gray-100 rounded-xl flex items-center justify-center text-[10px] font-bold text-gray-300 uppercase italic">
-                        Drop category here
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+        <div className="flex items-center gap-2">
+          {unmapped > 0 && (
+            <button onClick={handleMapAll} disabled={mappingAll || loading}
+              className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white rounded-xl disabled:opacity-60 active:scale-95 transition-all"
+              style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)' }}>
+              {mappingAll
+                ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                : <span className="material-symbols-outlined text-[15px]">auto_awesome</span>
+              }
+              Tạo tất cả zone còn thiếu ({unmapped})
+            </button>
+          )}
+          <button onClick={load} disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-indigo-600 border border-indigo-200 rounded-xl hover:bg-indigo-50 transition-colors">
+            <span className={`material-symbols-outlined text-[15px] ${loading ? 'animate-spin' : ''}`}>refresh</span>
+          </button>
         </div>
       </div>
 
-      {/* --- FIX LỖI: FOOTER STICKY CĂN CHỈNH --- */}
-      <footer className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-6xl bg-white border-2 border-gray-900 rounded-2xl p-5 shadow-[0_20px_50px_rgba(0,0,0,0.2)] flex flex-col md:flex-row justify-between items-center z-50 gap-4 md:gap-0">
-        
-        {/* Phần thông báo: Căn chỉnh icon và text hoàn hảo */}
-        <div className="flex items-center gap-4">
-          <div className="flex-shrink-0 w-12 h-12 bg-amber-50 border-2 border-amber-200 rounded-full flex items-center justify-center shadow-inner">
-            <span className="material-symbols-outlined text-amber-600 text-[28px]">notification_important</span>
+      {/* Stats bar */}
+      {!loading && mappings.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm px-5 py-3 flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 flex items-center justify-center">
+              <span className="material-symbols-outlined text-emerald-500 text-[16px]">check_circle</span>
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase tracking-widest">Đã map</p>
+              <p className="text-lg font-extrabold text-emerald-700">{mapped}</p>
+            </div>
           </div>
-          <div className="flex flex-col">
-            <span className="text-base font-black text-gray-900 leading-none mb-1">
-              {pendingCount} changes pending
-            </span>
-            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-              Awaiting system synchronization
-            </span>
+          <div className="w-px h-8 bg-gray-100" />
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-amber-50 flex items-center justify-center">
+              <span className="material-symbols-outlined text-amber-500 text-[16px]">link_off</span>
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase tracking-widest">Chưa map</p>
+              <p className="text-lg font-extrabold text-amber-600">{unmapped}</p>
+            </div>
           </div>
+          {/* Progress bar */}
+          <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden ml-4">
+            <div className="h-full bg-emerald-500 rounded-full transition-all"
+              style={{ width: `${mappings.length ? (mapped / mappings.length) * 100 : 0}%` }} />
+          </div>
+          <span className="text-sm font-bold text-gray-500">
+            {mappings.length ? Math.round((mapped / mappings.length) * 100) : 0}%
+          </span>
         </div>
+      )}
 
-        {/* Nhóm nút hành động */}
-        <div className="flex gap-3 w-full md:w-auto">
-          <button className="flex-1 md:flex-none px-8 py-3 bg-white border-2 border-gray-200 text-gray-400 font-black rounded-xl text-xs uppercase hover:bg-gray-50 transition-all">
-            Discard
-          </button>
-          <button className="flex-1 md:flex-none px-8 py-3 bg-gray-900 text-white font-black rounded-xl text-xs uppercase hover:bg-black transition-all shadow-lg active:scale-95">
-            Apply Mapping
-          </button>
-        </div>
-      </footer>
-
+      {/* Mapping table */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <span className="material-symbols-outlined animate-spin text-indigo-400 text-[36px]">progress_activity</span>
+          </div>
+        ) : mappings.length === 0 ? (
+          <div className="flex flex-col items-center py-16 gap-2">
+            <span className="material-symbols-outlined text-gray-200 text-[48px]">category</span>
+            <p className="text-sm text-gray-400">Chưa có category nào</p>
+          </div>
+        ) : (
+          <>
+            <div className="grid bg-gray-50 border-b border-gray-100"
+              style={{ gridTemplateColumns: '1fr 2fr 2fr 1fr auto' }}>
+              {['Mã Category', 'Tên', 'Zone tương ứng', 'Trạng thái', ''].map(h => (
+                <div key={h} className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">{h}</div>
+              ))}
+            </div>
+            <div className="divide-y divide-gray-50">
+              {mappings.map(m => (
+                <div key={m.categoryId} className={`grid items-center ${!m.active ? 'opacity-50' : ''}`}
+                  style={{ gridTemplateColumns: '1fr 2fr 2fr 1fr auto' }}>
+                  <div className="px-4 py-3.5">
+                    <span className="text-sm font-bold text-gray-900 font-mono">{m.categoryCode}</span>
+                  </div>
+                  <div className="px-4 py-3.5">
+                    <span className="text-sm text-gray-700">{m.categoryName}</span>
+                  </div>
+                  <div className="px-4 py-3.5 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-indigo-300 text-[14px]">arrow_forward</span>
+                    <span className="text-sm font-mono font-semibold text-indigo-600">Z-{m.categoryCode}</span>
+                  </div>
+                  <div className="px-4 py-3.5">
+                    {m.zoneMapped ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
+                        <span className="material-symbols-outlined text-[11px]">check_circle</span>
+                        Đã map
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
+                        <span className="material-symbols-outlined text-[11px]">link_off</span>
+                        Chưa có zone
+                      </span>
+                    )}
+                  </div>
+                  <div className="px-4 py-3.5">
+                    {!m.zoneMapped && m.active && (
+                      <button onClick={() => handleMap(m)} disabled={mappingId === m.categoryId}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100 transition-colors disabled:opacity-50">
+                        <span className={`material-symbols-outlined text-[13px] ${mappingId === m.categoryId ? 'animate-spin' : ''}`}>
+                          {mappingId === m.categoryId ? 'progress_activity' : 'add_link'}
+                        </span>
+                        Tạo zone
+                      </button>
+                    )}
+                    {m.zoneMapped && (
+                      <span className="text-xs text-gray-300">—</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

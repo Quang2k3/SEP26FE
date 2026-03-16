@@ -31,7 +31,9 @@ export interface Grn {
   updatedAt: string | null;
   approvedBy: number | null;
   approvedAt: string | null;
-  note: string | null;
+  note: string | null;           // chứa reject reason: "Rejected by {id}: {reason}"
+  rejectedBy: number | null;
+  rejectedAt: string | null;
   items: GrnItem[];
 }
 

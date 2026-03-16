@@ -255,6 +255,26 @@ export default function ReceivingDetailModal({ open, receiving, onClose, onRefre
         {/* ── Body ── */}
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
 
+          {/* Status banners */}
+          {receiving.status === 'GRN_REJECTED' && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-3">
+              <span className="material-symbols-outlined text-red-500 text-[18px] flex-shrink-0 mt-0.5">cancel</span>
+              <div>
+                <p className="text-sm font-bold text-red-700">GRN bị từ chối bởi Manager</p>
+                <p className="text-xs text-red-600 mt-0.5">Xem lý do chi tiết trong mục Duyệt nhập kho.</p>
+              </div>
+            </div>
+          )}
+          {receiving.status === 'PENDING_INCIDENT' && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 flex items-start gap-3">
+              <span className="material-symbols-outlined text-yellow-500 text-[18px] flex-shrink-0 mt-0.5">warning</span>
+              <div>
+                <p className="text-sm font-bold text-yellow-700">Phát hiện sự cố chất lượng</p>
+                <p className="text-xs text-yellow-600 mt-0.5">QC đã ghi nhận hàng lỗi. Chờ Manager xử lý sự cố.</p>
+              </div>
+            </div>
+          )}
+
           {/* ── Section: Thông tin chung ── */}
           <div>
             <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mb-3">

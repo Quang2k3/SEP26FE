@@ -93,3 +93,7 @@ export async function qcApproveReceivingOrder(id: number): Promise<ReceivingOrde
 export async function generateGrn(id: number): Promise<void> {
   await api.post(`/receiving-orders/${id}/generate-grn`);
 }
+// DELETE /v1/receiving-orders/{id} — Keeper xóa DRAFT
+export async function deleteReceivingOrder(id: number): Promise<void> {
+  await api.delete(`/receiving-orders/${id}`);
+}

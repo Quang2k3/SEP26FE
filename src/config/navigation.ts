@@ -10,8 +10,10 @@ export const WAREHOUSE_ACTIONS: NavAction[] = [
 ];
 
 export const CATEGORY_ACTIONS: NavAction[] = [
-  { label: 'Danh sách',     path: '/category' },
-  { label: 'Gắn Zone',      path: '/category/to-zone' },
+  { label: 'Danh sách',        path: '/category' },
+  { label: 'Category & Zone',  path: '/category/tree' },
+  { label: 'Gắn Zone',         path: '/category/to-zone' },
+  { label: 'Gán SKU',          path: '/category/assign-sku' },
 ];
 
 export const MANAGER_DASHBOARD: NavAction[] = [
