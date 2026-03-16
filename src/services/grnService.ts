@@ -123,6 +123,7 @@ export async function rejectGrn(id: number, reason: string): Promise<Grn> {
   return data.data;
 }
 
+
 /**
  * POST /v1/grns/{id}/post — Manager nhập kho
  * GRN.status: APPROVED → POSTED
