@@ -1,251 +1,71 @@
- 'use client';
+'use client';
 
- import React, { useMemo, useState } from 'react';
- import { useRouter } from 'next/navigation';
- import { Button } from '@/components/ui/Button';
- import { Card } from '@/components/ui/Card';
- import EditOutboundModal from '@/components/outbound/EditOutboundModal';
- import type { OutboundFormData, OutboundDetailPageProps } from '@/interfaces/dashboard';
+/**
+ * /outbound/[id] — Standalone detail page cho một lệnh xuất kho.
+ *
+ * Dùng khi cần share link trực tiếp hoặc navigate từ notification.
+ * Các action (submit, approve, allocate, pick, qc, dispatch) đều
+ * được handle ngay trên trang này thông qua OutboundDetailModal.
+ */
 
- const MOCK_OUTBOUND_DETAILS: OutboundFormData[] = [
-   {
-     shipmentCode: 'SHIP-2023-001',
-     customer: 'Global Logistics inc.',
-     binCode: 'A-101-01',
-     expectedDate: '2023-10-24',
-     quantity: '120',
-     notes: 'Standard outbound to main DC.',
-   },
-   {
-     shipmentCode: 'SHIP-2023-002',
-     customer: 'Pioneer Parts Co',
-     binCode: 'B-202-05',
-     expectedDate: '2023-10-25',
-     quantity: '64',
-     notes: 'Priority delivery, handle with care.',
-   },
- ];
+import { useRouter, useParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { fetchOutboundOrders } from '@/services/outboundService';
+import type { OutboundListItem } from '@/interfaces/outbound';
+import OutboundDetailModal from '@/components/outbound/components/OutboundDetailModal';
 
- const STATUS_BY_SHIPMENT: Record<string, string> = {
-   'SHIP-2023-001': 'Shipped',
-   'SHIP-2023-002': 'Pending',
-   'SHIP-2023-003': 'In Transit',
-   'SHIP-2023-004': 'Processing',
-   'SHIP-2023-005': 'Đã hủy',
-   'SHIP-2023-006': 'Shipped',
- };
+export default function OutboundDetailPage() {
+  const router = useRouter();
+  const { id } = useParams<{ id: string }>();
+  const [item, setItem] = useState<OutboundListItem | null>(null);
+  const [loading, setLoading] = useState(true);
 
- const STATUS_COLORS: Record<string, string> = {
-   Shipped: 'bg-green-100 text-green-800',
-   Pending: 'bg-yellow-100 text-yellow-800',
-   'In Transit': 'bg-blue-100 text-blue-800',
-   Processing: 'bg-purple-100 text-purple-800',
-   'Đã hủy': 'bg-red-100 text-red-800',
- };
+  useEffect(() => {
+    if (!id) return;
+    // Fetch bằng keyword = documentCode để lấy item
+    fetchOutboundOrders({ keyword: id, size: 1 })
+      .then((res) => {
+        const found = res.content.find(
+          (o) => String(o.documentId) === id || o.documentCode === id,
+        );
+        setItem(found ?? null);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [id]);
 
- export default function OutboundDetailPage({ params }: OutboundDetailPageProps) {
-   const router = useRouter();
-   const [showEditModal, setShowEditModal] = useState(false);
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50/50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+          <p className="text-sm text-gray-400">Đang tải lệnh xuất...</p>
+        </div>
+      </div>
+    );
+  }
 
-   const data = useMemo<OutboundFormData | null>(() => {
-     const found = MOCK_OUTBOUND_DETAILS.find(
-       (item) => item.shipmentCode === params.id,
-     );
-     if (found) return found;
-     return {
-       shipmentCode: params.id,
-       customer: 'Khách hàng không xác định',
-       binCode: 'Chưa có',
-       expectedDate: '',
-       quantity: '0',
-       notes: '',
-     };
-   }, [params.id]);
+  if (!item) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50/50">
+        <div className="text-center">
+          <p className="text-gray-500 font-medium">Không tìm thấy lệnh xuất: {id}</p>
+          <button
+            onClick={() => router.push('/outbound')}
+            className="mt-3 text-sm text-indigo-600 hover:underline"
+          >
+            ← Quay lại danh sách
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-   const status = STATUS_BY_SHIPMENT[params.id] ?? 'Pending';
-
-   const handleEdit = () => {
-     setShowEditModal(true);
-   };
-
-   const handleDelete = () => {
-     // Mock delete
-     // eslint-disable-next-line no-alert
-     if (true) { // TODO: thay bằng useConfirm()
-       // Thay bằng gọi API thực tế
-       // eslint-disable-next-line no-console
-       // TODO: gọi API xóa
-       router.push('/outbound');
-     }
-   };
-
-   const handleCloseEdit = () => {
-     setShowEditModal(false);
-   };
-
-   const handleSubmitEdit = (updated: OutboundFormData) => {
-     // Thay bằng gọi API thực tế
-     // eslint-disable-next-line no-console
-     // TODO: gọi API cập nhật
-     setShowEditModal(false);
-   };
-
-   return (
-     <div className="w-full flex flex-col gap-6 font-sans">
-       {/* Header */}
-       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-         <div className="flex items-center gap-3">
-           <button
-             type="button"
-             onClick={() => router.push('/outbound')}
-             className="flex items-center justify-center h-9 w-9 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50"
-           >
-             <span className="material-symbols-outlined text-[18px]">
-               arrow_back
-             </span>
-           </button>
-           <div>
-             <h1 className="text-xl md:text-2xl font-bold text-gray-900 tracking-tight">
-               Outbound Detail
-             </h1>
-             <p className="mt-1 text-xs md:text-sm text-gray-500">
-               Lệnh xuất&nbsp;
-               <span className="font-semibold text-gray-800">
-                 {data?.shipmentCode}
-               </span>
-               .
-             </p>
-           </div>
-         </div>
-
-         <div className="flex items-center gap-2 md:gap-3">
-           <span
-             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[status] ?? 'bg-gray-100 text-gray-800'}`}
-           >
-             {status}
-           </span>
-           <Button
-             variant="outline"
-             size="sm"
-             onClick={handleEdit}
-             leftIcon={
-               <span className="material-symbols-outlined text-[16px]">edit</span>
-             }
-           >
-             Edit
-           </Button>
-           <Button
-             variant="danger"
-             size="sm"
-             onClick={handleDelete}
-             leftIcon={
-               <span className="material-symbols-outlined text-[16px]">delete</span>
-             }
-           >
-             Delete
-           </Button>
-         </div>
-       </div>
-
-       {/* Summary */}
-       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-         <Card>
-           <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-             Shipment Code
-           </div>
-           <div className="mt-1 text-sm font-bold text-gray-900">
-             {data?.shipmentCode}
-           </div>
-         </Card>
-         <Card>
-           <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-             Customer
-           </div>
-           <div className="mt-1 text-sm font-medium text-gray-900">
-             {data?.customer}
-           </div>
-         </Card>
-         <Card>
-           <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-             Expected Date
-           </div>
-           <div className="mt-1 text-sm font-medium text-gray-900">
-             {data?.expectedDate || 'Chưa có'}
-           </div>
-         </Card>
-       </div>
-
-       {/* Details */}
-       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-         <Card className="lg:col-span-2">
-           <h2 className="text-sm font-semibold text-gray-900 mb-3">
-             Shipment Information
-           </h2>
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-             <div>
-               <div className="text-xs font-medium text-gray-500">Source Bin</div>
-               <div className="mt-1 text-gray-900">{data?.binCode}</div>
-             </div>
-             <div>
-               <div className="text-xs font-medium text-gray-500">
-                 Quantity (Units)
-               </div>
-               <div className="mt-1 text-gray-900">{data?.quantity}</div>
-             </div>
-           </div>
-           <div className="mt-4">
-             <div className="text-xs font-medium text-gray-500">Notes</div>
-             <p className="mt-1 text-sm text-gray-700 whitespace-pre-line">
-               {data?.notes || 'No additional notes.'}
-             </p>
-           </div>
-         </Card>
-
-         <Card>
-           <h2 className="text-sm font-semibold text-gray-900 mb-3">
-             Lịch sử vận chuyển
-           </h2>
-           <ol className="space-y-3 text-xs text-gray-700">
-             <li className="flex gap-2">
-               <span className="mt-0.5 h-2 w-2 rounded-full bg-blue-500" />
-               <div>
-                 <div className="font-semibold text-gray-900">
-                   Created
-                 </div>
-                 <div className="text-gray-500">2023-10-22 09:15</div>
-               </div>
-             </li>
-             <li className="flex gap-2">
-               <span className="mt-0.5 h-2 w-2 rounded-full bg-amber-500" />
-               <div>
-                 <div className="font-semibold text-gray-900">
-                   Allocated from Bin
-                 </div>
-                 <div className="text-gray-500">2023-10-23 14:30</div>
-               </div>
-             </li>
-             <li className="flex gap-2">
-               <span className="mt-0.5 h-2 w-2 rounded-full bg-green-500" />
-               <div>
-                 <div className="font-semibold text-gray-900">
-                   Shipped
-                 </div>
-                 <div className="text-gray-500">2023-10-24 08:10</div>
-               </div>
-             </li>
-           </ol>
-         </Card>
-       </div>
-
-       {data && (
-         <EditOutboundModal
-           isOpen={showEditModal}
-           initialData={data}
-           onClose={handleCloseEdit}
-           onSubmit={handleSubmitEdit}
-         />
-       )}
-     </div>
-   );
- }
-
+  return (
+    <OutboundDetailModal
+      item={item}
+      onClose={() => router.push('/outbound')}
+      onRefresh={() => router.refresh()}
+    />
+  );
+}

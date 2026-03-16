@@ -2,7 +2,28 @@
 
 import React from "react";
 import { Button } from "./Button";
-import type { Column } from "./Table";
+
+export interface Column<T> {
+  key: string;
+  title: string;
+  align?: "left" | "center" | "right";
+  width?: string | number;
+  render: (row: T) => React.ReactNode;
+}
+
+interface DataTableProps<T> {
+  columns: Column<T>[];
+  data: T[];
+  loading?: boolean;
+  emptyText?: string;
+  page?: number;
+  totalPages?: number;
+  totalElements?: number;
+  pageSize?: number;
+  onPrev?: () => void;
+  onNext?: () => void;
+  onRowClick?: (row: T) => void;
+}
 
 export function DataTable<T>({ columns, data, loading, emptyText = "No data", page = 0, totalPages = 0, totalElements = 0, pageSize = 10, onPrev, onNext, onRowClick }: DataTableProps<T>) {
   const from = totalElements === 0 ? 0 : page * pageSize + 1;

@@ -23,8 +23,9 @@ const SILENT_ENDPOINTS = [
 ];
 
 // Endpoints chỉ silent 500/503 (server errors) — vẫn toast 4xx để báo user
+// NOTE: /outbound ĐÃ XÓA khỏi danh sách này.
+// Trước đây /outbound bị silent → khi BE lỗi 500, list trống mà không có thông báo.
 const SILENT_SERVER_ERROR_ENDPOINTS = [
-  '/outbound',             // outbound filter có thể chưa ổn định
   '/grns',                 // GRN list background refresh
   '/incidents',            // incident polling background
 ];

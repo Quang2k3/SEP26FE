@@ -26,13 +26,17 @@ export interface IncidentPagePayload {
 }
 
 export interface IncidentListQuery {
-  status?: IncidentStatus;
+  status?: IncidentStatus | 'ALL';
+  category?: 'GATE' | 'QUALITY';
+  page?: number;
+  size?: number;
 }
 
 export interface CreateIncidentPayload {
   warehouseId: number;
+  category: 'GATE' | 'QUALITY';
   incidentType: string;
   description: string;
-  receivingId: number;
+  receivingId?: number;
   attachmentId?: number;
 }

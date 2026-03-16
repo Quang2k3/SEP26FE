@@ -1,10 +1,6 @@
 import type { NavAction } from '@/interfaces/navigation';
 
 // ── MANAGER ───────────────────────────────────────────────────────────────────
-
-// Kho hàng: gộp Zone + Location (AISLE/RACK/BIN/STAGING) vào 1 section
-// Zone là entry point → từ zone drill vào location bên trong
-// Zone là entry point — Dãy/Kệ/BIN quản lý trong Zone Detail
 export const WAREHOUSE_ACTIONS: NavAction[] = [
   { label: 'Danh sách Zone', path: '/zone' },
 ];
@@ -17,18 +13,22 @@ export const CATEGORY_ACTIONS: NavAction[] = [
 ];
 
 export const MANAGER_DASHBOARD: NavAction[] = [
-  { label: 'Duyệt nhập kho',  path: '/manager-dashboard/grn' },
-  { label: 'Sự cố',           path: '/manager-dashboard/incident' },
-  { label: 'Báo cáo QC',      path: '/manager-dashboard/qc-report' },
+  { label: 'Duyệt nhập kho',   path: '/manager-dashboard/grn' },
+  { label: 'Sự cố',            path: '/manager-dashboard/incident' },
+  { label: 'Báo cáo QC',       path: '/manager-dashboard/qc-report' },
+];
+
+export const OUTBOUND_MANAGER_ACTIONS: NavAction[] = [
+  { label: 'Tất cả lệnh xuất', path: '/outbound' },
+  { label: 'Chờ duyệt',        path: '/outbound?status=PENDING_APPROVAL' },
 ];
 
 // ── KEEPER ────────────────────────────────────────────────────────────────────
-
 export const BIN_ACTIONS: NavAction[] = [
   { label: 'Sơ đồ kho',      path: '/bin/floor-plan' },
   { label: 'Bin Occupancy',   path: '/bin/occupancy' },
   { label: 'Tìm BIN trống',   path: '/bin/search' },
-  { label: 'Cấu hình',        path: '/bin/configure',  roles: ['MANAGER'] },
+  { label: 'Cấu hình',        path: '/bin/configure', roles: ['MANAGER'] },
 ];
 
 export const INBOUND_ACTIONS: NavAction[] = [
@@ -36,6 +36,16 @@ export const INBOUND_ACTIONS: NavAction[] = [
 ];
 
 export const OUTBOUND_ACTIONS: NavAction[] = [
+  { label: 'Danh sách xuất',  path: '/outbound' },
+];
+
+// ── QC ────────────────────────────────────────────────────────────────────────
+// QC chỉ xem nhập kho để scan QC inbound + xem xuất kho để scan QC outbound
+export const QC_INBOUND_ACTIONS: NavAction[] = [
+  { label: 'Gate-Check / Nhập kho', path: '/inbound/gate-check' },
+];
+
+export const QC_OUTBOUND_ACTIONS: NavAction[] = [
   { label: 'Danh sách xuất',  path: '/outbound' },
 ];
 
@@ -74,7 +84,7 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
     roles: ['MANAGER', 'KEEPER', 'QC'],
   },
 
-  // ── Manager ──────────────────────────────────
+  // ── MANAGER ──────────────────────────────────
   {
     key: 'manager-dashboard',
     name: 'Quản lý nhập kho',
@@ -86,7 +96,7 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
     key: 'outbound-manager',
     name: 'Xuất kho',
     icon: 'output_circle',
-    children: OUTBOUND_ACTIONS,
+    children: OUTBOUND_MANAGER_ACTIONS,
     roles: ['MANAGER'],
   },
   {
@@ -94,7 +104,14 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
     name: 'Kiểm định QC',
     icon: 'verified',
     path: '/qc-inspections',
-    roles: ['MANAGER', 'QC'],
+    roles: ['MANAGER'],
+  },
+  {
+    key: 'sku-manager',
+    name: 'Quản lý SKU',
+    icon: 'inventory',
+    path: '/sku',
+    roles: ['MANAGER'],
   },
   {
     key: 'warehouse',
@@ -125,13 +142,20 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
     roles: ['MANAGER'],
   },
 
-  // ── Keeper ────────────────────────────────────
+  // ── KEEPER ────────────────────────────────────
   {
     key: 'inbound',
     name: 'Nhập kho',
     icon: 'input_circle',
     children: INBOUND_ACTIONS,
-    roles: ['KEEPER', 'QC'],
+    roles: ['KEEPER'],          // ← bỏ 'QC' — QC có section riêng bên dưới
+  },
+  {
+    key: 'outbound-keeper',
+    name: 'Xuất kho',
+    icon: 'output_circle',
+    children: OUTBOUND_ACTIONS,
+    roles: ['KEEPER'],
   },
   {
     key: 'tasks',
@@ -141,10 +165,47 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
     roles: ['KEEPER'],
   },
   {
+    key: 'incidents-keeper',
+    name: 'Sự cố',
+    icon: 'report_problem',
+    path: '/incidents',
+    roles: ['KEEPER'],
+  },
+  {
     key: 'bin',
     name: 'Kho & BIN',
     icon: 'inventory_2',
     children: BIN_ACTIONS,
     roles: ['KEEPER'],
+  },
+
+  // ── QC ────────────────────────────────────────
+  {
+    key: 'qc-inbound',
+    name: 'Nhập kho',             // ← tên gọn, không cần "(QC)"
+    icon: 'input_circle',
+    children: QC_INBOUND_ACTIONS,
+    roles: ['QC'],
+  },
+  {
+    key: 'qc-outbound',
+    name: 'Xuất kho',             // ← THÊM MỚI: QC cần vào đây để scan picking
+    icon: 'output_circle',
+    children: QC_OUTBOUND_ACTIONS,
+    roles: ['QC'],
+  },
+  {
+    key: 'qc-inspections-qc',
+    name: 'Kiểm định QC',
+    icon: 'verified',
+    path: '/qc-inspections',
+    roles: ['QC'],
+  },
+  {
+    key: 'incidents-qc',
+    name: 'Sự cố',
+    icon: 'report_problem',
+    path: '/incidents',
+    roles: ['QC'],
   },
 ];
