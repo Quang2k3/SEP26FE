@@ -38,13 +38,13 @@ const FINALIZED_STATUS: Record<string, string[]> = {
 };
 
 const FINALIZED_MSG: Record<string, string> = {
-  SUBMITTED:        '✅ Keeper đã chốt kiểm đếm — chờ QC xử lý',
-  PENDING_INCIDENT: '⚠️ Kiểm đếm xong — phát hiện sự cố, chờ xử lý',
-  QC_APPROVED:      '✅ QC xác nhận đạt — có thể tạo GRN',
-  GRN_CREATED:      '✅ Kiểm đếm xong — GRN đã được tạo',
-  PENDING_APPROVAL: '✅ Đã gửi Manager chờ duyệt',
-  GRN_APPROVED:     '✅ Manager đã duyệt',
-  POSTED:           '✅ Đã nhập kho hoàn tất',
+  SUBMITTED:        ' Keeper đã chốt kiểm đếm — chờ QC xử lý',
+  PENDING_INCIDENT: ' Kiểm đếm xong — phát hiện sự cố, chờ xử lý',
+  QC_APPROVED:      ' QC xác nhận đạt — có thể tạo GRN',
+  GRN_CREATED:      ' Kiểm đếm xong — GRN đã được tạo',
+  PENDING_APPROVAL: ' Đã gửi Manager chờ duyệt',
+  GRN_APPROVED:     ' Manager đã duyệt',
+  POSTED:           ' Đã nhập kho hoàn tất',
 };
 
 export default function ScanQRCode({ receivingId, userRole = 'KEEPER', onDone, onFinalized }: Props) {
@@ -55,6 +55,7 @@ export default function ScanQRCode({ receivingId, userRole = 'KEEPER', onDone, o
   const [scannedLines, setScannedLines] = useState<ScanLine[]>([]);
   const [isFinalized,  setIsFinalized]  = useState(false);
   const [finalStatus,  setFinalStatus]  = useState<string | null>(null);
+  const isFinalizedRef = useRef(false); // ref để cleanup effect đọc được giá trị mới nhất
 
   const pollingRef       = useRef<ReturnType<typeof setInterval> | null>(null);
   const statusPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -92,30 +93,34 @@ export default function ScanQRCode({ receivingId, userRole = 'KEEPER', onDone, o
     }, 3000);
   };
 
-  // Poll receiving order status (5s) — detect khi điện thoại bấm "Xác nhận"
+  // Poll receiving order status — detect khi điện thoại bấm "Xác nhận"
+  const checkStatus = useCallback(async () => {
+    if (!mountedRef.current || isFinalized) return;
+    try {
+      const order = await fetchReceivingOrder(receivingId);
+      if (!mountedRef.current) return;
+      const finalizedStatuses = FINALIZED_STATUS[userRole] ?? [];
+      // Finalized: status nằm trong danh sách confirmed (bất kể initialStatus)
+      if (finalizedStatuses.includes(order.status) && order.status !== initialStatus.current) {
+        clearInterval(statusPollingRef.current!);
+        clearInterval(pollingRef.current!);
+        isFinalizedRef.current = true;
+        setIsFinalized(true);
+        setFinalStatus(order.status);
+        const msg = FINALIZED_MSG[order.status] ?? `Hoàn tất — trạng thái: ${order.status}`;
+        toast.success(msg, { duration: 5000, icon: '📋' });
+        onFinalized?.(order.status);
+      }
+    } catch { /* silent */ }
+  }, [receivingId, userRole, isFinalized, onFinalized]);
+
   const startStatusPolling = useCallback(() => {
     if (statusPollingRef.current) clearInterval(statusPollingRef.current);
-    statusPollingRef.current = setInterval(async () => {
-      if (!mountedRef.current || isFinalized) { clearInterval(statusPollingRef.current!); return; }
-      try {
-        const order = await fetchReceivingOrder(receivingId);
-        if (!mountedRef.current) return;
-        const finalizedStatuses = FINALIZED_STATUS[userRole] ?? [];
-        if (order.status !== initialStatus.current && finalizedStatuses.includes(order.status)) {
-          // Scan đã được finalize từ điện thoại!
-          clearInterval(statusPollingRef.current!);
-          clearInterval(pollingRef.current!);
-          setIsFinalized(true);
-          setFinalStatus(order.status);
-
-          const msg = FINALIZED_MSG[order.status] ?? `Hoàn tất — trạng thái: ${order.status}`;
-          toast.success(msg, { duration: 5000, icon: '📋' });
-
-          onFinalized?.(order.status);
-        }
-      } catch { /* silent */ }
-    }, 5000);
-  }, [receivingId, userRole, isFinalized, onFinalized]);
+    // Check ngay lập tức (không chờ interval đầu tiên)
+    checkStatus();
+    // Sau đó poll mỗi 2.5s
+    statusPollingRef.current = setInterval(checkStatus, 2500);
+  }, [checkStatus]);
 
   const generateQRCode = useCallback(async () => {
     if (!mountedRef.current) return;
@@ -123,6 +128,7 @@ export default function ScanQRCode({ receivingId, userRole = 'KEEPER', onDone, o
     setErrorMsg(null);
     setQrValue(null);
     setScannedLines([]);
+    isFinalizedRef.current = false;
     setIsFinalized(false);
     setFinalStatus(null);
     stopPolling();
@@ -162,8 +168,9 @@ export default function ScanQRCode({ receivingId, userRole = 'KEEPER', onDone, o
     return () => {
       mountedRef.current = false;
       stopPolling();
+      // Chỉ xóa session khi đã finalized — giữ session sống để finalizeCount vẫn sync được
       const sid = sessionIdRef.current;
-      if (sid) deleteSession(sid).catch(() => {});
+      if (sid && isFinalizedRef.current) deleteSession(sid).catch(() => {});
     };
   }, [receivingId]); // eslint-disable-line
 

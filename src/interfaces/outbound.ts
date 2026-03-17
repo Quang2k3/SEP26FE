@@ -131,10 +131,14 @@ export interface ShortageItem {
 export interface AllocateStockResponse {
   documentId: number;
   documentCode: string;
-  status: OutboundStatus;
+  // BE trả status: "ALLOCATED" | "PARTIALLY_ALLOCATED"
+  status: string;
+  totalSkus: number;
+  allocatedSkus: number;
   allocations: AllocationLine[];
-  shortages: ShortageItem[];
-  fullyAllocated: boolean;
+  shortages?: ShortageItem[] | null;
+  // BE không trả fullyAllocated — derive từ status
+  fullyAllocated?: boolean;
 }
 
 // ─── Pick List (POST /v1/outbound/pick-list) ──────────────────────────────────
@@ -145,6 +149,7 @@ export interface PickListItem {
   skuId: number;
   skuCode: string;
   skuName: string;
+  barcode?: string | null;  // barcode vật lý trên hộp — dùng để match khi Keeper quét
   locationCode: string;
   zoneCode?: string | null;
   rackCode?: string | null;

@@ -4,7 +4,7 @@ import type { ReceivingOrder } from "@/interfaces/receiving";
 export const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   DRAFT:            { label: "Nháp",            className: "bg-gray-100 text-gray-600" },
   PENDING_COUNT:    { label: "Chờ kiểm đếm",    className: "bg-indigo-50 text-indigo-700" },
-  SUBMITTED:        { label: "Đã nộp",          className: "bg-blue-50 text-blue-700" },
+  SUBMITTED:        { label: "Chờ QC kiểm",     className: "bg-blue-50 text-blue-700" },
   PENDING_INCIDENT: { label: "Có sự cố",        className: "bg-yellow-50 text-yellow-700" },
   QC_APPROVED:      { label: "QC Đạt",          className: "bg-purple-50 text-purple-700" },
   GRN_CREATED:      { label: "GRN Created",     className: "bg-orange-50 text-orange-700" },
@@ -14,15 +14,11 @@ export const STATUS_BADGE: Record<string, { label: string; className: string }> 
   POSTED:           { label: "Đã nhập kho",     className: "bg-blue-50 text-blue-700" },
 };
 
-// Style chung cho tất cả action button — gọn, đồng nhất
 const BTN = "inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded border transition-colors whitespace-nowrap disabled:opacity-50";
 const BTN_GHOST  = `${BTN} bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300`;
-const BTN_BLUE   = `${BTN} bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100`;
-const BTN_INDIGO = `${BTN} bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100`;
 const BTN_PURPLE = `${BTN} bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100`;
 const BTN_YELLOW = `${BTN} bg-yellow-50 border-yellow-200 text-yellow-700 hover:bg-yellow-100`;
-
-const BTN_GREEN = `${BTN} bg-green-50 border-green-200 text-green-700 hover:bg-green-100`;
+const BTN_GREEN  = `${BTN} bg-green-50 border-green-200 text-green-700 hover:bg-green-100`;
 
 interface Props {
   userRole: string;
@@ -100,7 +96,7 @@ export function getReceivingColumns({
       ),
     },
 
-    // ── Cột 1: Chi tiết ──────────────────────────────────
+    // ── Cột Chi tiết ──────────────────────────────────────
     {
       key: "col_detail",
       title: "Chi tiết",
@@ -122,31 +118,18 @@ export function getReceivingColumns({
       ),
     },
 
-    // ── Cột 2: Submit (DRAFT only) ───────────────────────
-    {
-      key: "col_submit",
-      title: "Submit",
-      align: "center",
-      render: (r) => {
-        if (r.status !== "DRAFT") return <span className="text-gray-200 text-xs">—</span>;
-        const isLoading = submitLoadingId === r.receivingId;
-        return (
-          <button
-            disabled={isLoading}
-            onClick={() => onSubmitConfirm(r)}
-            className={BTN_BLUE}
-          >
-            {isLoading
-              ? <span className={`${ICO} animate-spin`}>progress_activity</span>
-              : <span className={ICO}>send</span>
-            }
-            {isLoading ? "..." : "Submit"}
-          </button>
-        );
-      },
-    },
-
-    // ── Cột 3: Action chính ──────────────────────────────
+    // ── Cột Action ────────────────────────────────────────
+    //
+    // FLOW ĐÚNG cho Keeper (inbound):
+    //   DRAFT         → "Quét QR kiểm đếm"
+    //                   Keeper scan barcode từng kiện hàng trên điện thoại
+    //                   → bấm "Xác nhận kiểm đếm" trên phone
+    //                   → BE tự chuyển DRAFT → SUBMITTED (không cần bấm Submit tay)
+    //   SUBMITTED     → "Chờ QC kiểm" (readonly)
+    //   PENDING_COUNT → "Chờ QC kiểm" (lock, QC đang scan)
+    //   QC_APPROVED   → "Gen GRN"
+    //   GRN_CREATED   → "Gửi Manager"
+    //
     {
       key: "col_action",
       title: "Action",
@@ -155,8 +138,28 @@ export function getReceivingColumns({
         const isLoading = loadingId === r.receivingId;
 
         if (userRole === "KEEPER") {
+
+          // DRAFT: nút QR scan — scan xong = tự submit, không cần bấm Submit nữa
+          if (r.status === "DRAFT") {
+            return (
+              <button onClick={() => onScan(r)}
+                className={`${BTN} bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700 font-semibold`}>
+                <span className={ICO}>qr_code_scanner</span>
+                Quét QR kiểm đếm
+              </button>
+            );
+          }
+
+          if (r.status === "SUBMITTED") {
+            return (
+              <span className={`${BTN} bg-blue-50 border-blue-200 text-blue-600 cursor-default`}>
+                <span className={ICO}>hourglass_top</span>
+                Chờ QC kiểm
+              </span>
+            );
+          }
+
           if (r.status === "PENDING_COUNT") {
-            // Đơn đang chờ QC kiểm đếm — Keeper không được tạo QR nữa
             return (
               <span className={`${BTN} bg-indigo-50 border-indigo-200 text-indigo-500 cursor-not-allowed opacity-70`}>
                 <span className={ICO}>lock</span>
@@ -164,14 +167,7 @@ export function getReceivingColumns({
               </span>
             );
           }
-          if (r.status === "SUBMITTED") {
-            return (
-              <span className={`${BTN} bg-blue-50 border-blue-200 text-blue-600 cursor-default opacity-80`}>
-                <span className={ICO}>send</span>
-                Đã gửi QC
-              </span>
-            );
-          }
+
           if (r.status === "QC_APPROVED") {
             return (
               <button disabled={isLoading} onClick={() => onGenerateGrn(r)} className={BTN_PURPLE}>
@@ -180,6 +176,7 @@ export function getReceivingColumns({
               </button>
             );
           }
+
           if (r.status === "GRN_CREATED") {
             return (
               <button onClick={() => onSubmitGrn(r)} className={BTN_GREEN}>
@@ -188,6 +185,7 @@ export function getReceivingColumns({
               </button>
             );
           }
+
           if (r.status === "PENDING_APPROVAL") {
             return (
               <span className={`${BTN} bg-amber-50 border-amber-200 text-amber-700 cursor-default opacity-80`}>
@@ -196,6 +194,7 @@ export function getReceivingColumns({
               </span>
             );
           }
+
           if (r.status === "GRN_REJECTED") {
             return (
               <div className="flex items-center gap-1">
@@ -213,6 +212,7 @@ export function getReceivingColumns({
               </div>
             );
           }
+
           if (r.status === "PENDING_INCIDENT") {
             return (
               <button onClick={() => onViewIncident(r)}
@@ -222,6 +222,7 @@ export function getReceivingColumns({
               </button>
             );
           }
+
           if (r.status === "GRN_APPROVED" || r.status === "POSTED") {
             return (
               <span className={`${BTN} bg-green-50 border-green-200 text-green-700 cursor-default opacity-80`}>
@@ -232,7 +233,7 @@ export function getReceivingColumns({
           }
         }
 
-        // FIX: QC scan ở PENDING_COUNT (Keeper đã submit, chờ QC kiểm) + SUBMITTED + PENDING_INCIDENT
+        // QC scan ở PENDING_COUNT / SUBMITTED / PENDING_INCIDENT
         if (userRole === "QC" && (
           r.status === "PENDING_COUNT" ||
           r.status === "SUBMITTED" ||

@@ -1,8 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Portal from '@/components/ui/Portal';
 import toast from 'react-hot-toast';
+import QRCode from 'react-qr-code';
+import {
+  createReceivingSession,
+  generateScanToken,
+  deleteSession,
+} from '@/services/receivingSessionService';
+import { getScanUrl } from '@/services/scanService';
 import {
   submitSalesOrder,
   submitTransfer,
@@ -392,42 +399,121 @@ function PickListTable({ pickList }: { pickList: PickListResponse }) {
 }
 
 // ─── Step 3: Picking Panel ──────────────────────────────────────────────────────
+// ─── Step 3: Picking Panel (QR-based) ─────────────────────────────────────────
 function PickingPanel({ item, taskId: initTaskId, onDone }: {
   item: OutboundListItem; taskId: number | null; onDone: (taskId: number) => void;
 }) {
-  const [loading, setLoading] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [pickList, setPickList] = useState<PickListResponse | null>(null);
+  // ── Pick list state ──
+  const [pickList,       setPickList]       = useState<PickListResponse | null>(null);
   const [resolvedTaskId, setResolvedTaskId] = useState<number | null>(initTaskId);
+  const [listLoading,    setListLoading]    = useState(false);
 
+  // ── QR scan state ──
+  const [qrValue,     setQrValue]     = useState<string | null>(null);
+  const [qrLoading,   setQrLoading]   = useState(false);
+  const [qrError,     setQrError]     = useState<string | null>(null);
+  const [sessionId,   setSessionId]   = useState<string | null>(null);
+  const [copied,      setCopied]      = useState(false);
+  const [isFinalized, setIsFinalized] = useState(false);
+
+  // ── Polling ──
+  const pollRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mountedRef   = useRef(true);
+  const sessionIdRef = useRef<string | null>(null);
+
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  };
+
+  // Load pick list on mount
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
+    (async () => {
       try {
-        setLoading(true);
-        let pl: PickListResponse;
-        if (initTaskId) { pl = await fetchPickList(initTaskId); }
-        else { pl = await fetchPickListByDocument(item.documentId); }
+        setListLoading(true);
+        const pl = initTaskId
+          ? await fetchPickList(initTaskId)
+          : await fetchPickListByDocument(item.documentId);
         if (!cancelled) { setPickList(pl); setResolvedTaskId(pl.taskId); }
       } catch { if (!cancelled) setPickList(null); }
-      finally { if (!cancelled) setLoading(false); }
-    };
-    load();
+      finally   { if (!cancelled) setListLoading(false); }
+    })();
     return () => { cancelled = true; };
   }, [item.documentId, initTaskId]);
 
-  const handleConfirm = async () => {
-    if (!resolvedTaskId) return;
+  // Cleanup on unmount
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      stopPolling();
+      const sid = sessionIdRef.current;
+      if (sid) deleteSession(sid).catch(() => {});
+    };
+  }, []); // eslint-disable-line
+
+  // Poll pick list status every 5s — detect when Keeper confirms on phone
+  const startPolling = useCallback((taskId: number) => {
+    stopPolling();
+    pollRef.current = setInterval(async () => {
+      if (!mountedRef.current) { stopPolling(); return; }
+      try {
+        const pl = await fetchPickList(taskId);
+        if (!mountedRef.current) return;
+        if (pl.status === 'PICKED' || pl.status === 'QC_IN_PROGRESS') {
+          stopPolling();
+          setIsFinalized(true);
+          toast.success('✅ Keeper đã xác nhận lấy hàng xong! Chuyển sang QC.', { duration: 5000 });
+          onDone(taskId);
+        }
+      } catch { /* silent */ }
+    }, 5000);
+  }, [onDone]);
+
+  // Generate QR scan link
+  const generateQR = useCallback(async () => {
+    const tid = resolvedTaskId;
+    if (!tid) { setQrError('Chưa có Task ID. Vui lòng chờ tải xong Pick List.'); return; }
+    setQrLoading(true);
+    setQrError(null);
+    setQrValue(null);
+    setIsFinalized(false);
+    stopPolling();
+
     try {
-      setConfirming(true);
-      await confirmPickedTask(resolvedTaskId);
-      toast.success('✅ Đã xác nhận lấy hàng! Chuyển sang QC.');
-      onDone(resolvedTaskId);
-    } catch { } finally { setConfirming(false); setShowConfirm(false); }
+      const session   = await createReceivingSession();
+      if (!mountedRef.current) return;
+      setSessionId(session.sessionId);
+      sessionIdRef.current = session.sessionId;
+
+      const tokenData = await generateScanToken(session.sessionId);
+      if (!tokenData.scanToken) throw new Error('Không nhận được scanToken');
+
+      // Build URL with outbound_picking mode + taskId
+      const rawUrl = await getScanUrl(tokenData.scanToken, null);
+      const url    = rawUrl + `&taskId=${tid}&mode=outbound_picking`;
+
+      if (!mountedRef.current) return;
+      setQrValue(url);
+      toast.success('Tạo QR thành công', { id: 'pick-qr' });
+      startPolling(tid);
+    } catch (err: unknown) {
+      if (!mountedRef.current) return;
+      setQrError(err instanceof Error ? err.message : 'Không tạo được QR');
+    } finally {
+      if (mountedRef.current) setQrLoading(false);
+    }
+  }, [resolvedTaskId, startPolling]);
+
+  const handleCopy = () => {
+    if (!qrValue) return;
+    navigator.clipboard.writeText(qrValue).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
   };
 
-  if (loading) {
+  if (listLoading) {
     return (
       <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 animate-pulse space-y-2">
         <div className="h-4 bg-blue-100 rounded w-1/2" />
@@ -438,35 +524,125 @@ function PickingPanel({ item, taskId: initTaskId, onDone }: {
 
   return (
     <div className="space-y-3">
+
+      {/* ── Header info ── */}
       <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
         <div className="flex items-start gap-3">
-          <span className="material-symbols-outlined text-blue-600 text-xl mt-0.5">forklift</span>
+          <span className="material-symbols-outlined text-blue-600 text-xl mt-0.5">qr_code_scanner</span>
           <div>
-            <p className="text-sm font-semibold text-blue-800">Bước 3 — Lấy hàng theo Pick List</p>
-            <p className="text-xs text-blue-600 mt-1">
-              Đi lấy hàng theo <span className="font-bold">đúng vị trí</span> và <span className="font-bold">đúng số lượng</span> trong danh sách dưới đây.
-              Hàng đã được chuyển sang trạng thái <span className="font-bold">Z-OUT</span> (đang chờ xuất).
-            </p>
-            <p className="text-xs text-blue-500 mt-1">
-              Sau khi lấy đủ toàn bộ, bấm <strong>"Xác nhận đã lấy hàng"</strong> để chuyển sang bước QC.
+            <p className="text-sm font-semibold text-blue-800">Bước 3 — Keeper quét mã lấy hàng</p>
+            <p className="text-xs text-blue-600 mt-1 leading-relaxed">
+              Tạo link scan → Gửi Keeper mở trên điện thoại → Keeper quét từng SKU theo Pick List → Bấm{' '}
+              <span className="font-bold">"Gửi sang QC"</span> khi lấy đủ hàng.
             </p>
           </div>
         </div>
       </div>
+
+      {/* ── Finalized banner ── */}
+      {isFinalized && (
+        <div className="p-4 bg-emerald-50 border-2 border-emerald-200 rounded-xl flex items-center gap-3">
+          <span className="material-symbols-outlined text-emerald-600 text-2xl">check_circle</span>
+          <div>
+            <p className="text-sm font-bold text-emerald-800">Keeper đã xác nhận lấy đủ hàng!</p>
+            <p className="text-xs text-emerald-600 mt-0.5">Đơn hàng đã chuyển sang bước QC Scan.</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── QR Code block ── */}
+      {!isFinalized && (
+        <div className="border border-blue-100 rounded-xl overflow-hidden">
+          <div className="px-4 py-2.5 bg-blue-50 border-b flex items-center justify-between">
+            <span className="text-xs font-bold text-blue-700">📱 Link scan cho Keeper</span>
+            {resolvedTaskId && (
+              <span className="text-[10px] font-mono text-blue-400 bg-blue-100 px-2 py-0.5 rounded">
+                Pick #{resolvedTaskId}
+              </span>
+            )}
+          </div>
+
+          <div className="p-4">
+            {qrLoading ? (
+              <div className="flex flex-col items-center gap-3 py-6">
+                <Spin />
+                <p className="text-sm text-gray-400">Đang tạo QR Code...</p>
+              </div>
+            ) : qrError ? (
+              <div className="flex flex-col items-center gap-3 py-4">
+                <span className="material-symbols-outlined text-red-400 text-3xl">error</span>
+                <p className="text-sm text-red-500 text-center">{qrError}</p>
+                <button onClick={generateQR}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[15px]">refresh</span>Thử lại
+                </button>
+              </div>
+            ) : qrValue ? (
+              <div className="flex flex-col items-center gap-3">
+                {/* QR */}
+                <div className="p-3 bg-white border-2 border-blue-200 rounded-xl shadow-sm relative">
+                  <QRCode value={qrValue} size={180} level="H" />
+                  <div className="absolute top-2 right-2 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+                    <span className="text-[9px] text-blue-600 font-bold">LIVE</span>
+                  </div>
+                </div>
+
+                {/* URL + copy */}
+                <div className="w-full bg-gray-50 rounded-lg border border-gray-200 px-3 py-2 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-gray-400 text-[15px] flex-shrink-0">link</span>
+                  <p className="text-[10px] text-gray-500 flex-1 truncate font-mono">{qrValue}</p>
+                  <button onClick={handleCopy}
+                    className="flex-shrink-0 text-[11px] font-semibold text-blue-600 hover:text-blue-700 px-2 py-1 bg-white border border-blue-200 rounded-lg">
+                    {copied ? '✓ Đã copy' : 'Copy'}
+                  </button>
+                </div>
+
+                {/* Open in browser button */}
+                <a href={qrValue} target="_blank" rel="noreferrer"
+                  className="w-full py-2.5 text-sm font-semibold text-white bg-orange-500 rounded-xl hover:bg-orange-600 flex items-center justify-center gap-2">
+                  <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                  Mở trang scan (test trực tiếp)
+                </a>
+
+                <button onClick={generateQR}
+                  className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[13px]">refresh</span>Tạo lại QR
+                </button>
+
+                {/* Polling indicator */}
+                <p className="text-[11px] text-blue-500 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse inline-block" />
+                  Đang chờ Keeper hoàn tất picking trên điện thoại...
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-3 py-4">
+                <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-blue-500 text-2xl">qr_code</span>
+                </div>
+                <p className="text-xs text-gray-500 text-center">
+                  Bấm nút bên dưới để tạo QR Code cho Keeper quét.
+                </p>
+                <button onClick={generateQR} disabled={!resolvedTaskId}
+                  className="w-full py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 flex items-center justify-center gap-2 disabled:opacity-50">
+                  <span className="material-symbols-outlined text-[16px]">qr_code_scanner</span>
+                  Tạo QR để Keeper scan
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Pick List table ── */}
       {pickList ? <PickListTable pickList={pickList} /> : (
-        <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 text-xs text-amber-700">⚠️ Không tải được Pick List. Vui lòng thử lại.</div>
+        !listLoading && (
+          <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 text-xs text-amber-700">
+            ⚠️ Không tải được Pick List. Vui lòng thử lại.
+          </div>
+        )
       )}
-      {pickList && (
-        <button onClick={() => setShowConfirm(true)} disabled={confirming || !resolvedTaskId}
-          className="w-full py-3 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 flex items-center justify-center gap-2 disabled:opacity-60">
-          {confirming && <Spin />}
-          {confirming ? 'Đang xác nhận...' : '✅ Xác nhận đã lấy đủ hàng → Chuyển QC'}
-        </button>
-      )}
-      <ConfirmModal open={showConfirm} icon="forklift" iconColor="text-blue-500"
-        title="Xác nhận đã lấy đủ hàng?" confirmLabel="Xác nhận → Chuyển QC" confirmColor="bg-blue-600 hover:bg-blue-700"
-        description="Toàn bộ hàng trong Pick List đã được lấy đúng vị trí và đúng số lượng. Sau bước này đơn hàng sẽ chuyển sang QC kiểm tra hàng."
-        loading={confirming} onConfirm={handleConfirm} onCancel={() => setShowConfirm(false)} />
     </div>
   );
 }

@@ -89,7 +89,13 @@ export async function allocateStock(
   orderType: 'SALES_ORDER' | 'INTERNAL_TRANSFER',
 ): Promise<AllocateStockResponse> {
   const { data } = await api.post<ApiResponse<AllocateStockResponse>>('/outbound/allocate', { documentId, orderType });
-  return data.data;
+  const res = data.data;
+  // BE trả status: "ALLOCATED" | "PARTIALLY_ALLOCATED" — không có fullyAllocated field
+  // Normalize để FE components có thể dùng res.fullyAllocated
+  if (res && res.fullyAllocated === undefined) {
+    (res as any).fullyAllocated = res.status === 'ALLOCATED';
+  }
+  return res;
 }
 
 // ─── Report Shortage ─────────────────────────────────────────────────────────
