@@ -47,7 +47,6 @@ export const QC_INBOUND_ACTIONS: NavAction[] = [
 
 export const QC_OUTBOUND_ACTIONS: NavAction[] = [
   { label: 'Danh sách xuất',  path: '/outbound' },
-  { label: 'Scanner QC',      path: '/outbound-qc' },
 ];
 
 // ── Keep for SecondaryNav ─────────────────────────────────────────────────────

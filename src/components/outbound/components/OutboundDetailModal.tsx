@@ -20,13 +20,10 @@ import {
   generatePickList,
   fetchPickList,
   fetchPickListByDocument,
-  confirmPickedTask,
   startQcSession,
-  qcScanItem,
   fetchQcSummary,
   fetchDispatchNote,
   confirmDispatch,
-  buildOrderFromListItem,
 } from '@/services/outboundService';
 import type {
   OutboundListItem,
@@ -34,7 +31,6 @@ import type {
   PickListResponse,
   QcSummaryResponse,
   DispatchNoteResponse,
-  QcResult,
 } from '@/interfaces/outbound';
 import { OUTBOUND_STATUS_BADGE } from '@/interfaces/outbound';
 
@@ -647,141 +643,271 @@ function PickingPanel({ item, taskId: initTaskId, onDone }: {
   );
 }
 
-// ─── Step 4: QC Scan Panel ──────────────────────────────────────────────────────
+// ─── Step 4: QC Scan Panel (QR-based, giống Keeper inbound) ─────────────────────
 function QcScanPanel({ taskId, onAllScanned }: { taskId: number; onAllScanned: () => void }) {
-  const [qcSummary, setQcSummary] = useState<QcSummaryResponse | null>(null);
-  const [pickItems, setPickItems] = useState<PickListItem[]>([]);
-  const [selected, setSelected] = useState<PickListItem | null>(null);
-  const [result, setResult] = useState<QcResult>('PASS');
-  const [reason, setReason] = useState('');
-  const [startLoading, setStartLoading] = useState(false);
-  const [scanning, setScanning] = useState(false);
+  // ── Summary + pick items ──
+  const [qcSummary,    setQcSummary]    = useState<QcSummaryResponse | null>(null);
+  const [pickItems,    setPickItems]    = useState<PickListItem[]>([]);
+  const [summaryLoading, setSummaryLoading] = useState(true);
 
-  const refreshAll = useCallback(async () => {
+  // ── QR state ──
+  const [qrValue,      setQrValue]      = useState<string | null>(null);
+  const [qrLoading,    setQrLoading]    = useState(false);
+  const [qrError,      setQrError]      = useState<string | null>(null);
+  const [isFinalized,  setIsFinalized]  = useState(false);
+  const [copied,       setCopied]       = useState(false);
+
+  const sessionIdRef = useRef<string | null>(null);
+  const mountedRef   = useRef(true);
+  const pollRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  }, []);
+
+  // Cleanup
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      stopPolling();
+      const sid = sessionIdRef.current;
+      if (sid) deleteSession(sid).catch(() => {});
+    };
+  }, [stopPolling]);
+
+  // Load summary + pick items, detect if already finalized
+  const refreshSummary = useCallback(async () => {
     try {
       const [s, pl] = await Promise.all([fetchQcSummary(taskId), fetchPickList(taskId)]);
-      setQcSummary(s); setPickItems(pl.items ?? []);
-      if (s.allScanned) onAllScanned();
+      if (!mountedRef.current) return;
+      setQcSummary(s);
+      setPickItems(pl.items ?? []);
+      if (s.allScanned) { setIsFinalized(true); stopPolling(); onAllScanned(); }
     } catch {}
-  }, [taskId, onAllScanned]);
+  }, [taskId, onAllScanned, stopPolling]);
+
+  // Poll every 4s — declared BEFORE the useEffect that uses it
+  const startPolling = useCallback(() => {
+    stopPolling();
+    pollRef.current = setInterval(() => { if (mountedRef.current) refreshSummary(); }, 4000);
+  }, [refreshSummary, stopPolling]);
 
   useEffect(() => {
-    fetchQcSummary(taskId).then(setQcSummary).catch(() => {});
-    fetchPickList(taskId).then(pl => setPickItems(pl.items ?? [])).catch(() => {});
-  }, [taskId]);
+    setSummaryLoading(true);
+    refreshSummary().finally(() => { if (mountedRef.current) setSummaryLoading(false); });
+    startPolling();
+  }, [refreshSummary, startPolling]);
 
-  const handleStart = async () => {
-    try { setStartLoading(true); await startQcSession(taskId); toast.success('Bắt đầu phiên QC!'); await refreshAll(); }
-    catch { } finally { setStartLoading(false); }
-  };
-
-  const handleScan = async () => {
-    if (!selected) return;
-    if (result === 'FAIL' && !reason.trim()) { toast.error('Nhập lý do FAIL.'); return; }
-    const itemId = (selected as any).pickingTaskItemId ?? selected.taskItemId;
+  // Generate QR — start QC session if needed, then create scan link
+  const generateQR = useCallback(async () => {
+    setQrLoading(true); setQrError(null); setQrValue(null);
     try {
-      setScanning(true);
-      await qcScanItem({ taskId, taskItemId: itemId, result, reason: result === 'FAIL' ? reason.trim() : undefined });
-      toast.success(`QC ${result} — ${selected.skuCode}`);
-      setSelected(null); setReason(''); setResult('PASS');
-      await refreshAll();
-    } catch { } finally { setScanning(false); }
+      // Ensure QC session started (idempotent — BE ignores duplicate calls gracefully)
+      await startQcSession(taskId);
+      if (!mountedRef.current) return;
+
+      const session   = await createReceivingSession();
+      if (!mountedRef.current) return;
+      sessionIdRef.current = session.sessionId;
+
+      const tokenData = await generateScanToken(session.sessionId);
+      if (!tokenData.scanToken) throw new Error('Không nhận được scanToken');
+
+      const rawUrl = await getScanUrl(tokenData.scanToken, null);
+      const url    = rawUrl + `&taskId=${taskId}&mode=outbound_qc`;
+
+      if (!mountedRef.current) return;
+      setQrValue(url);
+      if (!pollRef.current) startPolling();
+      toast.success('QR sẵn sàng — dùng điện thoại quét!', { id: 'qc-qr' });
+    } catch (err: unknown) {
+      if (mountedRef.current) setQrError(err instanceof Error ? err.message : 'Không tạo được QR');
+    } finally {
+      if (mountedRef.current) setQrLoading(false);
+    }
+  }, [taskId, startPolling]);
+
+  const handleCopy = () => {
+    if (!qrValue) return;
+    navigator.clipboard.writeText(qrValue).then(() => {
+      setCopied(true); setTimeout(() => setCopied(false), 2000);
+    });
   };
 
-  const pending = pickItems.filter(i => !i.qcResult);
   const scanned = pickItems.filter(i => !!i.qcResult);
+  const pending = pickItems.filter(i => !i.qcResult);
 
   return (
     <div className="space-y-3">
+
+      {/* ── Header ── */}
       <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
-        <div className="flex items-start gap-3 mb-3">
+        <div className="flex items-start gap-3">
           <span className="material-symbols-outlined text-purple-600 text-xl mt-0.5">qr_code_scanner</span>
           <div className="flex-1">
             <p className="text-sm font-semibold text-purple-800">Bước 4 — QC Kiểm tra hàng</p>
-            <p className="text-xs text-purple-600 mt-0.5">Scan từng mặt hàng, đánh giá <strong>PASS / FAIL / HOLD</strong>. Cần <strong>100% PASS</strong> để tiến hành xuất kho.</p>
+            <p className="text-xs text-purple-600 mt-0.5">
+              Scan từng mặt hàng, đánh giá <strong>PASS / FAIL / HOLD</strong>. Cần <strong>100% PASS</strong> để tiến hành xuất kho.
+            </p>
           </div>
-          <span className="text-xs font-mono text-purple-500 bg-purple-100 px-2 py-0.5 rounded">#{taskId}</span>
+          <span className="text-xs font-mono text-purple-500 bg-purple-100 px-2 py-0.5 rounded flex-shrink-0">#{taskId}</span>
         </div>
-        {!qcSummary && (
-          <button onClick={handleStart} disabled={startLoading}
-            className="w-full py-2.5 text-sm font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 flex items-center justify-center gap-2 disabled:opacity-60">
-            {startLoading && <Spin />}
-            {startLoading ? 'Đang khởi động...' : '▶ Bắt đầu phiên QC'}
-          </button>
-        )}
       </div>
 
-      {qcSummary && (
+      {/* ── Summary badges ── */}
+      {summaryLoading ? (
         <div className="grid grid-cols-4 gap-2">
-          {[['PASS', qcSummary.passCount, 'text-emerald-600 bg-emerald-50 border-emerald-100'],
-            ['FAIL', qcSummary.failCount, 'text-red-600 bg-red-50 border-red-100'],
-            ['HOLD', qcSummary.holdCount, 'text-amber-600 bg-amber-50 border-amber-100'],
+          {[0,1,2,3].map(i => <div key={i} className="h-16 rounded-xl bg-gray-100 animate-pulse" />)}
+        </div>
+      ) : qcSummary ? (
+        <div className="grid grid-cols-4 gap-2">
+          {([
+            ['PASS', qcSummary.passCount,    'text-emerald-600 bg-emerald-50 border-emerald-100'],
+            ['FAIL', qcSummary.failCount,    'text-red-600 bg-red-50 border-red-100'],
+            ['HOLD', qcSummary.holdCount,    'text-amber-600 bg-amber-50 border-amber-100'],
             ['Chờ',  qcSummary.pendingCount, 'text-gray-600 bg-gray-50 border-gray-100'],
-          ].map(([lbl, val, cls]) => (
-            <div key={lbl as string} className={`rounded-xl p-3 text-center border ${cls}`}>
-              <p className="text-lg font-bold">{val as number}</p>
-              <p className="text-[10px] font-semibold">{lbl as string}</p>
+          ] as [string, number, string][]).map(([lbl, val, cls]) => (
+            <div key={lbl} className={`rounded-xl p-3 text-center border ${cls}`}>
+              <p className="text-lg font-bold">{val}</p>
+              <p className="text-[10px] font-semibold">{lbl}</p>
             </div>
           ))}
         </div>
+      ) : null}
+
+      {/* ── Finalized banner ── */}
+      {isFinalized ? (
+        <div className="p-4 bg-emerald-50 border-2 border-emerald-200 rounded-xl flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+            <span className="material-symbols-outlined text-emerald-600 text-[22px]">check_circle</span>
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-emerald-800">QC hoàn tất!</p>
+            <p className="text-xs text-emerald-600 mt-0.5">Toàn bộ mặt hàng đã được kiểm tra. Có thể tiến hành xuất kho.</p>
+            <p className="text-[11px] text-emerald-500 mt-1.5 flex items-center gap-1">
+              <span className="material-symbols-outlined text-[13px]">lock</span>
+              Mã QR đã bị khóa — không thể scan thêm
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* ── Hướng dẫn ── */}
+          <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+            <p className="text-xs font-bold text-blue-700 mb-1.5 flex items-center gap-1">
+              <span className="material-symbols-outlined text-[14px]">info</span>
+              Hướng dẫn
+            </p>
+            <ol className="text-xs text-blue-600 space-y-0.5 list-decimal list-inside">
+              <li>Bấm <strong>Tạo QR Code</strong> bên dưới</li>
+              <li>Dùng điện thoại quét mã QR</li>
+              <li>Scan từng barcode sản phẩm → chọn PASS / FAIL / HOLD</li>
+              <li className="font-medium">Màn hình này tự cập nhật mỗi 4 giây</li>
+            </ol>
+          </div>
+
+          {/* ── QR block ── */}
+          <div className="border border-purple-100 rounded-xl overflow-hidden">
+            <div className="px-4 py-2.5 bg-purple-50 border-b flex items-center justify-between">
+              <span className="text-xs font-bold text-purple-700">📱 Mã QR Scanner</span>
+              {qrValue && !isFinalized && (
+                <span className="flex items-center gap-1 text-[10px] text-emerald-600">
+                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />LIVE
+                </span>
+              )}
+            </div>
+
+            <div className="p-4">
+              {qrLoading ? (
+                <div className="flex flex-col items-center gap-3 py-6">
+                  <span className="material-symbols-outlined animate-spin text-purple-400 text-[36px]">progress_activity</span>
+                  <p className="text-sm text-gray-500">Đang tạo QR Code...</p>
+                </div>
+              ) : qrError ? (
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <span className="material-symbols-outlined text-red-400 text-3xl">error</span>
+                  <p className="text-sm text-red-500 text-center">{qrError}</p>
+                  <button onClick={generateQR}
+                    className="px-4 py-2 bg-purple-600 text-white text-sm font-semibold rounded-xl hover:bg-purple-700 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[15px]">refresh</span>Thử lại
+                  </button>
+                </div>
+              ) : qrValue ? (
+                <div className="flex flex-col items-center gap-3">
+                  {/* QR code */}
+                  <div className="p-3 bg-white border-2 border-purple-200 rounded-xl shadow-sm relative">
+                    <QRCode value={qrValue} size={180} level="H" />
+                    <div className="absolute top-2 right-2 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-pulse" />
+                      <span className="text-[9px] text-purple-600 font-bold">LIVE</span>
+                    </div>
+                  </div>
+                  {/* URL + copy */}
+                  <div className="w-full bg-gray-50 rounded-lg border border-gray-200 px-3 py-2 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-gray-400 text-[15px] flex-shrink-0">link</span>
+                    <p className="text-[10px] text-gray-500 flex-1 truncate font-mono">{qrValue}</p>
+                    <button onClick={handleCopy}
+                      className="flex-shrink-0 text-[11px] font-semibold text-purple-600 hover:text-purple-700 px-2 py-1 bg-white border border-purple-200 rounded-lg">
+                      {copied ? '✓ Đã copy' : 'Copy'}
+                    </button>
+                  </div>
+                  {/* Open in browser */}
+                  <a href={qrValue} target="_blank" rel="noreferrer"
+                    className="w-full py-2.5 text-sm font-semibold text-white bg-orange-500 rounded-xl hover:bg-orange-600 flex items-center justify-center gap-2">
+                    <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                    Mở trang scan (test trực tiếp)
+                  </a>
+                  <button onClick={generateQR}
+                    className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[13px]">refresh</span>Tạo lại QR
+                  </button>
+                  <p className="text-[11px] text-purple-500 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse inline-block" />
+                    Đang chờ QC hoàn tất trên điện thoại...
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <div className="w-12 h-12 rounded-xl bg-purple-50 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-purple-500 text-2xl">qr_code</span>
+                  </div>
+                  <p className="text-xs text-gray-500 text-center">
+                    Bấm nút bên dưới để tạo QR Code scan QC.
+                  </p>
+                  <button onClick={generateQR}
+                    className="w-full py-2.5 text-sm font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 flex items-center justify-center gap-2">
+                    <span className="material-symbols-outlined text-[16px]">qr_code_scanner</span>
+                    Tạo QR Code để scan QC
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
-      {qcSummary && !qcSummary.allScanned && (
+      {/* ── Pick items list ── */}
+      {pickItems.length > 0 && (
         <div className="border border-gray-100 rounded-xl overflow-hidden">
           {pending.length > 0 && (
             <>
               <div className="px-4 py-2 bg-gray-50 border-b">
-                <span className="text-xs font-semibold text-gray-600">Chọn mặt hàng để scan QC ({pending.length} chờ)</span>
+                <span className="text-xs font-semibold text-gray-600">Chờ scan ({pending.length})</span>
               </div>
-              <div className="divide-y divide-gray-50 max-h-44 overflow-y-auto">
-                {pending.map((pi, idx) => {
-                  const isSel = selected?.taskItemId === pi.taskItemId;
-                  return (
-                    <button key={pi.taskItemId ?? idx} type="button"
-                      onClick={() => { setSelected(isSel ? null : pi); setResult('PASS'); setReason(''); }}
-                      className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-2 border-l-4 transition-colors ${isSel ? 'bg-purple-50 border-purple-500' : 'hover:bg-gray-50 border-transparent'}`}>
-                      <div>
-                        <p className="text-xs font-bold text-gray-800">{pi.skuCode}</p>
-                        <p className="text-[10px] text-gray-400">{pi.locationCode}{pi.lotNumber ? ` · LOT ${pi.lotNumber}` : ''}</p>
-                      </div>
-                      <span className="text-sm font-semibold text-gray-600 flex-shrink-0">×{pi.qtyToPick ?? pi.requiredQty}</span>
-                    </button>
-                  );
-                })}
+              <div className="divide-y divide-gray-50 max-h-36 overflow-y-auto">
+                {pending.map((pi, idx) => (
+                  <div key={pi.taskItemId ?? idx} className="px-4 py-2.5 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-gray-800">{pi.skuCode}</p>
+                      <p className="text-[10px] text-gray-400">{pi.locationCode}{pi.lotNumber ? ` · LOT ${pi.lotNumber}` : ''}</p>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-500 flex-shrink-0">×{pi.qtyToPick ?? pi.requiredQty}</span>
+                  </div>
+                ))}
               </div>
             </>
           )}
-
-          {selected && (
-            <div className="p-4 bg-purple-50/60 border-t border-purple-100 space-y-3">
-              <p className="text-xs font-semibold text-purple-700">
-                Đang QC: <span className="font-bold">{selected.skuCode}</span>
-                <span className="text-purple-500 ml-1">({selected.locationCode})</span>
-              </p>
-              <div className="flex gap-2">
-                {(['PASS', 'FAIL', 'HOLD'] as QcResult[]).map(r => (
-                  <button key={r} type="button" onClick={() => setResult(r)}
-                    className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${
-                      result === r
-                        ? r === 'PASS' ? 'bg-emerald-500 text-white border-emerald-500'
-                          : r === 'FAIL' ? 'bg-red-500 text-white border-red-500'
-                          : 'bg-amber-500 text-white border-amber-500'
-                        : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
-                    }`}>{r}</button>
-                ))}
-              </div>
-              {result === 'FAIL' && (
-                <input placeholder="Lý do FAIL *" value={reason} onChange={e => setReason(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-red-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-400" />
-              )}
-              <button onClick={handleScan} disabled={scanning}
-                className="w-full py-2.5 text-sm font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 flex items-center justify-center gap-2 disabled:opacity-60">
-                {scanning && <Spin />}
-                {scanning ? 'Ghi nhận...' : `Xác nhận QC ${result}`}
-              </button>
-            </div>
-          )}
-
           {scanned.length > 0 && (
             <>
               <div className="px-4 py-2 bg-gray-50 border-t">
@@ -807,7 +933,7 @@ function QcScanPanel({ taskId, onAllScanned }: { taskId: number; onAllScanned: (
         </div>
       )}
 
-      {qcSummary?.allScanned && (
+      {isFinalized && (
         <p className="text-xs text-center text-emerald-600 font-semibold bg-emerald-50 py-2.5 rounded-xl border border-emerald-100">
           ✅ Đã scan xong toàn bộ — sẵn sàng Dispatch
         </p>
@@ -1107,19 +1233,25 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
     // QC_SCAN
     if (localStatus === 'QC_SCAN') {
       if (role === 'QC' || role === 'KEEPER') {
-        if (taskId) return (
+        // Always try to resolve taskId from BE if not yet available
+        if (!taskId) return (
+          <div className="p-4 bg-purple-50 rounded-xl border border-purple-100 space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined animate-spin text-purple-400 text-xl">progress_activity</span>
+              <div>
+                <p className="text-sm text-purple-700 font-medium">Đơn đang ở giai đoạn QC Scan</p>
+                <p className="text-xs text-purple-500">Đang tải Pick Task ID...</p>
+              </div>
+            </div>
+            <AutoLoadTaskId documentId={item.documentId} onLoaded={setTaskId} />
+          </div>
+        );
+        return (
           <div className="space-y-3">
             <QcScanPanel taskId={taskId} onAllScanned={() => onRefresh()} />
             {role === 'KEEPER' && isSO && (
               <DispatchPanel item={item} onDone={() => { setLocalStatus('DISPATCHED'); onRefresh(); }} />
             )}
-          </div>
-        );
-        return (
-          <div className="p-4 bg-purple-50 rounded-xl border border-purple-100 space-y-2">
-            <p className="text-sm text-purple-700 font-medium">🔍 Đơn đang ở giai đoạn QC Scan.</p>
-            <p className="text-xs text-purple-500">Đang tải Pick Task...</p>
-            <AutoLoadTaskId documentId={item.documentId} onLoaded={setTaskId} />
           </div>
         );
       }
