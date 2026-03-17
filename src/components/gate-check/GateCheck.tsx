@@ -11,6 +11,7 @@ import {
   fetchReceivingOrders,
   generateGrn,
   submitReceivingOrder,
+  deleteReceivingOrder,
 } from "@/services/receivingOrdersService";
 import { fetchGrnByReceivingId, submitGrnToManager } from "@/services/grnService";
 import type { ReceivingOrder, ReceivingOrderPagePayload, ReceivingStatus } from "@/interfaces/receiving";
@@ -33,7 +34,7 @@ function getUserRole(): string {
   return "KEEPER";
 }
 
-// ── Submit Confirm Modal ─────────────────────────────────────────────────────
+// ── Submit Confirm Modal (DRAFT → SUBMITTED) ─────────────────────────────────
 function SubmitConfirmModal({
   receiving, loading, onConfirm, onCancel,
 }: {
@@ -43,7 +44,6 @@ function SubmitConfirmModal({
   onCancel: () => void;
 }) {
   return (
-    // ✅ FIX: dùng Portal để thoát khỏi stacking context của header
     <Portal>
       <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
         <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
@@ -54,7 +54,9 @@ function SubmitConfirmModal({
             <div>
               <h3 className="text-sm font-bold text-gray-900">Xác nhận Submit phiếu</h3>
               <p className="text-xs text-gray-500 mt-0.5">
-                Sau khi submit, phiếu chuyển sang <span className="font-medium text-indigo-600">Pending Count</span> và không thể chỉnh sửa.
+                Sau khi submit, phiếu chuyển sang{" "}
+                <span className="font-medium text-blue-600">Đã submit</span>{" "}
+                và bạn có thể quét QR để kiểm đếm.
               </p>
             </div>
           </div>
@@ -65,9 +67,9 @@ function SubmitConfirmModal({
                 <p className="text-sm font-bold font-mono text-gray-900 mt-0.5">{receiving.receivingCode}</p>
               </div>
               <div className="flex items-center gap-1 text-[11px]">
-                <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">Draft</span>
+                <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">Nháp</span>
                 <span className="material-symbols-outlined text-[14px] text-gray-400">arrow_forward</span>
-                <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">Pending Count</span>
+                <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">Đã submit</span>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -82,6 +84,14 @@ function SubmitConfirmModal({
             {receiving.note && (
               <NoteBox note={receiving.note} />
             )}
+            <div className="flex items-start gap-2 px-3 py-2.5 bg-blue-50 border border-blue-100 rounded-lg">
+              <span className="material-symbols-outlined text-blue-400 text-[15px] mt-0.5 flex-shrink-0">
+                info
+              </span>
+              <p className="text-xs text-blue-700">
+                Sau khi submit, bấm <strong>Quét QR</strong> để scan barcode hàng hoá trên điện thoại, rồi gửi cho QC kiểm đếm.
+              </p>
+            </div>
           </div>
           <ConfirmFooter
             loading={loading}
@@ -91,6 +101,76 @@ function SubmitConfirmModal({
             confirmIcon="send"
             confirmClass="bg-blue-600 hover:bg-blue-700"
           />
+        </div>
+      </div>
+    </Portal>
+  );
+}
+
+// ── Delete Confirm Modal (DRAFT only) ────────────────────────────────────────
+function DeleteConfirmModal({
+  receiving, loading, onConfirm, onCancel,
+}: {
+  receiving: ReceivingOrder;
+  loading: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Portal>
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
+              <span className="material-symbols-outlined text-red-500 text-[20px]">delete_forever</span>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">Xóa phiếu nháp</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Hành động này <span className="font-semibold text-red-500">không thể hoàn tác</span>.
+              </p>
+            </div>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            <div className="bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
+              <p className="text-[11px] text-gray-400 uppercase tracking-wide">Mã phiếu sẽ bị xóa</p>
+              <p className="text-sm font-bold font-mono text-gray-900 mt-0.5">{receiving.receivingCode}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <InfoBox label="Kho nhận" value={receiving.warehouseName} />
+              <InfoBox label="Nhà cung cấp" value={receiving.supplierName} />
+              <InfoBox label="Tổng SL" value={String(receiving.totalExpectedQty ?? 0)} bold />
+              <InfoBox label="Ngày tạo" value={new Date(receiving.createdAt).toLocaleDateString("vi-VN")} />
+            </div>
+            <div className="flex items-start gap-2 px-3 py-2.5 bg-red-50 border border-red-100 rounded-lg">
+              <span className="material-symbols-outlined text-red-400 text-[15px] mt-0.5 flex-shrink-0">
+                warning
+              </span>
+              <p className="text-xs text-red-700">
+                Toàn bộ thông tin phiếu và danh sách hàng hoá sẽ bị xóa vĩnh viễn.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2 px-5 py-3.5 border-t border-gray-100">
+            <button
+              onClick={onCancel}
+              disabled={loading}
+              className="flex-1 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              Huỷ
+            </button>
+            <button
+              onClick={onConfirm}
+              disabled={loading}
+              className="flex-1 px-4 py-2 text-sm font-semibold text-white rounded-lg transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-700"
+            >
+              {loading
+                ? <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                : <span className="material-symbols-outlined text-[16px]">delete_forever</span>
+              }
+              {loading ? "Đang xóa..." : "Xóa phiếu"}
+            </button>
+          </div>
         </div>
       </div>
     </Portal>
@@ -162,12 +242,9 @@ function GenGrnConfirmModal({
   onCancel: () => void;
 }) {
   return (
-    // ✅ FIX: dùng Portal để thoát khỏi stacking context của header
     <Portal>
       <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
         <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
-
-          {/* Header */}
           <div className="px-5 py-4 border-b flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-purple-50 flex items-center justify-center flex-shrink-0">
               <span className="material-symbols-outlined text-purple-600 text-[20px]">receipt_long</span>
@@ -179,10 +256,7 @@ function GenGrnConfirmModal({
               </p>
             </div>
           </div>
-
-          {/* Body */}
           <div className="px-5 py-4 space-y-3">
-            {/* Status transition */}
             <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
               <div>
                 <p className="text-[11px] text-gray-400 uppercase tracking-wide">Mã phiếu nhận</p>
@@ -194,8 +268,6 @@ function GenGrnConfirmModal({
                 <span className="px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 font-medium">GRN Created</span>
               </div>
             </div>
-
-            {/* Info grid */}
             <div className="grid grid-cols-2 gap-2">
               <InfoBox label="Kho nhận" value={receiving.warehouseName} />
               <InfoBox label="Nhà cung cấp" value={receiving.supplierName} />
@@ -219,8 +291,6 @@ function GenGrnConfirmModal({
                 }
               />
             </div>
-
-            {/* Items */}
             {(receiving.items?.length ?? 0) > 0 && (
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 <div className="bg-gray-50 px-3 py-1.5 border-b border-gray-100 flex items-center justify-between">
@@ -267,10 +337,8 @@ function GenGrnConfirmModal({
                 </div>
               </div>
             )}
-
             {receiving.note && <NoteBox note={receiving.note} />}
           </div>
-
           <ConfirmFooter
             loading={loading}
             onCancel={onCancel}
@@ -387,6 +455,7 @@ export default function GateCheckContent() {
   const [submitLoadingId, setSubmitLoadingId] = useState<number | null>(null);
   const [grnLoadingId, setGrnLoadingId] = useState<number | null>(null);
   const [submitGrnLoadingId, setSubmitGrnLoadingId] = useState<number | null>(null);
+  const [deleteLoadingId, setDeleteLoadingId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("ALL");
   const [page, setPage] = useState(0);
@@ -394,6 +463,7 @@ export default function GateCheckContent() {
   const [scanReceiving, setScanReceiving] = useState<ReceivingOrder | null>(null);
   const [detailReceiving, setDetailReceiving] = useState<ReceivingOrder | null>(null);
   const [submitConfirmReceiving, setSubmitConfirmReceiving] = useState<ReceivingOrder | null>(null);
+  const [deleteConfirmReceiving, setDeleteConfirmReceiving] = useState<ReceivingOrder | null>(null);
   const [grnConfirmReceiving, setGrnConfirmReceiving] = useState<ReceivingOrder | null>(null);
   const [submitGrnReceiving, setSubmitGrnReceiving] = useState<ReceivingOrder | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -445,24 +515,41 @@ export default function GateCheckContent() {
     );
   }, [receivings, search]);
 
-  // Submit phiếu → Pending Count
+  // ── Submit phiếu DRAFT → SUBMITTED ───────────────────────────────────────
   const handleSubmitConfirm = (r: ReceivingOrder) => setSubmitConfirmReceiving(r);
   const handleSubmitExecute = async () => {
     if (!submitConfirmReceiving) return;
     setSubmitLoadingId(submitConfirmReceiving.receivingId);
     try {
       await submitReceivingOrder(submitConfirmReceiving.receivingId);
-      toast.success(`Đã submit ${submitConfirmReceiving.receivingCode} → Chờ kiểm đếm`);
+      toast.success(`Đã submit ${submitConfirmReceiving.receivingCode} → Đã submit (sẵn sàng quét QR)`);
       setSubmitConfirmReceiving(null);
       loadReceivings(page);
     } catch {
-      // axios interceptor đã hiện toast lỗi — không toast thêm để tránh double toast
+      // axios interceptor đã hiện toast lỗi
     } finally {
       setSubmitLoadingId(null);
     }
   };
 
-  // Gen GRN
+  // ── Xóa phiếu DRAFT ──────────────────────────────────────────────────────
+  const handleDeleteConfirm = (r: ReceivingOrder) => setDeleteConfirmReceiving(r);
+  const handleDeleteExecute = async () => {
+    if (!deleteConfirmReceiving) return;
+    setDeleteLoadingId(deleteConfirmReceiving.receivingId);
+    try {
+      await deleteReceivingOrder(deleteConfirmReceiving.receivingId);
+      toast.success(`Đã xóa phiếu ${deleteConfirmReceiving.receivingCode}`);
+      setDeleteConfirmReceiving(null);
+      loadReceivings(page);
+    } catch {
+      // axios interceptor đã hiện toast lỗi
+    } finally {
+      setDeleteLoadingId(null);
+    }
+  };
+
+  // ── Gen GRN ───────────────────────────────────────────────────────────────
   const handleGrnConfirm = async (r: ReceivingOrder) => {
     setGrnDetailLoading(r.receivingId);
     try {
@@ -489,13 +576,12 @@ export default function GateCheckContent() {
     }
   };
 
-  // ✅ FIX: Gửi GRN cho Manager — handler đầy đủ, trước đây bị thiếu
+  // ── Gửi GRN cho Manager ───────────────────────────────────────────────────
   const handleSubmitGrn = (r: ReceivingOrder) => setSubmitGrnReceiving(r);
   const handleSubmitGrnExecute = async () => {
     if (!submitGrnReceiving) return;
     setSubmitGrnLoadingId(submitGrnReceiving.receivingId);
     try {
-      // Lấy GRN của receiving order này rồi submit lên Manager
       const grn = await fetchGrnByReceivingId(submitGrnReceiving.receivingId);
       await submitGrnToManager(grn.grnId);
       toast.success(`Đã gửi ${submitGrnReceiving.receivingCode} cho Manager duyệt`);
@@ -508,35 +594,15 @@ export default function GateCheckContent() {
     }
   };
 
-  // ── Delete DRAFT ─────────────────────────────────────────────────────────────
-  const handleDelete = (r: ReceivingOrder) => {
-    confirm({
-      title: `Xóa phiếu ${r.receivingCode}?`,
-      description: 'Phiếu nháp sẽ bị xóa vĩnh viễn. Không thể hoàn tác.',
-      variant: 'danger',
-      icon: 'delete',
-      confirmText: 'Xóa phiếu',
-      onConfirm: async () => {
-        try {
-          await deleteReceivingOrder(r.receivingId);
-          toast.success(`Đã xóa phiếu ${r.receivingCode}`);
-          loadReceivings(page);
-        } catch {
-          // axios interceptor đã hiện toast lỗi
-        }
-      },
-    });
-  };
-
   const columns = getReceivingColumns({
     userRole,
     onDetail: r => setDetailReceiving(r),
     onSubmitConfirm: handleSubmitConfirm,
     onScan: r => setScanReceiving(r),
     onGenerateGrn: handleGrnConfirm,
-    onSubmitGrn: handleSubmitGrn,   // ✅ FIX: truyền đúng handler
+    onSubmitGrn: handleSubmitGrn,
     onViewIncident: () => router.push("/manager-dashboard/incident"),
-    onDelete: handleDelete,
+    onDelete: handleDeleteConfirm,
     loadingId: grnDetailLoading,
     submitLoadingId,
   });
@@ -583,7 +649,7 @@ export default function GateCheckContent() {
         />
       </Card>
 
-      {/* QR Scan */}
+      {/* QR Scan — chỉ mở được khi status = SUBMITTED (Keeper) hoặc PENDING_COUNT/SUBMITTED (QC) */}
       {scanReceiving && (
         <GateCheckModal
           open={!!scanReceiving}
@@ -602,13 +668,23 @@ export default function GateCheckContent() {
         onRefresh={() => loadReceivings(page)}
       />
 
-      {/* Submit phiếu confirm */}
+      {/* Submit phiếu confirm (DRAFT → SUBMITTED) */}
       {submitConfirmReceiving && (
         <SubmitConfirmModal
           receiving={submitConfirmReceiving}
           loading={submitLoadingId === submitConfirmReceiving.receivingId}
           onConfirm={handleSubmitExecute}
           onCancel={() => setSubmitConfirmReceiving(null)}
+        />
+      )}
+
+      {/* Xóa phiếu confirm (DRAFT only) */}
+      {deleteConfirmReceiving && (
+        <DeleteConfirmModal
+          receiving={deleteConfirmReceiving}
+          loading={deleteLoadingId === deleteConfirmReceiving.receivingId}
+          onConfirm={handleDeleteExecute}
+          onCancel={() => setDeleteConfirmReceiving(null)}
         />
       )}
 
@@ -622,7 +698,7 @@ export default function GateCheckContent() {
         />
       )}
 
-      {/* ✅ FIX: Gửi GRN cho Manager confirm modal */}
+      {/* Gửi GRN cho Manager confirm modal */}
       {submitGrnReceiving && (
         <SubmitGrnModal
           receiving={submitGrnReceiving}
