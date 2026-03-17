@@ -455,8 +455,8 @@ export default function GateCheckContent() {
       toast.success(`Đã submit ${submitConfirmReceiving.receivingCode} → Chờ kiểm đếm`);
       setSubmitConfirmReceiving(null);
       loadReceivings(page);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message ?? 'Lỗi submit phiếu');
+    } catch {
+      // axios interceptor đã hiện toast lỗi — không toast thêm để tránh double toast
     } finally {
       setSubmitLoadingId(null);
     }
@@ -482,8 +482,8 @@ export default function GateCheckContent() {
       toast.success(`Đã tạo GRN cho ${grnConfirmReceiving.receivingCode}`);
       setGrnConfirmReceiving(null);
       loadReceivings(page);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message ?? 'Lỗi tạo GRN');
+    } catch {
+      // axios interceptor đã hiện toast lỗi
     } finally {
       setGrnLoadingId(null);
     }
@@ -501,9 +501,8 @@ export default function GateCheckContent() {
       toast.success(`Đã gửi ${submitGrnReceiving.receivingCode} cho Manager duyệt`);
       setSubmitGrnReceiving(null);
       loadReceivings(page);
-    } catch (e: any) {
-      const msg = e?.response?.data?.message ?? e?.message ?? "Lỗi không xác định";
-      toast.error(`Lỗi gửi Manager: ${msg}`);
+    } catch {
+      // axios interceptor đã hiện toast lỗi
     } finally {
       setSubmitGrnLoadingId(null);
     }
@@ -522,8 +521,8 @@ export default function GateCheckContent() {
           await deleteReceivingOrder(r.receivingId);
           toast.success(`Đã xóa phiếu ${r.receivingCode}`);
           loadReceivings(page);
-        } catch (e: any) {
-          toast.error(e?.response?.data?.message ?? 'Lỗi xóa phiếu');
+        } catch {
+          // axios interceptor đã hiện toast lỗi
         }
       },
     });

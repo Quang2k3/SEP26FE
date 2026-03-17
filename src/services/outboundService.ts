@@ -92,6 +92,18 @@ export async function allocateStock(
   return data.data;
 }
 
+// ─── Report Shortage ─────────────────────────────────────────────────────────
+export async function reportShortage(
+  documentId: number,
+  orderType: 'SALES_ORDER' | 'INTERNAL_TRANSFER',
+): Promise<any> {
+  const { data } = await api.post<ApiResponse<any>>('/outbound/allocate/report-shortage', {
+    documentId,
+    orderType,
+  });
+  return data.data;
+}
+
 // ─── Pick List ────────────────────────────────────────────────────────────────
 export async function generatePickList(
   documentId: number,

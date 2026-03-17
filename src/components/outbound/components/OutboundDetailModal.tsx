@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Portal from '@/components/ui/Portal';
 import toast from 'react-hot-toast';
 import {
@@ -9,6 +9,7 @@ import {
   approveSalesOrder,
   rejectSalesOrder,
   allocateStock,
+  reportShortage,
   generatePickList,
   fetchPickList,
   fetchPickListByDocument,
@@ -30,7 +31,6 @@ import type {
 } from '@/interfaces/outbound';
 import { OUTBOUND_STATUS_BADGE } from '@/interfaces/outbound';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function getUserRole(): string {
   if (typeof window === 'undefined') return 'KEEPER';
   try {
@@ -56,20 +56,13 @@ function Spin() {
   return <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />;
 }
 
-// ─── Confirm Modal ────────────────────────────────────────────────────────────
+// ─── Universal Confirm Modal ────────────────────────────────────────────────────
 interface ConfirmModalProps {
-  open: boolean;
-  icon?: string;
-  iconColor?: string;
-  title: string;
-  description: string;
-  confirmLabel: string;
-  confirmColor?: string;
-  loading?: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
+  open: boolean; icon?: string; iconColor?: string;
+  title: string; description: string; confirmLabel: string;
+  confirmColor?: string; loading?: boolean;
+  onConfirm: () => void; onCancel: () => void;
 }
-
 function ConfirmModal({
   open, icon = 'help', iconColor = 'text-indigo-500',
   title, description, confirmLabel, confirmColor = 'bg-indigo-600 hover:bg-indigo-700',
@@ -106,7 +99,7 @@ function ConfirmModal({
   );
 }
 
-// ─── Reject Modal ─────────────────────────────────────────────────────────────
+// ─── Reject Modal ──────────────────────────────────────────────────────────────
 function RejectModal({ code, onConfirm, onCancel, loading }: {
   code: string; onConfirm: (r: string) => void; onCancel: () => void; loading: boolean;
 }) {
@@ -137,8 +130,7 @@ function RejectModal({ code, onConfirm, onCancel, loading }: {
             </p>
           </div>
           <div className="px-6 pb-5 flex gap-3">
-            <button onClick={onCancel}
-              className="flex-1 py-2.5 text-sm text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50">Huỷ</button>
+            <button onClick={onCancel} className="flex-1 py-2.5 text-sm text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50">Huỷ</button>
             <button disabled={reason.trim().length < 20 || loading} onClick={() => onConfirm(reason.trim())}
               className="flex-1 py-2.5 text-sm font-semibold text-white bg-red-500 rounded-xl hover:bg-red-600 flex items-center justify-center gap-2 disabled:opacity-50">
               {loading && <Spin />}
@@ -151,25 +143,34 @@ function RejectModal({ code, onConfirm, onCancel, loading }: {
   );
 }
 
-// ─── Step 1: Allocate Panel ───────────────────────────────────────────────────
+// ─── Step 1: Allocate Panel ─────────────────────────────────────────────────────
 function AllocatePanel({ item, onDone }: { item: OutboundListItem; onDone: () => void }) {
   const [loading, setLoading] = useState(false);
+  const [reporting, setReporting] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [showShortageConfirm, setShowShortageConfirm] = useState(false);
 
   const handle = async () => {
+    setShowConfirm(false);
     try {
       setLoading(true);
       const res = await allocateStock(item.documentId, item.orderType);
       setResult(res);
-      if ((res as any).fullyAllocated) {
-        toast.success('Phân bổ thành công! Hệ thống đã xác định vị trí lấy hàng.');
-      } else {
-        toast('⚠️ Phân bổ một phần — một số SKU thiếu hàng', { icon: '⚠️' });
-      }
+      if ((res as any).fullyAllocated) toast.success('Phân bổ thành công!');
+      else toast('⚠️ Phân bổ một phần — một số SKU thiếu hàng', { icon: '⚠️' });
     } catch { } finally { setLoading(false); }
   };
 
-  // ── Chưa phân bổ: giải thích + nút bấm ──
+  const handleReportShortage = async () => {
+    setShowShortageConfirm(false);
+    try {
+      setReporting(true);
+      await reportShortage(item.documentId, item.orderType);
+      toast.success('✅ Đã gửi báo cáo thiếu hàng lên Manager!');
+    } catch { } finally { setReporting(false); }
+  };
+
   if (!result) {
     return (
       <div className="space-y-3">
@@ -179,13 +180,10 @@ function AllocatePanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
             <div>
               <p className="text-sm font-semibold text-indigo-800">Bước 1 — Phân bổ tồn kho (FEFO)</p>
               <p className="text-xs text-indigo-600 mt-1 leading-relaxed">
-                Hệ thống tự động tìm hàng theo <span className="font-bold">FEFO</span> —
-                ưu tiên lô có <span className="font-bold">hạn sử dụng gần nhất</span>.
-                Hàng được khoá lại để không đơn khác lấy mất.
+                Hệ thống tự động tìm hàng theo <span className="font-bold">FEFO</span> — ưu tiên lô có <span className="font-bold">hạn sử dụng gần nhất</span>. Hàng được khoá lại để không đơn khác lấy mất.
               </p>
             </div>
           </div>
-
           <div className="space-y-1.5">
             {[
               { icon: 'search', color: 'text-indigo-500', text: 'Tìm BIN có hàng, ưu tiên HSD gần nhất (FEFO)' },
@@ -198,73 +196,54 @@ function AllocatePanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
               </div>
             ))}
           </div>
-
-          <button onClick={handle} disabled={loading}
+          <button onClick={() => setShowConfirm(true)} disabled={loading}
             className="w-full py-2.5 text-sm font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 flex items-center justify-center gap-2 disabled:opacity-60">
             {loading && <Spin />}
             {loading ? 'Đang tìm hàng và khoá tồn...' : '🔍 Phân bổ tồn kho'}
           </button>
         </div>
+        <ConfirmModal open={showConfirm} icon="inventory" iconColor="text-indigo-500"
+          title="Xác nhận phân bổ tồn kho?" confirmLabel="Phân bổ" confirmColor="bg-indigo-600 hover:bg-indigo-700"
+          description="Hệ thống sẽ tìm hàng theo FEFO và khoá số lượng cho đơn này. Hàng đã khoá không thể dùng cho đơn khác."
+          loading={loading} onConfirm={handle} onCancel={() => setShowConfirm(false)} />
       </div>
     );
   }
 
-  // ── Đã phân bổ: hiển thị kết quả chi tiết ──
   const fullyAllocated = result.fullyAllocated;
   const allocations: any[] = result.allocations ?? [];
   const shortages: any[] = result.shortages ?? [];
 
   return (
     <div className="space-y-3">
-      {/* Kết quả tổng quan */}
-      <div className={`p-4 rounded-xl border ${fullyAllocated ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+      <div className={`p-4 rounded-xl border ${fullyAllocated ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
         <div className="flex items-center gap-2">
-          <span className={`material-symbols-outlined text-xl ${fullyAllocated ? 'text-emerald-500' : 'text-amber-500'}`}>
-            {fullyAllocated ? 'check_circle' : 'warning'}
+          <span className={`material-symbols-outlined text-xl ${fullyAllocated ? 'text-emerald-500' : 'text-red-500'}`}>
+            {fullyAllocated ? 'check_circle' : 'error'}
           </span>
-          <div>
-            <p className={`text-sm font-bold ${fullyAllocated ? 'text-emerald-800' : 'text-amber-800'}`}>
-              {fullyAllocated
-                ? `Phân bổ thành công — ${result.allocatedSkus}/${result.totalSkus} SKU`
-                : `Phân bổ một phần — ${result.allocatedSkus}/${result.totalSkus} SKU đủ hàng`}
-            </p>
-            <p className={`text-xs mt-0.5 ${fullyAllocated ? 'text-emerald-600' : 'text-amber-600'}`}>
-              {fullyAllocated
-                ? 'Hàng đã được khoá. Xem vị trí lấy bên dưới rồi bấm tiếp tục.'
-                : 'Một số SKU không đủ tồn. Có thể tiếp tục với hàng có sẵn hoặc huỷ đơn.'}
-            </p>
-          </div>
+          <p className={`text-sm font-bold ${fullyAllocated ? 'text-emerald-800' : 'text-red-800'}`}>
+            {fullyAllocated
+              ? `Phân bổ thành công — ${result.allocatedSkus}/${result.totalSkus} SKU`
+              : `Không đủ tồn kho — ${result.allocatedSkus}/${result.totalSkus} SKU có hàng`}
+          </p>
         </div>
       </div>
 
-      {/* Vị trí lấy hàng */}
       {allocations.length > 0 && (
         <div className="border border-gray-100 rounded-xl overflow-hidden">
           <div className="px-4 py-2.5 bg-gray-50 border-b flex items-center justify-between">
             <span className="text-xs font-bold text-gray-700">📍 Vị trí lấy hàng (đã khoá tồn)</span>
             <span className="text-[10px] text-gray-400">{allocations.length} dòng</span>
           </div>
-          <div className="divide-y divide-gray-50 max-h-52 overflow-y-auto">
+          <div className="divide-y divide-gray-50 max-h-48 overflow-y-auto">
             {allocations.map((line: any, idx: number) => (
               <div key={idx} className="px-4 py-3 flex items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    {line.zoneCode && (
-                      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
-                        {line.zoneCode}
-                      </span>
-                    )}
+                    {line.zoneCode && <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{line.zoneCode}</span>}
                     <span className="text-xs font-bold text-gray-800">{line.locationCode}</span>
-                    {line.lotNumber && (
-                      <span className="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">
-                        LOT {line.lotNumber}
-                      </span>
-                    )}
-                    {line.expiryDate && (
-                      <span className="text-[10px] text-gray-400">
-                        HSD: {new Date(line.expiryDate).toLocaleDateString('vi-VN')}
-                      </span>
-                    )}
+                    {line.lotNumber && <span className="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">LOT {line.lotNumber}</span>}
+                    {line.expiryDate && <span className="text-[10px] text-gray-400">HSD: {new Date(line.expiryDate).toLocaleDateString('vi-VN')}</span>}
                   </div>
                   <p className="text-[11px] text-gray-500 mt-0.5">{line.skuCode} · {line.skuName}</p>
                 </div>
@@ -280,11 +259,10 @@ function AllocatePanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
         </div>
       )}
 
-      {/* SKU thiếu hàng */}
       {shortages.length > 0 && (
-        <div className="border border-red-100 rounded-xl overflow-hidden">
+        <div className="border border-red-200 rounded-xl overflow-hidden">
           <div className="px-4 py-2.5 bg-red-50 border-b">
-            <span className="text-xs font-bold text-red-700">⚠️ SKU thiếu tồn kho</span>
+            <span className="text-xs font-bold text-red-700">⚠️ SKU thiếu tồn kho — không thể xuất</span>
           </div>
           <div className="divide-y divide-red-50">
             {shortages.map((s: any, idx: number) => (
@@ -293,34 +271,48 @@ function AllocatePanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
                   <p className="text-xs font-bold text-gray-800">{s.skuCode}</p>
                   <p className="text-[10px] text-gray-400">Có sẵn: {s.availableQty} · Yêu cầu: {s.requestedQty}</p>
                 </div>
-                <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
-                  Thiếu {s.shortageQty}
-                </span>
+                <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">Thiếu {s.shortageQty}</span>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Nút tiếp tục */}
-      <button onClick={onDone}
-        className={`w-full py-2.5 text-sm font-semibold text-white rounded-xl flex items-center justify-center gap-2
-          ${fullyAllocated ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-amber-500 hover:bg-amber-600'}`}>
-        {fullyAllocated ? '✅ Xác nhận — Tạo Pick List' : '⚠️ Tiếp tục với hàng có sẵn — Tạo Pick List'}
-      </button>
+      {fullyAllocated ? (
+        <button onClick={onDone} className="w-full py-2.5 text-sm font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 flex items-center justify-center gap-2">
+          ✅ Xác nhận — Tạo Pick List
+        </button>
+      ) : (
+        <div className="space-y-2">
+          <div className="p-3 bg-red-50 rounded-xl border border-red-200">
+            <p className="text-xs text-red-700 font-semibold mb-1">⛔ Không thể tạo Pick List khi thiếu hàng</p>
+            <p className="text-xs text-red-600">Cần báo Manager để bổ sung tồn kho hoặc điều chỉnh đơn hàng.</p>
+          </div>
+          <button onClick={() => setShowShortageConfirm(true)} disabled={reporting}
+            className="w-full py-2.5 text-sm font-semibold text-white bg-red-600 rounded-xl hover:bg-red-700 flex items-center justify-center gap-2 disabled:opacity-60">
+            {reporting && <Spin />}
+            {reporting ? 'Đang gửi báo cáo...' : '📋 Báo thiếu hàng lên Manager'}
+          </button>
+          <ConfirmModal open={showShortageConfirm} icon="report" iconColor="text-red-500"
+            title="Xác nhận báo thiếu hàng?" confirmLabel="Báo thiếu hàng" confirmColor="bg-red-600 hover:bg-red-700"
+            description="Hệ thống sẽ tạo Incident báo cáo danh sách SKU thiếu. Manager sẽ nhận thông báo và xử lý."
+            loading={reporting} onConfirm={handleReportShortage} onCancel={() => setShowShortageConfirm(false)} />
+        </div>
+      )}
     </div>
   );
 }
-// ─── Step 2: Generate Pick List ───────────────────────────────────────────────
+
+// ─── Step 2: Generate Pick List ─────────────────────────────────────────────────
 function PickListGeneratePanel({ item, onDone, onCreated }: {
-  item: OutboundListItem;
-  onDone: () => void;
-  onCreated: (taskId: number, items: PickListItem[]) => void;
+  item: OutboundListItem; onDone: () => void; onCreated: (taskId: number, items: PickListItem[]) => void;
 }) {
   const [loading, setLoading] = useState(false);
   const [pickList, setPickList] = useState<PickListResponse | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const handle = async () => {
+    setShowConfirm(false);
     try {
       setLoading(true);
       const res = await generatePickList(item.documentId, item.orderType);
@@ -338,33 +330,32 @@ function PickListGeneratePanel({ item, onDone, onCreated }: {
           <span className="material-symbols-outlined text-blue-500 text-xl mt-0.5">route</span>
           <div>
             <p className="text-sm font-semibold text-blue-800">Bước 2 — Tạo Pick List</p>
-            <p className="text-xs text-blue-600 mt-0.5">
-              Hệ thống tạo lộ trình lấy hàng theo FEFO: Zone → Dãy → Kệ → BIN.
-              Mỗi dòng chỉ rõ vị trí lấy và số lượng.
-            </p>
+            <p className="text-xs text-blue-600 mt-0.5">Hệ thống tạo lộ trình lấy hàng theo FEFO: Zone → Dãy → Kệ → BIN.</p>
           </div>
         </div>
-        <button onClick={handle} disabled={loading}
+        <button onClick={() => setShowConfirm(true)} disabled={loading}
           className="w-full py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 flex items-center justify-center gap-2 disabled:opacity-60">
           {loading && <Spin />}
           {loading ? 'Đang tạo...' : 'Lấy Pick List'}
         </button>
       </div>
       {pickList && <PickListTable pickList={pickList} />}
+      <ConfirmModal open={showConfirm} icon="route" iconColor="text-blue-500"
+        title="Xác nhận tạo Pick List?" confirmLabel="Tạo Pick List" confirmColor="bg-blue-600 hover:bg-blue-700"
+        description="Hệ thống sẽ tạo lộ trình lấy hàng tối ưu từ tồn kho đã phân bổ."
+        loading={loading} onConfirm={handle} onCancel={() => setShowConfirm(false)} />
     </div>
   );
 }
 
-// ─── Pick List Table (reused) ─────────────────────────────────────────────────
+// ─── Pick List Table ────────────────────────────────────────────────────────────
 function PickListTable({ pickList }: { pickList: PickListResponse }) {
   return (
     <div className="border border-gray-100 rounded-xl overflow-hidden">
       <div className="px-4 py-2.5 bg-gray-50 border-b flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-gray-700">Pick List</span>
-          <span className="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
-            #{pickList.taskId}
-          </span>
+          <span className="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">#{pickList.taskId}</span>
           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
             pickList.status === 'PICKED' ? 'bg-emerald-50 text-emerald-600' :
             pickList.status === 'QC_IN_PROGRESS' ? 'bg-purple-50 text-purple-600' :
@@ -376,41 +367,22 @@ function PickListTable({ pickList }: { pickList: PickListResponse }) {
       <div className="divide-y divide-gray-50 max-h-48 overflow-y-auto">
         {(pickList.items ?? []).map((pi, idx) => (
           <div key={pi.taskItemId ?? idx} className="px-4 py-2.5 flex items-center gap-3">
-            {/* Sequence */}
             <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
               {(pi as any).sequence ?? idx + 1}
             </span>
-            {/* Location path */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1 flex-wrap">
-                {pi.zoneCode && (
-                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
-                    {pi.zoneCode}
-                  </span>
-                )}
-                {(pi as any).rackCode && (
-                  <span className="text-[10px] text-gray-500">/ {(pi as any).rackCode}</span>
-                )}
+                {pi.zoneCode && <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{pi.zoneCode}</span>}
+                {(pi as any).rackCode && <span className="text-[10px] text-gray-500">/ {(pi as any).rackCode}</span>}
                 <span className="text-xs font-bold text-gray-800">{pi.locationCode}</span>
-                {pi.lotNumber && (
-                  <span className="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">
-                    LOT {pi.lotNumber}
-                  </span>
-                )}
-                {pi.expiryDate && (
-                  <span className="text-[10px] text-gray-400">
-                    HSD: {new Date(pi.expiryDate).toLocaleDateString('vi-VN')}
-                  </span>
-                )}
+                {pi.lotNumber && <span className="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">LOT {pi.lotNumber}</span>}
+                {pi.expiryDate && <span className="text-[10px] text-gray-400">HSD: {new Date(pi.expiryDate).toLocaleDateString('vi-VN')}</span>}
               </div>
               <p className="text-[11px] text-gray-600 mt-0.5">{pi.skuCode} · {pi.skuName}</p>
             </div>
-            {/* Qty */}
             <div className="text-right flex-shrink-0">
               <p className="text-sm font-bold text-blue-600">×{pi.qtyToPick ?? pi.requiredQty}</p>
-              {pi.status === 'PICKED' && (
-                <span className="text-[10px] text-emerald-600">✓ Đã lấy</span>
-              )}
+              {pi.status === 'PICKED' && <span className="text-[10px] text-emerald-600">✓ Đã lấy</span>}
             </div>
           </div>
         ))}
@@ -419,11 +391,9 @@ function PickListTable({ pickList }: { pickList: PickListResponse }) {
   );
 }
 
-// ─── Step 3: Picking Panel — xem list + confirm picked ───────────────────────
+// ─── Step 3: Picking Panel ──────────────────────────────────────────────────────
 function PickingPanel({ item, taskId: initTaskId, onDone }: {
-  item: OutboundListItem;
-  taskId: number | null;
-  onDone: (taskId: number) => void;
+  item: OutboundListItem; taskId: number | null; onDone: (taskId: number) => void;
 }) {
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -431,28 +401,17 @@ function PickingPanel({ item, taskId: initTaskId, onDone }: {
   const [pickList, setPickList] = useState<PickListResponse | null>(null);
   const [resolvedTaskId, setResolvedTaskId] = useState<number | null>(initTaskId);
 
-  // Auto-load pick list khi mount — nếu không có taskId thì tìm theo documentId
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
         setLoading(true);
         let pl: PickListResponse;
-        if (initTaskId) {
-          pl = await fetchPickList(initTaskId);
-        } else {
-          // Tự động tìm pick list active theo documentId
-          pl = await fetchPickListByDocument(item.documentId);
-        }
-        if (!cancelled) {
-          setPickList(pl);
-          setResolvedTaskId(pl.taskId);
-        }
-      } catch (e) {
-        if (!cancelled) setPickList(null);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+        if (initTaskId) { pl = await fetchPickList(initTaskId); }
+        else { pl = await fetchPickListByDocument(item.documentId); }
+        if (!cancelled) { setPickList(pl); setResolvedTaskId(pl.taskId); }
+      } catch { if (!cancelled) setPickList(null); }
+      finally { if (!cancelled) setLoading(false); }
     };
     load();
     return () => { cancelled = true; };
@@ -479,7 +438,6 @@ function PickingPanel({ item, taskId: initTaskId, onDone }: {
 
   return (
     <div className="space-y-3">
-      {/* Instruction panel */}
       <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
         <div className="flex items-start gap-3">
           <span className="material-symbols-outlined text-blue-600 text-xl mt-0.5">forklift</span>
@@ -495,17 +453,9 @@ function PickingPanel({ item, taskId: initTaskId, onDone }: {
           </div>
         </div>
       </div>
-
-      {/* Pick list table */}
-      {pickList ? (
-        <PickListTable pickList={pickList} />
-      ) : (
-        <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 text-xs text-amber-700">
-          ⚠️ Không tải được Pick List. Vui lòng thử lại.
-        </div>
+      {pickList ? <PickListTable pickList={pickList} /> : (
+        <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 text-xs text-amber-700">⚠️ Không tải được Pick List. Vui lòng thử lại.</div>
       )}
-
-      {/* Confirm button */}
       {pickList && (
         <button onClick={() => setShowConfirm(true)} disabled={confirming || !resolvedTaskId}
           className="w-full py-3 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 flex items-center justify-center gap-2 disabled:opacity-60">
@@ -513,24 +463,15 @@ function PickingPanel({ item, taskId: initTaskId, onDone }: {
           {confirming ? 'Đang xác nhận...' : '✅ Xác nhận đã lấy đủ hàng → Chuyển QC'}
         </button>
       )}
-
-      <ConfirmModal
-        open={showConfirm}
-        icon="forklift"
-        iconColor="text-blue-500"
-        title="Xác nhận đã lấy đủ hàng?"
+      <ConfirmModal open={showConfirm} icon="forklift" iconColor="text-blue-500"
+        title="Xác nhận đã lấy đủ hàng?" confirmLabel="Xác nhận → Chuyển QC" confirmColor="bg-blue-600 hover:bg-blue-700"
         description="Toàn bộ hàng trong Pick List đã được lấy đúng vị trí và đúng số lượng. Sau bước này đơn hàng sẽ chuyển sang QC kiểm tra hàng."
-        confirmLabel="Xác nhận → Chuyển QC"
-        confirmColor="bg-blue-600 hover:bg-blue-700"
-        loading={confirming}
-        onConfirm={handleConfirm}
-        onCancel={() => setShowConfirm(false)}
-      />
+        loading={confirming} onConfirm={handleConfirm} onCancel={() => setShowConfirm(false)} />
     </div>
   );
 }
 
-// ─── Step 4: QC Scan Panel ────────────────────────────────────────────────────
+// ─── Step 4: QC Scan Panel ──────────────────────────────────────────────────────
 function QcScanPanel({ taskId, onAllScanned }: { taskId: number; onAllScanned: () => void }) {
   const [qcSummary, setQcSummary] = useState<QcSummaryResponse | null>(null);
   const [pickItems, setPickItems] = useState<PickListItem[]>([]);
@@ -543,8 +484,7 @@ function QcScanPanel({ taskId, onAllScanned }: { taskId: number; onAllScanned: (
   const refreshAll = useCallback(async () => {
     try {
       const [s, pl] = await Promise.all([fetchQcSummary(taskId), fetchPickList(taskId)]);
-      setQcSummary(s);
-      setPickItems(pl.items ?? []);
+      setQcSummary(s); setPickItems(pl.items ?? []);
       if (s.allScanned) onAllScanned();
     } catch {}
   }, [taskId, onAllScanned]);
@@ -555,12 +495,8 @@ function QcScanPanel({ taskId, onAllScanned }: { taskId: number; onAllScanned: (
   }, [taskId]);
 
   const handleStart = async () => {
-    try {
-      setStartLoading(true);
-      await startQcSession(taskId);
-      toast.success('Bắt đầu phiên QC!');
-      await refreshAll();
-    } catch { } finally { setStartLoading(false); }
+    try { setStartLoading(true); await startQcSession(taskId); toast.success('Bắt đầu phiên QC!'); await refreshAll(); }
+    catch { } finally { setStartLoading(false); }
   };
 
   const handleScan = async () => {
@@ -586,10 +522,7 @@ function QcScanPanel({ taskId, onAllScanned }: { taskId: number; onAllScanned: (
           <span className="material-symbols-outlined text-purple-600 text-xl mt-0.5">qr_code_scanner</span>
           <div className="flex-1">
             <p className="text-sm font-semibold text-purple-800">Bước 4 — QC Kiểm tra hàng</p>
-            <p className="text-xs text-purple-600 mt-0.5">
-              Scan từng mặt hàng, đánh giá <strong>PASS / FAIL / HOLD</strong>.
-              Cần <strong>100% PASS</strong> để tiến hành xuất kho.
-            </p>
+            <p className="text-xs text-purple-600 mt-0.5">Scan từng mặt hàng, đánh giá <strong>PASS / FAIL / HOLD</strong>. Cần <strong>100% PASS</strong> để tiến hành xuất kho.</p>
           </div>
           <span className="text-xs font-mono text-purple-500 bg-purple-100 px-2 py-0.5 rounded">#{taskId}</span>
         </div>
@@ -630,8 +563,7 @@ function QcScanPanel({ taskId, onAllScanned }: { taskId: number; onAllScanned: (
                   return (
                     <button key={pi.taskItemId ?? idx} type="button"
                       onClick={() => { setSelected(isSel ? null : pi); setResult('PASS'); setReason(''); }}
-                      className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-2 border-l-4 transition-colors
-                        ${isSel ? 'bg-purple-50 border-purple-500' : 'hover:bg-gray-50 border-transparent'}`}>
+                      className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-2 border-l-4 transition-colors ${isSel ? 'bg-purple-50 border-purple-500' : 'hover:bg-gray-50 border-transparent'}`}>
                       <div>
                         <p className="text-xs font-bold text-gray-800">{pi.skuCode}</p>
                         <p className="text-[10px] text-gray-400">{pi.locationCode}{pi.lotNumber ? ` · LOT ${pi.lotNumber}` : ''}</p>
@@ -708,7 +640,7 @@ function QcScanPanel({ taskId, onAllScanned }: { taskId: number; onAllScanned: (
   );
 }
 
-// ─── Step 5: Dispatch Panel ───────────────────────────────────────────────────
+// ─── Step 5: Dispatch Panel ─────────────────────────────────────────────────────
 function DispatchPanel({ item, onDone }: { item: OutboundListItem; onDone: () => void }) {
   const [note, setNote] = useState<DispatchNoteResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -716,12 +648,13 @@ function DispatchPanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
   const [showConfirm, setShowConfirm] = useState(false);
 
   const handleDispatch = async () => {
+    setShowConfirm(false);
     try {
       setDispatching(true);
       await confirmDispatch(item.documentId);
       toast.success('Xuất kho thành công!');
       onDone();
-    } catch { } finally { setDispatching(false); setShowConfirm(false); }
+    } catch { } finally { setDispatching(false); }
   };
 
   return (
@@ -731,10 +664,7 @@ function DispatchPanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
           <span className="material-symbols-outlined text-teal-600 text-xl mt-0.5">local_shipping</span>
           <div>
             <p className="text-sm font-semibold text-teal-800">Bước 5 — Xuất kho</p>
-            <p className="text-xs text-teal-600 mt-0.5">
-              QC hoàn tất. Xem phiếu Dispatch, chất hàng lên xe và xác nhận.
-              Hệ thống sẽ trừ tồn khỏi <span className="font-bold">Z-OUT</span>.
-            </p>
+            <p className="text-xs text-teal-600 mt-0.5">QC hoàn tất. Xem phiếu Dispatch, chất hàng lên xe và xác nhận. Hệ thống sẽ trừ tồn khỏi <span className="font-bold">Z-OUT</span>.</p>
           </div>
         </div>
         <button
@@ -768,27 +698,23 @@ function DispatchPanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
               {dispatching && <Spin />}
               {dispatching ? 'Đang xuất kho...' : '✅ Xác nhận xuất kho'}
             </button>
-
-            <ConfirmModal
-              open={showConfirm}
-              icon="local_shipping"
-              iconColor="text-teal-500"
-              title="Xác nhận xuất kho?"
-              description="Hàng sẽ được trừ tồn khỏi Z-OUT và lệnh xuất chuyển sang DISPATCHED. Thao tác này không thể hoàn tác."
-              confirmLabel="Xác nhận xuất kho"
-              confirmColor="bg-teal-600 hover:bg-teal-700"
-              loading={dispatching}
-              onConfirm={handleDispatch}
-              onCancel={() => setShowConfirm(false)}
-            />
           </div>
         </div>
       )}
+      <ConfirmModal open={showConfirm} icon="local_shipping" iconColor="text-teal-500"
+        title="Xác nhận xuất kho?" confirmLabel="Xác nhận xuất kho" confirmColor="bg-teal-600 hover:bg-teal-700"
+        description="Hàng sẽ được trừ tồn khỏi Z-OUT và lệnh xuất chuyển sang DISPATCHED. Thao tác này không thể hoàn tác."
+        loading={dispatching} onConfirm={handleDispatch} onCancel={() => setShowConfirm(false)} />
     </div>
   );
 }
 
-// ─── Flow Progress ────────────────────────────────────────────────────────────
+// ─── Constants ──────────────────────────────────────────────────────────────────
+const STATUS_ORDER: Record<string, number> = {
+  DRAFT: 0, PENDING_APPROVAL: 1, APPROVED: 2, ALLOCATED: 3,
+  PICKING: 4, QC_SCAN: 5, DISPATCHED: 6, REJECTED: 7, CANCELLED: 8,
+};
+
 const STEPS = [
   { status: 'DRAFT',            label: 'Nháp',      icon: 'draft' },
   { status: 'PENDING_APPROVAL', label: 'Chờ duyệt', icon: 'pending_actions' },
@@ -832,7 +758,7 @@ function FlowProgress({ current }: { current: string }) {
   );
 }
 
-// ─── Main Modal ───────────────────────────────────────────────────────────────
+// ─── Main Modal ─────────────────────────────────────────────────────────────────
 interface Props {
   item: OutboundListItem | null;
   onClose: () => void;
@@ -842,14 +768,32 @@ interface Props {
 export default function OutboundDetailModal({ item, onClose, onRefresh }: Props) {
   const [localStatus, setLocalStatus] = useState(item?.status ?? 'DRAFT');
   const [showReject, setShowReject] = useState(false);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [taskId, setTaskId] = useState<number | null>(null);
   const role = getUserRole();
 
+  // Dùng ref để track documentId trước — phân biệt "đổi đơn" vs "cùng đơn BE cập nhật"
+  const prevDocumentIdRef = React.useRef<number | null>(null);
+
   useEffect(() => {
     if (!item) return;
-    setLocalStatus(item.status);
-    setTaskId(null); // reset taskId — PickingPanel sẽ tự fetch lại
+    const isNewDocument = prevDocumentIdRef.current !== item.documentId;
+    prevDocumentIdRef.current = item.documentId;
+
+    setLocalStatus(prev => {
+      // Mở đơn KHÁC → luôn sync hoàn toàn về BE status (tránh stale localStatus)
+      if (isNewDocument) return item.status;
+      // Cùng đơn → chỉ sync nếu BE tiến hơn hoặc terminal state
+      const incomingOrder = STATUS_ORDER[item.status] ?? 0;
+      const currentOrder  = STATUS_ORDER[prev] ?? 0;
+      if (incomingOrder > currentOrder || item.status === 'REJECTED' || item.status === 'CANCELLED') {
+        return item.status;
+      }
+      return prev;
+    });
+    if (isNewDocument) setTaskId(null);
   }, [item?.documentId, item?.status]);
 
   if (!item) return null;
@@ -858,8 +802,8 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
   const badge = OUTBOUND_STATUS_BADGE[localStatus as keyof typeof OUTBOUND_STATUS_BADGE]
     ?? { label: localStatus, className: 'bg-gray-100 text-gray-500' };
 
-  // ── Actions ───────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
+    setShowSubmitConfirm(false);
     try {
       setActionLoading(true);
       if (isSO) await submitSalesOrder(item.documentId);
@@ -871,6 +815,7 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
   };
 
   const handleApprove = async () => {
+    setShowApproveConfirm(false);
     try {
       setActionLoading(true);
       await approveSalesOrder(item.documentId);
@@ -891,6 +836,149 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
     } catch { } finally { setActionLoading(false); }
   };
 
+  // ─── Role-based step rendering ────────────────────────────────────────────────
+  const renderContent = () => {
+    // DRAFT
+    if (localStatus === 'DRAFT') {
+      if (role === 'KEEPER') return (
+        <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
+          <p className="text-sm text-gray-600">{isSO ? 'Submit để gửi Manager duyệt.' : 'Submit → tự động APPROVED (không cần Manager).'}</p>
+          <button onClick={() => setShowSubmitConfirm(true)} disabled={actionLoading}
+            className="w-full py-2.5 text-sm font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 flex items-center justify-center gap-2 disabled:opacity-60">
+            {actionLoading && <Spin />}
+            {actionLoading ? 'Đang submit...' : 'Submit lệnh xuất'}
+          </button>
+        </div>
+      );
+      if (role === 'MANAGER') return (
+        <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+          <p className="text-sm text-gray-500">Đơn đang ở trạng thái Nháp. Chờ Keeper submit.</p>
+        </div>
+      );
+      return null;
+    }
+
+    // PENDING_APPROVAL
+    if (localStatus === 'PENDING_APPROVAL') {
+      if (role === 'MANAGER') return (
+        <div className="p-4 bg-orange-50 rounded-xl border border-orange-100 space-y-3">
+          <p className="text-sm text-orange-800 font-medium">Lệnh xuất đang chờ Manager duyệt.</p>
+          <div className="flex gap-3">
+            <button onClick={() => setShowApproveConfirm(true)} disabled={actionLoading}
+              className="flex-1 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 flex items-center justify-center gap-2 disabled:opacity-60">
+              {actionLoading && <Spin />}
+              {actionLoading ? 'Đang xử lý...' : '✅ Duyệt'}
+            </button>
+            <button onClick={() => setShowReject(true)} disabled={actionLoading}
+              className="flex-1 py-2.5 text-sm font-semibold text-red-600 bg-white border border-red-200 rounded-xl hover:bg-red-50 disabled:opacity-60">
+              ❌ Từ chối
+            </button>
+          </div>
+        </div>
+      );
+      if (role === 'KEEPER') return (
+        <div className="p-4 bg-orange-50 rounded-xl border border-orange-100">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-orange-500 text-xl">hourglass_top</span>
+            <p className="text-sm text-orange-800 font-medium">Đang chờ Manager duyệt...</p>
+          </div>
+        </div>
+      );
+      return null;
+    }
+
+    // APPROVED → Keeper phân bổ
+    if (localStatus === 'APPROVED') {
+      if (role === 'KEEPER') return <AllocatePanel item={item} onDone={() => { setLocalStatus('ALLOCATED'); onRefresh(); }} />;
+      if (role === 'MANAGER') return (
+        <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
+          <p className="text-sm text-emerald-800 font-medium">✅ Đã duyệt. Chờ Keeper phân bổ tồn kho.</p>
+        </div>
+      );
+      return null;
+    }
+
+    // ALLOCATED → Keeper tạo Pick List
+    if (localStatus === 'ALLOCATED') {
+      if (role === 'KEEPER') return (
+        <PickListGeneratePanel item={item}
+          onDone={() => { setLocalStatus('PICKING'); }}
+          onCreated={(tid) => setTaskId(tid)} />
+      );
+      return (
+        <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
+          <p className="text-sm text-indigo-800 font-medium">Tồn kho đã phân bổ. Chờ Keeper tạo Pick List.</p>
+        </div>
+      );
+    }
+
+    // PICKING → Keeper lấy hàng
+    if (localStatus === 'PICKING') {
+      if (role === 'KEEPER') return (
+        <PickingPanel item={item} taskId={taskId}
+          onDone={(tid) => { setTaskId(tid); setLocalStatus('QC_SCAN'); onRefresh(); }} />
+      );
+      return (
+        <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-blue-500 text-xl">forklift</span>
+            <p className="text-sm text-blue-800 font-medium">Keeper đang lấy hàng theo Pick List.</p>
+          </div>
+        </div>
+      );
+    }
+
+    // QC_SCAN
+    if (localStatus === 'QC_SCAN') {
+      if (role === 'QC' || role === 'KEEPER') {
+        if (taskId) return (
+          <div className="space-y-3">
+            <QcScanPanel taskId={taskId} onAllScanned={() => onRefresh()} />
+            {role === 'KEEPER' && isSO && (
+              <DispatchPanel item={item} onDone={() => { setLocalStatus('DISPATCHED'); onRefresh(); }} />
+            )}
+          </div>
+        );
+        return (
+          <div className="p-4 bg-purple-50 rounded-xl border border-purple-100 space-y-2">
+            <p className="text-sm text-purple-700 font-medium">🔍 Đơn đang ở giai đoạn QC Scan.</p>
+            <p className="text-xs text-purple-500">Đang tải Pick Task...</p>
+            <AutoLoadTaskId documentId={item.documentId} onLoaded={setTaskId} />
+          </div>
+        );
+      }
+      return (
+        <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
+          <p className="text-sm text-purple-700 font-medium">Đơn đang được QC kiểm tra hàng.</p>
+        </div>
+      );
+    }
+
+    // DISPATCHED
+    if (localStatus === 'DISPATCHED') return (
+      <div className="p-4 bg-teal-50 rounded-xl border border-teal-100 flex items-center gap-3">
+        <span className="material-symbols-outlined text-teal-600 text-2xl">check_circle</span>
+        <div>
+          <p className="text-sm font-bold text-teal-800">Đã xuất kho thành công</p>
+          <p className="text-xs text-teal-600">Tồn kho đã được trừ khỏi Z-OUT. Lệnh xuất hoàn tất.</p>
+        </div>
+      </div>
+    );
+
+    // REJECTED
+    if (localStatus === 'REJECTED') return (
+      <div className="p-4 bg-red-50 rounded-xl border border-red-100 flex items-center gap-3">
+        <span className="material-symbols-outlined text-red-500 text-2xl">cancel</span>
+        <div>
+          <p className="text-sm font-bold text-red-700">Lệnh xuất bị từ chối</p>
+          <p className="text-xs text-red-500">Vui lòng tạo lại sau khi điều chỉnh.</p>
+        </div>
+      </div>
+    );
+
+    return null;
+  };
+
   return (
     <Portal>
       <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 font-sans">
@@ -909,6 +997,12 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
                 }`}>
                   {isSO ? 'Sales Order' : 'Transfer'}
                 </span>
+                {/* Role badge */}
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                  role === 'MANAGER' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                  role === 'QC' ? 'bg-teal-50 text-teal-700 border-teal-200' :
+                  'bg-blue-50 text-blue-700 border-blue-200'
+                }`}>{role}</span>
               </div>
               <p className="text-xs text-gray-400 mt-1">
                 Tạo {new Date(item.createdAt).toLocaleDateString('vi-VN')}
@@ -923,7 +1017,6 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
 
           {/* Body */}
           <div className="overflow-y-auto p-6 space-y-4 flex-1">
-
             {/* Order info */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-xl">
               {isSO ? (
@@ -941,100 +1034,25 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
               <InfoRow label="Số SKU" value={`${item.totalItems} SKU`} />
             </div>
 
-            {/* ── DRAFT: Submit ── */}
-            {localStatus === 'DRAFT' && role === 'KEEPER' && (
-              <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
-                <p className="text-sm text-gray-600">
-                  {isSO ? 'Submit để gửi Manager duyệt.' : 'Submit → tự động APPROVED (không cần Manager).'}
-                </p>
-                <button onClick={handleSubmit} disabled={actionLoading}
-                  className="w-full py-2.5 text-sm font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 flex items-center justify-center gap-2 disabled:opacity-60">
-                  {actionLoading && <Spin />}
-                  {actionLoading ? 'Đang submit...' : 'Submit lệnh xuất'}
-                </button>
-              </div>
-            )}
-
-            {/* ── PENDING_APPROVAL: Manager duyệt ── */}
-            {localStatus === 'PENDING_APPROVAL' && role === 'MANAGER' && (
-              <div className="p-4 bg-orange-50 rounded-xl border border-orange-100 space-y-3">
-                <p className="text-sm text-orange-800 font-medium">Lệnh xuất đang chờ Manager duyệt.</p>
-                <div className="flex gap-3">
-                  <button onClick={handleApprove} disabled={actionLoading}
-                    className="flex-1 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 flex items-center justify-center gap-2 disabled:opacity-60">
-                    {actionLoading && <Spin />}
-                    {actionLoading ? 'Đang xử lý...' : '✅ Duyệt'}
-                  </button>
-                  <button onClick={() => setShowReject(true)} disabled={actionLoading}
-                    className="flex-1 py-2.5 text-sm font-semibold text-red-600 bg-white border border-red-200 rounded-xl hover:bg-red-50 disabled:opacity-60">
-                    ❌ Từ chối
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* ── APPROVED: Allocate ── */}
-            {localStatus === 'APPROVED' && role === 'KEEPER' && (
-              <AllocatePanel item={item}
-                onDone={() => { setLocalStatus('ALLOCATED'); onRefresh(); }} />
-            )}
-
-            {/* ── ALLOCATED: Generate Pick List ── */}
-            {localStatus === 'ALLOCATED' && role === 'KEEPER' && (
-              <PickListGeneratePanel item={item}
-                onDone={() => { setLocalStatus('PICKING'); onRefresh(); }}
-                onCreated={(tid, _items) => setTaskId(tid)} />
-            )}
-
-            {/* ── PICKING: View + Confirm Picked ── */}
-            {localStatus === 'PICKING' && role === 'KEEPER' && (
-              <PickingPanel
-                item={item}
-                taskId={taskId}
-                onDone={(tid) => { setTaskId(tid); setLocalStatus('QC_SCAN'); onRefresh(); }}
-              />
-            )}
-
-            {/* ── QC_SCAN: Scan items ── */}
-            {localStatus === 'QC_SCAN' && (role === 'KEEPER' || role === 'QC') && taskId && (
-              <QcScanPanel taskId={taskId} onAllScanned={() => onRefresh()} />
-            )}
-            {localStatus === 'QC_SCAN' && !taskId && (
-              <div className="p-4 bg-purple-50 rounded-xl border border-purple-100 space-y-2">
-                <p className="text-sm text-purple-700 font-medium">🔍 Đơn đang ở giai đoạn QC Scan.</p>
-                <p className="text-xs text-purple-500">Đang tải Pick Task...</p>
-                <AutoLoadTaskId documentId={item.documentId} onLoaded={setTaskId} />
-              </div>
-            )}
-
-            {/* ── QC_SCAN done → Dispatch ── */}
-            {localStatus === 'QC_SCAN' && role === 'KEEPER' && isSO && (
-              <DispatchPanel item={item}
-                onDone={() => { setLocalStatus('DISPATCHED'); onRefresh(); }} />
-            )}
-
-            {/* ── Terminal states ── */}
-            {localStatus === 'DISPATCHED' && (
-              <div className="p-4 bg-teal-50 rounded-xl border border-teal-100 flex items-center gap-3">
-                <span className="material-symbols-outlined text-teal-600 text-2xl">check_circle</span>
-                <div>
-                  <p className="text-sm font-bold text-teal-800">Đã xuất kho thành công</p>
-                  <p className="text-xs text-teal-600">Tồn kho đã được trừ khỏi Z-OUT. Lệnh xuất hoàn tất.</p>
-                </div>
-              </div>
-            )}
-            {localStatus === 'REJECTED' && (
-              <div className="p-4 bg-red-50 rounded-xl border border-red-100 flex items-center gap-3">
-                <span className="material-symbols-outlined text-red-500 text-2xl">cancel</span>
-                <div>
-                  <p className="text-sm font-bold text-red-700">Lệnh xuất bị từ chối</p>
-                  <p className="text-xs text-red-500">Vui lòng tạo lại sau khi điều chỉnh.</p>
-                </div>
-              </div>
-            )}
+            {renderContent()}
           </div>
         </div>
       </div>
+
+      {/* Top-level confirm modals */}
+      <ConfirmModal open={showSubmitConfirm} icon="send" iconColor="text-indigo-500"
+        title={isSO ? 'Xác nhận gửi duyệt?' : 'Xác nhận submit Transfer?'}
+        description={isSO
+          ? 'Lệnh xuất sẽ được gửi lên Manager để phê duyệt. Sau khi submit, đơn sẽ bị khoá chỉnh sửa.'
+          : 'Internal Transfer sẽ được tự động APPROVED và chuyển sang bước phân bổ tồn kho.'}
+        confirmLabel="Xác nhận Submit" confirmColor="bg-indigo-600 hover:bg-indigo-700"
+        loading={actionLoading} onConfirm={handleSubmit} onCancel={() => setShowSubmitConfirm(false)} />
+
+      <ConfirmModal open={showApproveConfirm} icon="verified" iconColor="text-emerald-500"
+        title="Xác nhận duyệt lệnh xuất?"
+        description={`Duyệt lệnh xuất ${item.documentCode}. Keeper sẽ tiến hành phân bổ tồn kho và lấy hàng.`}
+        confirmLabel="Duyệt" confirmColor="bg-emerald-600 hover:bg-emerald-700"
+        loading={actionLoading} onConfirm={handleApprove} onCancel={() => setShowApproveConfirm(false)} />
 
       {showReject && (
         <RejectModal code={item.documentCode} onConfirm={handleReject}
@@ -1044,7 +1062,7 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
   );
 }
 
-// ─── Helper component: auto-load taskId for QC_SCAN state ────────────────────
+// ─── Helper ─────────────────────────────────────────────────────────────────────
 function AutoLoadTaskId({ documentId, onLoaded }: { documentId: number; onLoaded: (taskId: number) => void }) {
   useEffect(() => {
     fetchPickListByDocument(documentId)

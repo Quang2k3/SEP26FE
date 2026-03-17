@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react';
 import { fetchSuppliers, type Supplier } from '@/services/supplierService';
 import { fetchWarehouses, type Warehouse } from '@/services/warehouseService';
-import { searchSkus, type SkuOption } from '@/services/skuService';
+import { searchSkusSimple, type SkuOption } from '@/services/skuService';
 import { createDraftReceivingOrder } from '@/services/receivingOrdersService';
 import toast from 'react-hot-toast';
 import Portal from '@/components/ui/Portal';
@@ -161,7 +161,7 @@ function SkuCombobox({ value, onSelect }: {
   }, [value?.skuCode]);
 
   useEffect(() => {
-    searchSkus('').then(setResults).catch(() => {});
+    searchSkusSimple('').then(setResults).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -183,7 +183,7 @@ function SkuCombobox({ value, onSelect }: {
     if (timerRef.current) clearTimeout(timerRef.current);
     setSearching(true);
     timerRef.current = setTimeout(async () => {
-      try { setResults(await searchSkus(q)); }
+      try { setResults(await searchSkusSimple(q)); }
       catch { }
       finally { setSearching(false); }
     }, 250);
@@ -200,7 +200,7 @@ function SkuCombobox({ value, onSelect }: {
     isConfirmed.current = false;
     setInputVal('');
     onSelect(null);
-    searchSkus('').then(setResults).catch(() => {});
+    searchSkusSimple('').then(setResults).catch(() => {});
   };
 
   return (
