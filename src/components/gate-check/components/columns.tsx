@@ -32,6 +32,7 @@ interface Props {
   onDelete?: (r: ReceivingOrder) => void;
   loadingId: number | null;
   submitLoadingId: number | null;
+  detailLoadingId?: number | null;
 }
 
 const ICO = "material-symbols-outlined text-[13px]";
@@ -47,6 +48,7 @@ export function getReceivingColumns({
   onDelete,
   loadingId,
   submitLoadingId,
+  detailLoadingId,
 }: Props): Column<ReceivingOrder>[] {
   return [
     {
@@ -104,23 +106,29 @@ export function getReceivingColumns({
       key: "col_detail",
       title: "Chi tiết",
       align: "center",
-      render: (r) => (
-        <div className="flex items-center gap-1">
-          <button onClick={() => onDetail(r)} className={BTN_GHOST}>
-            <span className={ICO}>{r.status === "DRAFT" ? "edit" : "visibility"}</span>
-            {r.status === "DRAFT" ? "Sửa" : "Xem"}
-          </button>
-          {r.status === "DRAFT" && onDelete && (
-            <button
-              onClick={() => onDelete(r)}
-              className={`${BTN} bg-red-50 border-red-100 text-red-400 hover:text-red-600 hover:bg-red-100`}
-              title="Xóa phiếu nháp"
-            >
-              <span className={ICO}>delete</span>
+      render: (r) => {
+        const isDetailLoading = detailLoadingId === r.receivingId;
+        return (
+          <div className="flex items-center gap-1">
+            <button onClick={() => onDetail(r)} disabled={isDetailLoading} className={BTN_GHOST}>
+              {isDetailLoading
+                ? <span className={`${ICO} animate-spin`}>progress_activity</span>
+                : <span className={ICO}>{r.status === "DRAFT" ? "edit" : "visibility"}</span>
+              }
+              {r.status === "DRAFT" ? "Sửa" : "Xem"}
             </button>
-          )}
-        </div>
-      ),
+            {r.status === "DRAFT" && onDelete && (
+              <button
+                onClick={() => onDelete(r)}
+                className={`${BTN} bg-red-50 border-red-100 text-red-400 hover:text-red-600 hover:bg-red-100`}
+                title="Xóa phiếu nháp"
+              >
+                <span className={ICO}>delete</span>
+              </button>
+            )}
+          </div>
+        );
+      },
     },
 
     // ── Cột Action ────────────────────────────────────────

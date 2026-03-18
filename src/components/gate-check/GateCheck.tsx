@@ -614,6 +614,7 @@ export default function GateCheckContent() {
   const [submitGrnReceiving, setSubmitGrnReceiving] = useState<ReceivingOrder | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [grnDetailLoading, setGrnDetailLoading] = useState<number | null>(null);
+  const [detailLoadingId, setDetailLoadingId] = useState<number | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -695,6 +696,19 @@ export default function GateCheckContent() {
     }
   };
 
+  // ── Mở chi tiết / sửa — fetch full data (có items) trước khi mở modal ────
+  const handleOpenDetail = async (r: ReceivingOrder) => {
+    setDetailLoadingId(r.receivingId);
+    try {
+      const full = await fetchReceivingOrder(r.receivingId);
+      setDetailReceiving(full);
+    } catch {
+      setDetailReceiving(r); // fallback
+    } finally {
+      setDetailLoadingId(null);
+    }
+  };
+
   // ── Gen GRN ───────────────────────────────────────────────────────────────
   const handleGrnConfirm = async (r: ReceivingOrder) => {
     setGrnDetailLoading(r.receivingId);
@@ -742,7 +756,7 @@ export default function GateCheckContent() {
 
   const columns = getReceivingColumns({
     userRole,
-    onDetail: r => setDetailReceiving(r),
+    onDetail: handleOpenDetail,
     onSubmitConfirm: handleSubmitConfirm,
     onScan: r => setScanReceiving(r),
     onGenerateGrn: handleGrnConfirm,
@@ -750,6 +764,7 @@ export default function GateCheckContent() {
     onViewIncident: () => router.push("/manager-dashboard/incident"),
     onDelete: handleDeleteConfirm,
     loadingId: grnDetailLoading,
+    detailLoadingId,
     submitLoadingId,
   });
 
