@@ -142,9 +142,12 @@ function KeeperInboundScanner({ token, receivingId }: { token: string; receiving
   const [submitting, setSubmitting] = useState(false);
   const [expectedItems, setExpectedItems] = useState<InboundExpectedItem[]>([]);
   const [scannedMap, setScannedMap] = useState<Record<string, number>>({});
+  // skuIdMap: skuCode → skuId (lưu từ scan response để dùng cho DELETE)
+  const [skuIdMap, setSkuIdMap]   = useState<Record<string, number>>({});
 
   const inflightRef = useRef(false);
   const scannedRef  = useRef<Record<string, number>>({});
+  const sessionId   = getSessionId(token);
   useEffect(() => { scannedRef.current = scannedMap; }, [scannedMap]);
 
   useEffect(() => {
@@ -166,7 +169,9 @@ function KeeperInboundScanner({ token, receivingId }: { token: string; receiving
       const d = await r.json();
       if (d?.success) {
         const sku = d.data?.skuCode ?? barcode; const newQty = d.data?.newQty ?? 1;
+        const skuId: number = d.data?.skuId ?? 0;
         setScannedMap(prev => ({ ...prev, [sku]: newQty }));
+        setSkuIdMap(prev => ({ ...prev, [sku]: skuId }));
         toast(`✓ ${sku} — tổng: ${newQty}`);
         if (navigator.vibrate) navigator.vibrate(60);
       } else toast(d?.message ?? 'Lỗi', true);
@@ -177,18 +182,25 @@ function KeeperInboundScanner({ token, receivingId }: { token: string; receiving
   const decrementSku = useCallback(async (skuCode: string) => {
     if (locked || inflightRef.current) return;
     if ((scannedRef.current[skuCode] ?? 0) <= 0) { toast('Số lượng đã về 0', true); return; }
+    if (!sessionId) { toast('Không tìm thấy session', true); return; }
+    const skuId = skuIdMap[skuCode] ?? 0;
+    if (!skuId)    { toast('Không tìm thấy SKU ID', true); return; }
     inflightRef.current = true;
     try {
-      const r = await fetch(`${API_BASE}/v1/scan-events`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ barcode: skuCode, qty: -1, condition: 'PASS', receivingId }),
+      const params = new URLSearchParams({ sessionId, skuId: String(skuId), condition: 'PASS', qty: '1', receivingId: String(receivingId) });
+      const r = await fetch(`${API_BASE}/v1/scan-events?${params}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
       });
       const d = await r.json();
-      if (d?.success) { const nq = d.data?.newQty ?? Math.max(0, (scannedRef.current[skuCode] ?? 1) - 1); setScannedMap(prev => ({ ...prev, [skuCode]: nq })); toast(`↩ ${skuCode} — tổng: ${nq}`); if (navigator.vibrate) navigator.vibrate([30, 20, 30]); }
-      else toast(d?.message ?? 'Lỗi khi trừ', true);
+      if (d?.success || r.status === 200) {
+        const newQty = Math.max(0, (scannedRef.current[skuCode] ?? 1) - 1);
+        setScannedMap(prev => ({ ...prev, [skuCode]: newQty }));
+        toast(`↩ ${skuCode} — tổng: ${newQty}`);
+        if (navigator.vibrate) navigator.vibrate([30, 20, 30]);
+      } else toast(d?.message ?? 'Lỗi khi trừ', true);
     } catch { toast('Mất kết nối', true); }
     finally { inflightRef.current = false; }
-  }, [locked, token, receivingId, toast]);
+  }, [locked, token, receivingId, sessionId, skuIdMap, toast]);
 
   const { stopQr } = useCamera(scanBarcode, setStatus);
 
@@ -296,7 +308,9 @@ function KeeperInboundScanner({ token, receivingId }: { token: string; receiving
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. QC INBOUND — kiểm định chất lượng hàng nhận
-//    Status flow: PENDING_COUNT → scan PASS/FAIL/HOLD → qc-submit-session → QC_APPROVED
+//    Status flow: PENDING_COUNT → scan PASS/FAIL → qc-submit-session → QC_APPROVED
+//    Backend chỉ nhận PASS hoặc FAIL (không có HOLD)
+//    HOLD trên UI → gửi FAIL + reasonCode="HOLD" lên API
 // ─────────────────────────────────────────────────────────────────────────────
 function QCInboundScanner({ token, receivingId }: { token: string; receivingId: number }) {
   const { toasts, show: toast } = useToast();
@@ -307,10 +321,13 @@ function QCInboundScanner({ token, receivingId }: { token: string; receivingId: 
   const [submitting, setSubmitting] = useState(false);
   const [qcCondition, setQcCondition] = useState<QcCondition>('PASS');
   const [expectedItems, setExpectedItems] = useState<InboundExpectedItem[]>([]);
-  const [qcMap, setQcMap] = useState<Record<string, { pass: number; fail: number; hold: number }>>({});
+  // qcMap: skuCode → { pass, fail, hold, skuId }
+  const [qcMap, setQcMap] = useState<Record<string, { pass: number; fail: number; hold: number; skuId: number }>>({});
 
   const inflightRef  = useRef(false);
   const conditionRef = useRef<QcCondition>('PASS');
+  // sessionId lấy từ JWT token (server embed vào scan token)
+  const sessionId    = getSessionId(token);
   useEffect(() => { conditionRef.current = qcCondition; }, [qcCondition]);
 
   useEffect(() => {
@@ -320,19 +337,34 @@ function QCInboundScanner({ token, receivingId }: { token: string; receivingId: 
 
   const lockUI = useCallback((msg: string) => { setLocked(true); setLockedMsg(msg); }, []);
 
+  // Map UI condition → API condition (backend chỉ nhận PASS/FAIL)
+  const toApiCondition = (c: QcCondition) => c === 'HOLD' ? 'FAIL' : c;
+  const toApiReasonCode = (c: QcCondition) => c === 'HOLD' ? 'HOLD' : undefined;
+
   const scanBarcode = useCallback(async (barcode: string) => {
     if (locked || inflightRef.current) return;
     inflightRef.current = true;
-    setStatus(`Gửi: ${barcode} [${conditionRef.current}]`);
+    const cond = conditionRef.current;
+    setStatus(`Gửi: ${barcode} [${cond}]`);
     try {
+      const body: Record<string, unknown> = {
+        barcode, qty: 1,
+        condition: toApiCondition(cond),
+        receivingId,
+      };
+      if (cond === 'HOLD') body.reasonCode = 'HOLD';
       const r = await fetch(`${API_BASE}/v1/scan-events`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ barcode, qty: 1, condition: conditionRef.current, receivingId }),
+        body: JSON.stringify(body),
       });
       const d = await r.json();
       if (d?.success) {
-        const sku = d.data?.skuCode ?? barcode; const cond = conditionRef.current;
-        setQcMap(prev => { const c = prev[sku] ?? { pass: 0, fail: 0, hold: 0 }; return { ...prev, [sku]: { ...c, [cond.toLowerCase()]: c[cond.toLowerCase() as 'pass'|'fail'|'hold'] + 1 } }; });
+        const sku = d.data?.skuCode ?? barcode;
+        const skuId: number = d.data?.skuId ?? 0;
+        setQcMap(prev => {
+          const c = prev[sku] ?? { pass: 0, fail: 0, hold: 0, skuId };
+          return { ...prev, [sku]: { ...c, skuId, [cond.toLowerCase()]: c[cond.toLowerCase() as 'pass'|'fail'|'hold'] + 1 } };
+        });
         const icon = cond === 'PASS' ? '✓' : cond === 'FAIL' ? '✗' : '⏸';
         toast(`${icon} ${sku} [${cond}]`);
         if (navigator.vibrate) navigator.vibrate(cond === 'FAIL' ? [80, 30, 80] : 60);
@@ -341,35 +373,51 @@ function QCInboundScanner({ token, receivingId }: { token: string; receivingId: 
     finally { inflightRef.current = false; setStatus('Camera sẵn sàng'); setTimeout(() => { inflightRef.current = false; }, 600); }
   }, [locked, token, receivingId, toast]);
 
+  // Trừ -1: gọi DELETE /v1/scan-events với đúng sessionId + skuId + condition
   const decrementSku = useCallback(async (skuCode: string) => {
     if (locked || inflightRef.current) return;
-    const cond = conditionRef.current;
-    const cur = qcMap[skuCode]?.[cond.toLowerCase() as 'pass'|'fail'|'hold'] ?? 0;
-    if (cur <= 0) { toast(`Chưa có ${cond} nào để trừ`, true); return; }
+    const cond    = conditionRef.current;
+    const entry   = qcMap[skuCode];
+    const curQty  = entry?.[cond.toLowerCase() as 'pass'|'fail'|'hold'] ?? 0;
+    if (curQty <= 0) { toast(`Không có ${cond} nào để trừ`, true); return; }
+    if (!sessionId)  { toast('Không tìm thấy session', true); return; }
+    const skuId   = entry?.skuId ?? 0;
+    if (!skuId)      { toast('Không tìm thấy SKU ID', true); return; }
     inflightRef.current = true;
     try {
-      const r = await fetch(`${API_BASE}/v1/scan-events`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ barcode: skuCode, qty: -1, condition: cond, receivingId }),
+      const apiCond = toApiCondition(cond);
+      const params  = new URLSearchParams({ sessionId, skuId: String(skuId), condition: apiCond, qty: '1', receivingId: String(receivingId) });
+      const r = await fetch(`${API_BASE}/v1/scan-events?${params}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
       });
       const d = await r.json();
-      if (d?.success) {
-        setQcMap(prev => { const c = prev[skuCode] ?? { pass: 0, fail: 0, hold: 0 }; return { ...prev, [skuCode]: { ...c, [cond.toLowerCase()]: Math.max(0, c[cond.toLowerCase() as 'pass'|'fail'|'hold'] - 1) } }; });
-        toast(`↩ ${skuCode} [${cond}] -1`);
-      } else toast(d?.message ?? 'Lỗi', true);
+      if (d?.success || r.status === 200) {
+        setQcMap(prev => {
+          const c = prev[skuCode] ?? { pass: 0, fail: 0, hold: 0, skuId };
+          const newVal = Math.max(0, c[cond.toLowerCase() as 'pass'|'fail'|'hold'] - 1);
+          return { ...prev, [skuCode]: { ...c, [cond.toLowerCase()]: newVal } };
+        });
+        toast(`↩ ${skuCode} [${cond}] −1`);
+        if (navigator.vibrate) navigator.vibrate([30, 20, 30]);
+      } else toast(d?.message ?? 'Lỗi khi trừ', true);
     } catch { toast('Mất kết nối', true); }
     finally { inflightRef.current = false; }
-  }, [locked, token, receivingId, qcMap, toast]);
+  }, [locked, token, receivingId, sessionId, qcMap, toast]);
 
   const { stopQr } = useCamera(scanBarcode, setStatus);
 
   const confirmQC = async () => {
+    if (!sessionId) { toast('Không tìm thấy session ID', true); return; }
     const hasFail = Object.values(qcMap).some(v => v.fail > 0 || v.hold > 0);
     const msg = hasFail ? 'Có hàng FAIL/HOLD. Xác nhận gửi báo cáo QC?' : 'Xác nhận tất cả hàng PASS — Gửi duyệt?';
     if (!window.confirm(msg)) return;
     setSubmitting(true);
     try {
-      const r = await fetch(`${API_BASE}/v1/receiving-orders/${receivingId}/qc-submit-session`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      // sessionId là @RequestParam — truyền qua query string
+      const r = await fetch(
+        `${API_BASE}/v1/receiving-orders/${receivingId}/qc-submit-session?sessionId=${encodeURIComponent(sessionId)}`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
+      );
       const d = await r.json();
       if (d?.success) { toast('✅ QC hoàn tất!'); lockUI('QC đã xác nhận — phiếu chuyển duyệt'); }
       else toast(d?.message ?? 'Lỗi', true);
