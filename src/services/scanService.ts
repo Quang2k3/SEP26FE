@@ -10,7 +10,10 @@ export function getScanUrl(
   receivingId?: number | null,
 ): Promise<string> {
   // NEXT_PUBLIC vars are inlined at build time — always available
-  const base = process.env.NEXT_PUBLIC_FE_BASE_URL ?? '';
+  // Fallback to window.location.origin so the URL always includes the domain
+  const base =
+    process.env.NEXT_PUBLIC_FE_BASE_URL ||
+    (typeof window !== 'undefined' ? window.location.origin : '');
   let url = `${base}/scan?token=${encodeURIComponent(token)}`;
   if (receivingId != null) url += `&receivingId=${receivingId}`;
   return Promise.resolve(url);
