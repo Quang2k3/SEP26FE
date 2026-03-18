@@ -91,6 +91,10 @@ export default function ScannerPage() {
   const qrRef        = useRef<any>(null);
   const qrRunningRef = useRef(false);
 
+  // Refs so sendBarcode always reads latest values without stale closure
+  const pickItemsRef  = useRef<PickItem[]>([]);
+  const scannedQtyRef = useRef<Record<string, number>>({});
+
   // ── Load pick items for outbound_picking ──
   useEffect(() => {
     if (mode !== 'outbound_picking' || !taskId) return;
@@ -98,9 +102,19 @@ export default function ScannerPage() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())
-      .then(d => { if (d?.success) setPickItems(d.data?.items ?? []); })
+      .then(d => {
+        if (d?.success) {
+          const items = d.data?.items ?? [];
+          pickItemsRef.current = items;
+          setPickItems(items);
+        }
+      })
       .catch(() => {});
   }, [mode, taskId, token]);
+
+  // Keep refs in sync with state
+  useEffect(() => { pickItemsRef.current = pickItems; }, [pickItems]);
+  useEffect(() => { scannedQtyRef.current = scannedQty; }, [scannedQty]);
 
   // ── Stop QR ──
   const stopQr = useCallback(() => {
@@ -121,9 +135,12 @@ export default function ScannerPage() {
   const sendBarcode = useCallback(async (barcode: string, qty = 1) => {
     if (locked || inflightRef.current) return;
 
-    // outbound_picking: local tracking
+    // outbound_picking: local tracking — use refs for fresh values
     if (mode === 'outbound_picking') {
-      const matched = pickItems.filter(it =>
+      const currentItems = pickItemsRef.current;
+      const currentQty   = scannedQtyRef.current;
+
+      const matched = currentItems.filter(it =>
         it.skuCode.toUpperCase() === barcode || (it.barcode ?? '').toUpperCase() === barcode
       );
       if (!matched.length) { toast(`Mã ${barcode} không có trong Pick List!`, true); return; }
@@ -133,14 +150,16 @@ export default function ScannerPage() {
         const it = matched[i];
         const key = it.taskItemId ? String(it.taskItemId) : `${it.skuCode}_${i}`;
         const req = it.requiredQty;
-        const cur = scannedQty[key] ?? 0;
+        const cur = currentQty[key] ?? 0;
         if (cur < req) { target = { item: it, key, req, cur }; break; }
       }
       if (!target) { toast(`Đã đủ số lượng cho ${matched[0].skuCode}`); return; }
 
       const newCur = target.cur + 1;
       const rem = target.req - newCur;
-      setScannedQty(prev => ({ ...prev, [target!.key]: newCur }));
+      // Update ref immediately so next scan reads fresh value
+      scannedQtyRef.current = { ...currentQty, [target.key]: newCur };
+      setScannedQty({ ...scannedQtyRef.current });
       if (rem > 0) toast(`${target.item.skuCode} ${newCur}/${target.req} (còn ${rem})`);
       else toast(`✅ Đủ rồi! ${target.item.skuCode} ×${target.req}`);
       if (navigator.vibrate) navigator.vibrate(rem <= 0 ? [80, 30, 80] : 80);
@@ -191,7 +210,7 @@ export default function ScannerPage() {
       setStatus('Camera sẵn sàng (QR) — đưa QR vào khung');
       setTimeout(() => { inflightRef.current = false; }, 600);
     }
-  }, [locked, mode, pickItems, scannedQty, qcCondition, token, taskId, receivingId, toast, lockUI]);
+  }, [locked, mode, qcCondition, token, taskId, receivingId, toast, lockUI]); // pickItems/scannedQty via refs
 
   // ── Start QR Camera ──
   useEffect(() => {
