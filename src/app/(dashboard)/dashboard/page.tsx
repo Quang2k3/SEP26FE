@@ -10,51 +10,132 @@ import { fetchWarehouses, type Warehouse } from '@/services/warehouseService';
 import { fetchPutawayTasks } from '@/services/putawayService';
 import { fetchGrns } from '@/services/grnService';
 import { getStoredSession } from '@/services/authService';
+import { fetchThroughput7Days, type ThroughputPoint } from '@/services/dashboardService';
 
 // ─── Chart ────────────────────────────────────────────────────────────────────
 
-interface ChartPoint { label: string; inbound: number; outbound: number }
-const DAYS: ChartPoint[] = [
-  { label: 'T2', inbound: 142, outbound: 98  },
-  { label: 'T3', inbound: 189, outbound: 124 },
-  { label: 'T4', inbound: 165, outbound: 107 },
-  { label: 'T5', inbound: 212, outbound: 158 },
-  { label: 'T6', inbound: 198, outbound: 143 },
-  { label: 'T7', inbound: 231, outbound: 172 },
-  { label: 'CN', inbound: 147, outbound: 140 },
-];
-
-function ThroughputChart() {
+function ThroughputChart({ data, loading }: { data: ThroughputPoint[]; loading: boolean }) {
   const W = 620, H = 180, PAD_L = 36, PAD_R = 12, PAD_T = 12, PAD_B = 32;
   const chartW = W - PAD_L - PAD_R;
   const chartH = H - PAD_T - PAD_B;
-  const maxVal = Math.max(...DAYS.map(d => Math.max(d.inbound, d.outbound)));
-  const yMax = Math.ceil(maxVal / 50) * 50;
-  const n = DAYS.length;
-  const xStep = chartW / (n - 1);
-  const toX = (i: number) => PAD_L + i * xStep;
-  const toY = (v: number) => PAD_T + chartH - (v / yMax) * chartH;
-  const inboundPts  = DAYS.map((d, i) => `${toX(i)},${toY(d.inbound)}`).join(' ');
-  const outboundPts = DAYS.map((d, i) => `${toX(i)},${toY(d.outbound)}`).join(' ');
-  const areaIn  = `M${PAD_L},${PAD_T + chartH} L` + DAYS.map((d, i) => `${toX(i)},${toY(d.inbound)}`).join(' L')  + ` L${toX(n-1)},${PAD_T + chartH} Z`;
-  const areaOut = `M${PAD_L},${PAD_T + chartH} L` + DAYS.map((d, i) => `${toX(i)},${toY(d.outbound)}`).join(' L') + ` L${toX(n-1)},${PAD_T + chartH} Z`;
-  const gridVals = [0, yMax * 0.25, yMax * 0.5, yMax * 0.75, yMax].map(v => Math.round(v));
+
+  // Loading skeleton
+  if (loading) {
+    return (
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="none">
+        {[0, 1, 2, 3].map(i => (
+          <rect key={i} x={PAD_L} y={PAD_T + i * (chartH / 4)} width={chartW} height="1" fill="#f1f5f9" />
+        ))}
+        {[0, 1, 2, 3, 4, 5, 6].map(i => {
+          const x = PAD_L + i * (chartW / 6);
+          return (
+            <g key={i}>
+              <rect x={x - 20} y={PAD_T + 20} width={40} height={chartH - 20} rx="4" fill="#f8fafc" />
+              <text x={x} y={H - 6} fontSize="10" fill="#cbd5e1" textAnchor="middle">...</text>
+            </g>
+          );
+        })}
+      </svg>
+    );
+  }
+
+  // Tất cả đều 0 → empty state
+  const allZero = data.every(d => d.inbound === 0 && d.outbound === 0);
+  if (allZero) {
+    return (
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="none">
+        {/* Grid lines */}
+        {[0, 1, 2, 3, 4].map(i => {
+          const y = PAD_T + (chartH / 4) * i;
+          return <line key={i} x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="#f1f5f9" strokeWidth="1" />;
+        })}
+        {/* Day labels */}
+        {data.map((d, i) => {
+          const x = PAD_L + i * (chartW / 6);
+          return <text key={d.label} x={x} y={H - 6} fontSize="10" fill="#94a3b8" textAnchor="middle">{d.label}</text>;
+        })}
+        {/* Empty message */}
+        <text x={W / 2} y={H / 2 - 6} fontSize="12" fill="#cbd5e1" textAnchor="middle">Chưa có dữ liệu trong 7 ngày qua</text>
+        <text x={W / 2} y={H / 2 + 10} fontSize="10" fill="#e2e8f0" textAnchor="middle">GRN đã nhập kho và đơn xuất kho sẽ hiển thị tại đây</text>
+      </svg>
+    );
+  }
+
+  const maxVal = Math.max(...data.map(d => Math.max(d.inbound, d.outbound)), 1);
+  const yMax   = Math.ceil(maxVal / 5) * 5 || 5; // step 5, tối thiểu 5
+  const n      = data.length;
+  const xStep  = chartW / (n - 1);
+  const toX    = (i: number) => PAD_L + i * xStep;
+  const toY    = (v: number) => PAD_T + chartH - (v / yMax) * chartH;
+
+  const inboundPts  = data.map((d, i) => `${toX(i)},${toY(d.inbound)}`).join(' ');
+  const outboundPts = data.map((d, i) => `${toX(i)},${toY(d.outbound)}`).join(' ');
+  const areaIn  = `M${PAD_L},${PAD_T + chartH} L` + data.map((d, i) => `${toX(i)},${toY(d.inbound)}`).join(' L')  + ` L${toX(n-1)},${PAD_T + chartH} Z`;
+  const areaOut = `M${PAD_L},${PAD_T + chartH} L` + data.map((d, i) => `${toX(i)},${toY(d.outbound)}`).join(' L') + ` L${toX(n-1)},${PAD_T + chartH} Z`;
+  // Grid: tối đa 5 đường ngang, step gọn
+  const gridStep = Math.ceil(yMax / 4);
+  const gridVals = Array.from({ length: 5 }, (_, i) => Math.min(i * gridStep, yMax));
+
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="none">
       <defs>
-        <linearGradient id="gIn"  x1="0" y1="0" x2="0" y2="1"><stop offset="0%"   stopColor="#3b82f6" stopOpacity="0.2"/><stop offset="100%" stopColor="#3b82f6" stopOpacity="0"/></linearGradient>
-        <linearGradient id="gOut" x1="0" y1="0" x2="0" y2="1"><stop offset="0%"   stopColor="#8b5cf6" stopOpacity="0.13"/><stop offset="100%" stopColor="#8b5cf6" stopOpacity="0"/></linearGradient>
+        <linearGradient id="gIn"  x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor="#3b82f6" stopOpacity="0.2"/>
+          <stop offset="100%" stopColor="#3b82f6" stopOpacity="0"/>
+        </linearGradient>
+        <linearGradient id="gOut" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor="#8b5cf6" stopOpacity="0.13"/>
+          <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0"/>
+        </linearGradient>
       </defs>
-      {gridVals.map(v => {
+
+      {/* Grid lines + Y labels */}
+      {gridVals.map((v, gi) => {
         const y = toY(v);
-        return (<g key={v}><line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="#f1f5f9" strokeWidth="1"/><text x={PAD_L - 6} y={y + 4} fontSize="9" fill="#94a3b8" textAnchor="end">{v}</text></g>);
+        return (
+          <g key={gi}>
+            <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="#f1f5f9" strokeWidth="1"/>
+            <text x={PAD_L - 6} y={y + 4} fontSize="9" fill="#94a3b8" textAnchor="end">{v}</text>
+          </g>
+        );
       })}
+
+      {/* Area fills */}
       <path d={areaIn}  fill="url(#gIn)"/>
       <path d={areaOut} fill="url(#gOut)"/>
+
+      {/* Lines */}
       <polyline points={inboundPts}  fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
       <polyline points={outboundPts} fill="none" stroke="#8b5cf6" strokeWidth="2"   strokeLinecap="round" strokeLinejoin="round" strokeDasharray="5 3"/>
-      {DAYS.map((d, i) => (<circle key={i} cx={toX(i)} cy={toY(d.inbound)} r="3.5" fill="white" stroke="#3b82f6" strokeWidth="2"/>))}
-      {DAYS.map((d, i) => (<text key={d.label} x={toX(i)} y={H - 6} fontSize="10" fill="#94a3b8" textAnchor="middle">{d.label}</text>))}
+
+      {/* Dots + tooltip values on inbound line */}
+      {data.map((d, i) => (
+        <g key={i}>
+          <circle cx={toX(i)} cy={toY(d.inbound)} r="3.5" fill="white" stroke="#3b82f6" strokeWidth="2"/>
+          {d.inbound > 0 && (
+            <text x={toX(i)} y={toY(d.inbound) - 7} fontSize="8.5" fill="#3b82f6" textAnchor="middle" fontWeight="600">
+              {d.inbound}
+            </text>
+          )}
+        </g>
+      ))}
+
+      {/* Dots on outbound line */}
+      {data.map((d, i) => (
+        <g key={`o${i}`}>
+          <circle cx={toX(i)} cy={toY(d.outbound)} r="3" fill="white" stroke="#8b5cf6" strokeWidth="1.5"/>
+          {d.outbound > 0 && (
+            <text x={toX(i)} y={toY(d.outbound) - 6} fontSize="8" fill="#8b5cf6" textAnchor="middle">
+              {d.outbound}
+            </text>
+          )}
+        </g>
+      ))}
+
+      {/* X labels */}
+      {data.map((d, i) => (
+        <text key={d.label} x={toX(i)} y={H - 6} fontSize="10" fill="#94a3b8" textAnchor="middle">{d.label}</text>
+      ))}
     </svg>
   );
 }
@@ -94,6 +175,10 @@ export default function DashboardPage() {
 
   const [warehouses, setWarehouses]     = useState<Warehouse[]>([]);
   const [loadingStats, setLoadingStats] = useState(true);
+
+  // Throughput chart
+  const [throughputData,    setThroughputData]    = useState<ThroughputPoint[]>([]);
+  const [loadingThroughput, setLoadingThroughput] = useState(true);
 
   // Manager stats
   const [managerStats, setManagerStats] = useState({
@@ -168,6 +253,12 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchWarehouses().then(setWarehouses).catch(() => {});
     loadStats();
+    // Throughput: fetch riêng, không block stats loading
+    setLoadingThroughput(true);
+    fetchThroughput7Days()
+      .then(setThroughputData)
+      .catch(() => setThroughputData([]))
+      .finally(() => setLoadingThroughput(false));
   }, [loadStats]);
 
   // ── Greeting ──
@@ -222,14 +313,22 @@ export default function DashboardPage() {
               <div className="px-5 pt-4 pb-3 flex items-center justify-between border-b border-gray-100">
                 <div>
                   <h3 className="text-sm font-bold text-gray-900">Xu hướng thông lượng</h3>
-                  <p className="text-xs text-gray-400 mt-0.5">Dữ liệu mô phỏng — sẽ cập nhật khi tích hợp API</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {loadingThroughput
+                      ? 'Đang tải dữ liệu thực...'
+                      : throughputData.every(d => d.inbound === 0 && d.outbound === 0)
+                        ? '7 ngày gần nhất — chưa có giao dịch'
+                        : `7 ngày gần nhất · ${throughputData.reduce((s, d) => s + d.inbound, 0)} GRN nhập · ${throughputData.reduce((s, d) => s + d.outbound, 0)} đơn xuất`}
+                  </p>
                 </div>
                 <div className="flex items-center gap-4 mr-2">
                   <div className="flex items-center gap-1.5"><span className="w-6 h-0.5 rounded-full bg-blue-500 inline-block" /><span className="text-xs text-gray-500">Nhập kho</span></div>
-                  <div className="flex items-center gap-1.5"><span className="w-5 border-t-2 border-dashed border-violet-400 inline-block" /><span className="text-xs text-gray-500">GRN</span></div>
+                  <div className="flex items-center gap-1.5"><span className="w-5 border-t-2 border-dashed border-violet-400 inline-block" /><span className="text-xs text-gray-500">Xuất kho</span></div>
                 </div>
               </div>
-              <div className="px-3 pb-3 pt-2 h-[220px] relative"><ThroughputChart /></div>
+              <div className="px-3 pb-3 pt-2 h-[220px] relative">
+                <ThroughputChart data={throughputData} loading={loadingThroughput} />
+              </div>
             </div>
             <AlertsList />
           </div>
