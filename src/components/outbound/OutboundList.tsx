@@ -21,7 +21,6 @@ import type {
 } from '@/interfaces/outbound';
 import {
   getOutboundColumns,
-  QcQuickScan,
   RejectModal,
 } from './components/columns';
 import OutboundFilter from './components/OutboundFilter';
@@ -88,7 +87,6 @@ export default function OutboundList() {
   // modal states
   const [showCreate,   setShowCreate]   = useState(false);
   const [detailItem,   setDetailItem]   = useState<OutboundListItem | null>(null);
-  const [qcScanItem,   setQcScanItem]   = useState<OutboundListItem | null>(null);
   const [rejectTarget, setRejectTarget] = useState<OutboundListItem | null>(null);
   const [approvingId,  setApprovingId]  = useState<number | null>(null);
   const [rejecting,    setRejecting]    = useState(false);
@@ -141,7 +139,6 @@ export default function OutboundList() {
   const columns = getOutboundColumns({
     role,
     onView:    (row) => setDetailItem(row),
-    onQcScan:  (row) => setQcScanItem(row),
     onPickScan:(row) => setDetailItem(row),   // mở modal detail ở bước PICKING
     onApprove: handleApprove,
     onReject:  (row) => setRejectTarget(row),
@@ -204,13 +201,7 @@ export default function OutboundList() {
         onRefresh={() => load(page)}
       />
 
-      {qcScanItem && (
-        <QcQuickScan
-          order={qcScanItem}
-          onClose={() => setQcScanItem(null)}
-          onDone={() => { setQcScanItem(null); load(page); }}
-        />
-      )}
+
 
       {rejectTarget && (
         <RejectModal

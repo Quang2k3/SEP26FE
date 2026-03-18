@@ -304,7 +304,6 @@ export interface OutboundColumnCallbacks {
   role: 'MANAGER' | 'QC' | 'KEEPER';
   onView: (row: OutboundListItem) => void;
   // QC
-  onQcScan?: (row: OutboundListItem) => void;
   // Keeper
   onPickScan?: (row: OutboundListItem) => void;
   // Manager
@@ -314,27 +313,13 @@ export interface OutboundColumnCallbacks {
 }
 
 export function getOutboundColumns(cb: OutboundColumnCallbacks): Column<OutboundListItem>[] {
-  const { role, onView, onQcScan, onPickScan, onApprove, onReject, approvingId } = cb;
+  const { role, onView, onPickScan, onApprove, onReject, approvingId } = cb;
 
   const actionCol: Column<OutboundListItem> = {
     key: 'action',
     title: '',
     align: 'right',
     render: (row) => {
-      // ── QC: chỉ hiện nút khi đúng trạng thái ──
-      if (role === 'QC') {
-        if (row.status !== 'QC_SCAN') return null;
-        return (
-          <button
-            onClick={e => { e.stopPropagation(); onQcScan?.(row); }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-white bg-purple-600 rounded-xl hover:bg-purple-700 transition-colors whitespace-nowrap"
-          >
-            <span className="material-symbols-outlined text-[13px]">qr_code_scanner</span>
-            Quét QR
-          </button>
-        );
-      }
-
       // ── Keeper: action theo từng trạng thái ──
       if (role === 'KEEPER') {
         const cfg: Record<string, { label: string; cls: string }> = {
