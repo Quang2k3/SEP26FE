@@ -20,7 +20,6 @@ export const MANAGER_DASHBOARD: NavAction[] = [
 
 export const OUTBOUND_MANAGER_ACTIONS: NavAction[] = [
   { label: 'Tất cả lệnh xuất', path: '/outbound' },
-  { label: 'Chờ duyệt',        path: '/outbound?status=PENDING_APPROVAL' },
 ];
 
 // ── KEEPER ────────────────────────────────────────────────────────────────────
