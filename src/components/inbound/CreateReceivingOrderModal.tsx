@@ -44,51 +44,11 @@ function Field({ label, required, children }: { label: string; required?: boolea
   );
 }
 
-// ─── Date validation helpers ─────────────────────────────────────────────────
+// ─── Expiry helpers (từ expiryUtils) ─────────────────────────────────────────
+import { getExpiryInfo, EXPIRY_STYLE, validateReceivingDates } from '@/utils/expiryUtils';
 
-const today = () => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-};
-
-function validateDates(manufactureDate: string, expiryDate: string): { mfgError?: string; expError?: string } {
-  const errors: { mfgError?: string; expError?: string } = {};
-  const now = today();
-
-  if (manufactureDate) {
-    const mfg = new Date(manufactureDate);
-    // Ngày SX không được trong tương lai
-    if (mfg > now) {
-      errors.mfgError = 'Ngày sản xuất không được ở tương lai';
-    }
-  }
-
-  if (expiryDate) {
-    const exp = new Date(expiryDate);
-    // Ngày HSD không được trong quá khứ
-    if (exp < now) {
-      errors.expError = 'Hàng đã hết hạn sử dụng';
-    }
-    // Ngày HSD phải sau ngày SX
-    if (manufactureDate) {
-      const mfg = new Date(manufactureDate);
-      if (exp <= mfg) {
-        errors.expError = 'Hạn dùng phải sau ngày sản xuất';
-      }
-    }
-  }
-
-  // Cảnh báo nếu HSD còn < 30 ngày
-  if (expiryDate && !errors.expError) {
-    const exp = new Date(expiryDate);
-    const daysLeft = Math.floor((exp.getTime() - now.getTime()) / 86400000);
-    if (daysLeft < 30) {
-      errors.expError = `Cảnh báo: còn ${daysLeft} ngày hết hạn`;
-    }
-  }
-
-  return errors;
+function validateDates(manufactureDate: string, expiryDate: string) {
+  return validateReceivingDates(manufactureDate, expiryDate);
 }
 
 // ─── Portal Dropdown ─────────────────────────────────────────────────────────
@@ -306,6 +266,7 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
     setItems(p => p.map(i => i.id === id ? { ...i, skuCode: sku?.skuCode ?? '', skuName: sku?.skuName ?? '', skuId: sku?.skuId ?? null } : i));
   }, []);
 
+  // Bước 1: validate
   const handleSubmit = async () => {
     if (!warehouseId)                               { toast.error('Chọn kho nhận hàng'); return; }
     if (sourceType === 'SUPPLIER' && !supplierCode) { toast.error('Chọn nhà cung cấp'); return; }
@@ -314,20 +275,34 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
     const noQty = valid.find(i => !i.expectedQty || Number(i.expectedQty) <= 0);
     if (noQty)                                      { toast.error(`Nhập số lượng cho: ${noQty.skuCode}`); return; }
 
-    // Chặn submit nếu có lỗi date cứng (không chặn cảnh báo <30 ngày)
-    const hardDateError = valid.find(i =>
-      (i.mfgError && !i.mfgError.startsWith('Cảnh báo')) ||
-      (i.expError && !i.expError.startsWith('Cảnh báo'))
-    );
-    if (hardDateError) {
-      toast.error(`Lỗi ngày cho SKU ${hardDateError.skuCode}: ${hardDateError.mfgError || hardDateError.expError}`);
+    // Chặn hàng đã hết hạn HOẶC dưới 60 ngày
+    const blockedItems = valid.filter(i => i.expiryDate && getExpiryInfo(i.expiryDate)?.level === 'expired');
+    if (blockedItems.length > 0) {
+      const details = blockedItems.map(i => {
+        const info = getExpiryInfo(i.expiryDate);
+        return `${i.skuCode} (${info?.label})`;
+      }).join(', ');
+      toast.error(`Không thể nhận: ${details}`);
       return;
     }
 
-    // Cảnh báo nếu có hàng sắp hết hạn nhưng vẫn cho tiếp tục
-    const warnItems = valid.filter(i => i.expError?.startsWith('Cảnh báo'));
+    const hardDateError = valid.find(i =>
+      (i.mfgError && !i.mfgError.startsWith('Lưu ý')) ||
+      (i.expError && !i.expError.startsWith('Lưu ý'))
+    );
+    if (hardDateError) {
+      toast.error(`Lỗi ngày cho ${hardDateError.skuCode}: ${hardDateError.mfgError || hardDateError.expError}`);
+      return;
+    }
+
+    await doSubmit(valid);
+  };
+
+  // Bước 2: gọi API
+  const doSubmit = async (valid: ItemRow[]) => {
+    const warnItems = valid.filter(i => i.expiryDate && getExpiryInfo(i.expiryDate)?.level === 'warn');
     if (warnItems.length > 0) {
-      toast(`Lưu ý: ${warnItems.length} SKU sắp hết hạn`, { icon: '⚠️' });
+      toast(`${warnItems.length} SKU còn 60–90 ngày HSD — sẽ ưu tiên FEFO khi xuất`, { icon: '⚠️' });
     }
 
     setSubmitting(true);
@@ -481,23 +456,41 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
 
               {/* Column headers */}
               <div className="grid gap-2 px-3 mb-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest"
-                style={{ gridTemplateColumns: '2.8fr 0.8fr 1fr 1.1fr 1.1fr 28px' }}>
+                style={{ gridTemplateColumns: '2.8fr 0.8fr 1fr 1.1fr 1.2fr 28px' }}>
                 <div>SKU</div>
                 <div className="text-center">SL *</div>
                 <div>Số lô</div>
                 <div>Ngày SX</div>
-                <div>Hạn dùng</div>
+                <div>Hạn dùng *</div>
                 <div />
               </div>
 
               {/* Rows */}
               <div className="space-y-2">
-                {items.map((item, idx) => (
+                {items.map((item, idx) => {
+                  const expiryInfo = item.expiryDate ? getExpiryInfo(item.expiryDate) : null;
+                  const eStyle = expiryInfo ? EXPIRY_STYLE[expiryInfo.level] : null;
+                  return (
                   <div key={item.id}
-                    className="grid gap-2 items-center px-3 py-3 rounded-xl border transition-colors"
-                    style={{ gridTemplateColumns: '2.8fr 0.8fr 1fr 1.1fr 1.1fr 28px',
-                      background: item.skuCode ? '#fafbff' : 'white',
-                      borderColor: item.skuCode ? '#e0e7ff' : '#f3f4f6' }}>
+                    className="rounded-xl border transition-colors overflow-hidden"
+                    style={{
+                      background: item.skuCode ? (eStyle ? undefined : '#fafbff') : 'white',
+                      borderColor: eStyle ? undefined : (item.skuCode ? '#e0e7ff' : '#f3f4f6'),
+                    }}>
+
+                    {/* ExpiryBanner — hiện khi có thông tin HSD */}
+                    {expiryInfo && eStyle && (
+                      <div className={`flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold ${eStyle.bg} ${eStyle.text} border-b ${eStyle.border}`}>
+                        <span className="material-symbols-outlined text-[13px]">{eStyle.icon}</span>
+                        <span>{expiryInfo.label}</span>
+                        {expiryInfo.action && (
+                          <span className="ml-auto opacity-70 font-normal text-[10px]">{expiryInfo.action}</span>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="grid gap-2 items-center px-3 py-3"
+                      style={{ gridTemplateColumns: '2.8fr 0.8fr 1fr 1.1fr 1.2fr 28px' }}>
 
                     {/* SKU combobox */}
                     <SkuCombobox
@@ -539,28 +532,22 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
                       )}
                     </div>
 
-                    {/* Expiry date */}
+                    {/* Expiry date — với styling theo mức độ */}
                     <div>
                       <input type="date"
                         value={item.expiryDate}
                         min={item.manufactureDate || new Date().toISOString().split('T')[0]}
                         onChange={e => updateItem(item.id, 'expiryDate', e.target.value)}
-                        className={`w-full px-2 py-2 text-sm border bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all ${
-                          item.expError
-                            ? item.expError.startsWith('Cảnh báo')
-                              ? 'border-amber-300 bg-amber-50'
-                              : 'border-red-300 bg-red-50'
-                            : 'border-gray-200'
+                        className={`w-full px-2 py-2 text-sm border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all ${
+                          eStyle
+                            ? `${eStyle.inputBorder} ${eStyle.inputBg}`
+                            : 'border-gray-200 bg-white'
                         }`}
                       />
-                      {item.expError && (
-                        <p className={`text-[10px] mt-0.5 flex items-center gap-0.5 ${
-                          item.expError.startsWith('Cảnh báo') ? 'text-amber-600' : 'text-red-500'
-                        }`}>
-                          <span className="material-symbols-outlined text-[11px]">
-                            {item.expError.startsWith('Cảnh báo') ? 'warning' : 'error'}
-                          </span>
-                          {item.expError}
+                      {!item.expiryDate && item.skuCode && (
+                        <p className="text-[10px] text-amber-500 mt-0.5 flex items-center gap-0.5">
+                          <span className="material-symbols-outlined text-[11px]">info</span>
+                          Nên nhập HSD cho hóa chất
                         </p>
                       )}
                     </div>
@@ -571,17 +558,59 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
                       className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 disabled:opacity-20 transition-colors">
                       <span className="material-symbols-outlined text-[16px]">delete</span>
                     </button>
+                    </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
-              {/* Warning */}
+              {/* Warning — missing qty */}
               {items.some(i => i.skuCode && (!i.expectedQty || Number(i.expectedQty) <= 0)) && (
                 <p className="mt-2 text-xs text-red-500 flex items-center gap-1 px-1">
                   <span className="material-symbols-outlined text-[13px]">warning</span>
                   Có dòng chưa nhập số lượng
                 </p>
               )}
+
+              {/* Expiry summary panel */}
+              {(() => {
+                const validItems = items.filter(i => i.skuCode && i.expiryDate);
+                const blocked    = validItems.filter(i => getExpiryInfo(i.expiryDate)?.level === 'expired');
+                const warn       = validItems.filter(i => getExpiryInfo(i.expiryDate)?.level === 'warn');
+                const noExpiry   = items.filter(i => i.skuCode && !i.expiryDate);
+                if (!blocked.length && !warn.length && !noExpiry.length) return null;
+                return (
+                  <div className="mt-3 rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="px-3 py-2 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[14px] text-gray-400">event_busy</span>
+                      <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Tổng hợp kiểm tra HSD</span>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {blocked.length > 0 && (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-red-50">
+                          <span className="material-symbols-outlined text-[15px] text-red-500">dangerous</span>
+                          <span className="text-xs font-semibold text-red-700">{blocked.length} SKU KHÔNG ĐỦ HSD</span>
+                          <span className="text-[10px] text-red-500 ml-auto">Dưới 60 ngày — không nhận</span>
+                        </div>
+                      )}
+                      {warn.length > 0 && (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-amber-50">
+                          <span className="material-symbols-outlined text-[15px] text-amber-500">warning</span>
+                          <span className="text-xs font-semibold text-amber-700">{warn.length} SKU HSD 60–90 ngày</span>
+                          <span className="text-[10px] text-amber-500 ml-auto">Ưu tiên FEFO khi xuất</span>
+                        </div>
+                      )}
+                      {noExpiry.length > 0 && (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-gray-50">
+                          <span className="material-symbols-outlined text-[15px] text-gray-400">info</span>
+                          <span className="text-xs text-gray-500">{noExpiry.length} SKU chưa nhập HSD</span>
+                          <span className="text-[10px] text-gray-400 ml-auto">Nên nhập cho hóa chất</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -606,6 +635,7 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
           </div>
         </div>
       </div>
+      <style>{`@keyframes slideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }`}</style>
     </Portal>
   );
 }
