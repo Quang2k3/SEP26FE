@@ -30,42 +30,6 @@ function getUserRole(t: string): string {
   return roles.split(',')[0]?.trim().toUpperCase() ?? 'KEEPER';
 }
 
-/**
- * Chuẩn hoá chuỗi quét thành SKU/barcode:
- * - URL đầy đủ (http/https): thử query param sku/code/barcode/skuCode trước,
- *   sau đó fallback lấy path segment cuối cùng
- * - URL tương đối (/scan?token=...): bỏ qua — đây là link mở app, không phải barcode sản phẩm
- * - Plain text: trả về uppercase nguyên vẹn
- * - Trả về null nếu không xác định được
- */
-function extractSkuFromScan(raw: string): string | null {
-  const text = raw.trim();
-  if (!text || text.length < 2) return null;
-
-  // URL đầy đủ
-  if (text.toLowerCase().startsWith('http://') || text.toLowerCase().startsWith('https://')) {
-    try {
-      const url = new URL(text);
-      // Ưu tiên query param phổ biến chứa SKU
-      for (const key of ['sku', 'skuCode', 'code', 'barcode', 'itemCode']) {
-        const val = url.searchParams.get(key);
-        if (val && val.trim().length >= 2) return val.trim().toUpperCase();
-      }
-      // Fallback: path segment cuối — bỏ qua nếu là trang app nội bộ (/scan, /login, ...)
-      const segments = url.pathname.split('/').filter(Boolean);
-      const last = segments[segments.length - 1] ?? '';
-      const appRoutes = ['scan', 'login', 'dashboard', 'inbound', 'outbound', 'receiving'];
-      if (last && last.length >= 2 && !appRoutes.includes(last.toLowerCase())) {
-        return decodeURIComponent(last).toUpperCase();
-      }
-    } catch { /* parse thất bại */ }
-    return null;
-  }
-
-  // Plain text barcode/SKU (kể cả dài > 80 ký tự như barcode GS1)
-  return text.toUpperCase();
-}
-
 function useToast() {
   const [toasts, setToasts] = useState<{ id: number; msg: string; err: boolean }[]>([]);
   const counter = useRef(0);
@@ -131,7 +95,6 @@ function useCamera(onCode: (code: string) => void, setStatus: (s: string) => voi
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') { setStatus('Cần HTTPS để dùng camera'); return; }
     let cancelled = false;
     const tryStart = (retries: number) => {
       if ((window as any).Html5Qrcode) { if (!cancelled) startCam(); }
@@ -148,11 +111,34 @@ function useCamera(onCode: (code: string) => void, setStatus: (s: string) => voi
         const qr = new Html5Qrcode('reader'); qrRef.current = qr;
         await qr.start(camId, { fps: 10, qrbox: { width: 250, height: 250 }, videoConstraints: { facingMode: 'environment' } },
           (text: string) => {
-            const code = extractSkuFromScan(text);
-            if (!code) return;
+            const raw = text.trim();
+            if (!raw) return;
+            // Nếu là URL chứa /v1/scan?token= → đây là link mở trang scanner, KHÔNG phải barcode sản phẩm
+            if (raw.includes('/v1/scan') && raw.includes('token=')) return;
+            // Nếu là URL khác → thử lấy SKU từ path hoặc query param
+            let code = raw;
+            if (raw.toLowerCase().startsWith('http://') || raw.toLowerCase().startsWith('https://')) {
+              try {
+                const url = new URL(raw);
+                // Ưu tiên query param chứa SKU
+                const skuParam = url.searchParams.get('sku') ?? url.searchParams.get('skuCode')
+                  ?? url.searchParams.get('code') ?? url.searchParams.get('barcode');
+                if (skuParam && skuParam.trim().length >= 2) {
+                  code = skuParam.trim();
+                } else {
+                  // Fallback: path segment cuối
+                  const segments = url.pathname.split('/').filter(Boolean);
+                  const last = segments[segments.length - 1] ?? '';
+                  if (!last || last.length < 2) return;
+                  code = decodeURIComponent(last);
+                }
+              } catch { return; }
+            }
+            const finalCode = code.toUpperCase();
+            if (finalCode.length < 2) return;
             const now = Date.now();
-            if (code === lastCodeRef.current && now - lastAtRef.current < 1500) return;
-            lastCodeRef.current = code; lastAtRef.current = now; onCode(code);
+            if (finalCode === lastCodeRef.current && now - lastAtRef.current < 1500) return;
+            lastCodeRef.current = finalCode; lastAtRef.current = now; onCode(finalCode);
           }, () => {});
         qrRunning.current = true; setStatus('Camera sẵn sàng — đưa barcode vào khung');
       } catch (e: any) { setStatus(`Camera lỗi: ${e}`); }
@@ -622,12 +608,10 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
       if (navigator.vibrate) navigator.vibrate(rem <= 0 ? [80, 30, 80] : 80);
       return;
     }
-    if (barcode.toLowerCase().startsWith('http') || barcode.includes('://')) {
-      const extracted = extractSkuFromScan(barcode);
-      if (!extracted) { setStatus('⚠️ Không đọc được mã từ URL này'); return; }
-      sendBarcode(extracted);
-      return;
-    }
+    // Nếu là link scanner nội bộ → bỏ qua
+    if (barcode.includes('/v1/scan') && barcode.includes('token=')) { setStatus('⚠️ Đây là link mở trang scan, không phải barcode sản phẩm'); return; }
+    // Nếu là URL khác → không xử lý trong outbound
+    if (barcode.toLowerCase().startsWith('http://') || barcode.toLowerCase().startsWith('https://')) { setStatus('⚠️ Phát hiện URL — vui lòng quét barcode sản phẩm'); return; }
     inflightRef.current = true; setStatus(`Gửi: ${barcode}`);
     try {
       const body: any = { barcode, qty: 1, condition: conditionRef.current };
