@@ -232,6 +232,170 @@ function SubmitGrnModal({
   );
 }
 
+// ── PO Match helpers ─────────────────────────────────────────────────────────
+
+interface POMatchLine {
+  skuCode:      string;
+  skuName:      string;
+  expected:     number;
+  received:     number;
+  diff:         number;         // received - expected (âm = thiếu, dương = thừa)
+  variance:     number;         // |diff| / expected * 100
+  status:       'ok' | 'over' | 'under' | 'missing';
+}
+
+interface POMatchSummary {
+  lines:           POMatchLine[];
+  totalExpected:   number;
+  totalReceived:   number;
+  totalDiff:       number;
+  overallVariance: number;      // |totalDiff| / totalExpected * 100
+  needsReview:     boolean;     // overallVariance > 5%
+  hasUnder:        boolean;
+  hasOver:         boolean;
+}
+
+function getPOMatchData(receiving: ReceivingOrder): POMatchSummary {
+  const items = receiving.items ?? [];
+  const lines: POMatchLine[] = items.map(item => {
+    const expected = item.expectedQty ?? 0;
+    const received = item.receivedQty  ?? 0;
+    const diff     = received - expected;
+    const variance = expected > 0 ? Math.abs(diff) / expected * 100 : 0;
+    const status: POMatchLine['status'] =
+      received === 0   ? 'missing' :
+      diff < 0         ? 'under'   :
+      diff > 0         ? 'over'    : 'ok';
+    return { skuCode: item.skuCode, skuName: item.skuName, expected, received, diff, variance, status };
+  });
+
+  const totalExpected   = lines.reduce((s, l) => s + l.expected, 0);
+  const totalReceived   = lines.reduce((s, l) => s + l.received, 0);
+  const totalDiff       = totalReceived - totalExpected;
+  const overallVariance = totalExpected > 0 ? Math.abs(totalDiff) / totalExpected * 100 : 0;
+
+  return {
+    lines,
+    totalExpected,
+    totalReceived,
+    totalDiff,
+    overallVariance,
+    needsReview: overallVariance > 5,
+    hasUnder:    lines.some(l => l.status === 'under' || l.status === 'missing'),
+    hasOver:     lines.some(l => l.status === 'over'),
+  };
+}
+
+// Màu sắc theo mức variance
+function varianceColor(v: number, status: POMatchLine['status']): string {
+  if (status === 'ok')      return 'text-emerald-600';
+  if (status === 'missing') return 'text-red-600';
+  if (v > 10)               return status === 'under' ? 'text-red-600'    : 'text-orange-600';
+  if (v > 5)                return status === 'under' ? 'text-orange-600' : 'text-amber-600';
+  return 'text-amber-500';
+}
+
+function POMatchPanel({ match }: { match: POMatchSummary }) {
+  return (
+    <div className="rounded-xl border overflow-hidden"
+      style={{ borderColor: match.needsReview ? '#fca5a5' : '#d1fae5' }}>
+
+      {/* ── Tổng hợp header ── */}
+      <div className={`px-4 py-3 flex items-center justify-between ${
+        match.needsReview ? 'bg-red-50' : 'bg-emerald-50'
+      }`}>
+        <div className="flex items-center gap-2">
+          <span className={`material-symbols-outlined text-[18px] ${
+            match.needsReview ? 'text-red-500' : 'text-emerald-500'
+          }`}>
+            {match.needsReview ? 'warning' : 'check_circle'}
+          </span>
+          <div>
+            <p className={`text-xs font-bold ${match.needsReview ? 'text-red-800' : 'text-emerald-800'}`}>
+              {match.needsReview ? 'Variance >5% — Cần Manager review' : 'Đối chiếu PO đạt'}
+            </p>
+            <p className={`text-[10px] mt-0.5 ${match.needsReview ? 'text-red-500' : 'text-emerald-500'}`}>
+              Đặt {match.totalExpected} · Nhận {match.totalReceived} ·{' '}
+              {match.totalDiff === 0 ? 'Khớp 100%'
+                : match.totalDiff < 0 ? `Thiếu ${Math.abs(match.totalDiff)} hộp`
+                : `Thừa ${match.totalDiff} hộp`}
+            </p>
+          </div>
+        </div>
+        {/* Variance badge */}
+        <div className={`flex flex-col items-center px-3 py-1.5 rounded-lg ${
+          match.needsReview ? 'bg-red-100' : 'bg-emerald-100'
+        }`}>
+          <span className={`text-base font-extrabold tabular-nums ${
+            match.needsReview ? 'text-red-700' : 'text-emerald-700'
+          }`}>
+            {match.overallVariance.toFixed(1)}%
+          </span>
+          <span className={`text-[9px] font-semibold ${
+            match.needsReview ? 'text-red-500' : 'text-emerald-500'
+          }`}>variance</span>
+        </div>
+      </div>
+
+      {/* ── Bảng chi tiết từng SKU ── */}
+      <div className="divide-y divide-gray-50 max-h-44 overflow-y-auto">
+        {/* Header row */}
+        <div className="grid px-3 py-1.5 bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-wide"
+          style={{ gridTemplateColumns: '1fr 3rem 3rem 3rem 4.5rem' }}>
+          <span>SKU</span>
+          <span className="text-center">Đặt</span>
+          <span className="text-center">Nhận</span>
+          <span className="text-center">Lệch</span>
+          <span className="text-center">Variance</span>
+        </div>
+        {match.lines.map(line => (
+          <div key={line.skuCode}
+            className={`grid items-center px-3 py-2.5 ${
+              line.status !== 'ok' ? 'bg-red-50/30' : ''
+            }`}
+            style={{ gridTemplateColumns: '1fr 3rem 3rem 3rem 4.5rem' }}>
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-gray-800 font-mono truncate">{line.skuCode}</p>
+              <p className="text-[10px] text-gray-400 truncate">{line.skuName}</p>
+            </div>
+            <span className="text-center text-[11px] text-gray-500">{line.expected}</span>
+            <span className={`text-center text-[11px] font-bold ${varianceColor(line.variance, line.status)}`}>
+              {line.status === 'missing' ? '—' : line.received}
+            </span>
+            <span className={`text-center text-[11px] font-bold ${varianceColor(line.variance, line.status)}`}>
+              {line.diff === 0 ? '—' : line.diff > 0 ? `+${line.diff}` : line.diff}
+            </span>
+            <div className="flex items-center justify-center gap-1">
+              {line.status === 'ok' ? (
+                <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">✓ Khớp</span>
+              ) : line.status === 'missing' ? (
+                <span className="text-[10px] font-semibold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full">Chưa scan</span>
+              ) : (
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                  line.variance > 5 ? 'text-red-600 bg-red-50' : 'text-amber-600 bg-amber-50'
+                }`}>
+                  {line.variance.toFixed(1)}%
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Warning khi cần Manager review ── */}
+      {match.needsReview && (
+        <div className="px-4 py-2.5 bg-red-50 border-t border-red-100 flex items-start gap-2">
+          <span className="material-symbols-outlined text-red-400 text-[14px] mt-0.5 flex-shrink-0">info</span>
+          <p className="text-[11px] text-red-600 leading-relaxed">
+            Variance vượt 5% — GRN sẽ được gắn cờ <strong>cần Manager review</strong> trước khi nhập kho.
+            Manager sẽ thấy cảnh báo này khi duyệt.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Gen GRN Confirm Modal ────────────────────────────────────────────────────
 function GenGrnConfirmModal({
   receiving, loading, onConfirm, onCancel,
@@ -292,61 +456,43 @@ function GenGrnConfirmModal({
               />
             </div>
             {(receiving.items?.length ?? 0) > 0 && (
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="bg-gray-50 px-3 py-1.5 border-b border-gray-100 flex items-center justify-between">
-                  <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
-                    Chi tiết hàng hoá — {receiving.items!.length} SKU
-                  </p>
-                  <p className="text-[11px] text-gray-400">Dự kiến / Thực nhận</p>
-                </div>
-                <div className="max-h-40 overflow-y-auto divide-y divide-gray-50">
-                  {receiving.items!.map(item => {
-                    const diff = (item.receivedQty ?? 0) - item.expectedQty;
-                    const hasReceived = (item.receivedQty ?? 0) > 0;
-                    return (
-                      <div key={item.receivingItemId}
-                        className="flex items-center justify-between px-3 py-2 hover:bg-gray-50">
-                        <div className="min-w-0 flex-1">
-                          <p className="font-mono text-[11px] font-semibold text-gray-800">{item.skuCode}</p>
-                          <p className="text-[11px] text-gray-400 truncate">{item.skuName}</p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0 ml-3">
-                          <span className="text-[11px] text-gray-500">{item.expectedQty}</span>
-                          <span className="material-symbols-outlined text-[12px] text-gray-300">arrow_forward</span>
-                          <span className={`text-[11px] font-bold ${
-                            !hasReceived ? "text-gray-300" :
-                            diff < 0 ? "text-red-600" :
-                            diff > 0 ? "text-orange-600" :
-                            "text-green-600"
-                          }`}>
-                            {hasReceived ? item.receivedQty : "—"}
-                          </span>
-                          {hasReceived && diff !== 0 && (
-                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                              diff < 0
-                                ? "bg-red-50 text-red-500"
-                                : "bg-orange-50 text-orange-500"
-                            }`}>
-                              {diff > 0 ? `+${diff}` : diff}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <POMatchPanel match={getPOMatchData(receiving)} />
             )}
             {receiving.note && <NoteBox note={receiving.note} />}
           </div>
-          <ConfirmFooter
-            loading={loading}
-            onCancel={onCancel}
-            onConfirm={onConfirm}
-            confirmLabel="Tạo GRN"
-            confirmIcon="receipt_long"
-            confirmClass="bg-purple-600 hover:bg-purple-700"
-          />
+          {/* Footer thông minh — hiển thị cảnh báo khi variance >5% */}
+          {(() => {
+            const match = getPOMatchData(receiving);
+            return (
+              <div className="px-5 py-4 border-t border-gray-100 space-y-3">
+                {match.needsReview && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                    <span className="material-symbols-outlined text-amber-500 text-[14px]">flag</span>
+                    <p className="text-[11px] text-amber-700">
+                      GRN này sẽ được gắn cờ <strong>cần Manager review</strong> do variance &gt;5%.
+                    </p>
+                  </div>
+                )}
+                <div className="flex gap-2.5">
+                  <button onClick={onCancel} disabled={loading}
+                    className="flex-1 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-50">
+                    Huỷ
+                  </button>
+                  <button onClick={onConfirm} disabled={loading}
+                    className={`flex-1 py-2.5 text-sm font-semibold text-white rounded-xl flex items-center justify-center gap-2 disabled:opacity-60 ${
+                      match.needsReview
+                        ? 'bg-amber-600 hover:bg-amber-700'
+                        : 'bg-purple-600 hover:bg-purple-700'
+                    }`}>
+                    {loading
+                      ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Đang tạo...</>
+                      : <><span className="material-symbols-outlined text-[16px]">receipt_long</span>
+                         {match.needsReview ? 'Tạo GRN (cần review)' : 'Tạo GRN'}</>}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
     </Portal>

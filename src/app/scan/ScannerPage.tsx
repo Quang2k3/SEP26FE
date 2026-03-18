@@ -18,6 +18,16 @@ interface PickItem {
   requiredQty: number;
 }
 
+// Expected items cho inbound mode (từ ReceivingOrder)
+interface InboundExpectedItem {
+  receivingItemId: number;
+  skuCode: string;
+  skuName: string;
+  expectedQty: number;
+  receivedQty: number;
+  lotNumber: string | null;
+}
+
 interface ScanLine {
   skuCode: string;
   skuName: string;
@@ -84,6 +94,8 @@ export default function ScannerPage() {
   const [locked, setLocked]         = useState(false);
   const [lockedMsg, setLockedMsg]   = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // Expected items từ receiving order (inbound mode)
+  const [inboundItems, setInboundItems] = useState<InboundExpectedItem[]>([]);
 
   const inflightRef  = useRef(false);
   const lastCodeRef  = useRef('');
@@ -94,6 +106,28 @@ export default function ScannerPage() {
   // Refs so sendBarcode always reads latest values without stale closure
   const pickItemsRef  = useRef<PickItem[]>([]);
   const scannedQtyRef = useRef<Record<string, number>>({});
+
+  // ── Load expected items cho inbound mode ──
+  useEffect(() => {
+    if (mode !== 'inbound' || !receivingId) return;
+    fetch(`${API_BASE}/v1/receiving-orders/${receivingId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d?.success && d.data?.items) {
+          setInboundItems(d.data.items.map((it: any) => ({
+            receivingItemId: it.receivingItemId,
+            skuCode:    it.skuCode,
+            skuName:    it.skuName,
+            expectedQty: it.expectedQty ?? 0,
+            receivedQty: it.receivedQty ?? 0,
+            lotNumber:  it.lotNumber ?? null,
+          })));
+        }
+      })
+      .catch(() => {});
+  }, [mode, receivingId, token]);
 
   // ── Load pick items for outbound_picking ──
   useEffect(() => {
@@ -289,17 +323,35 @@ export default function ScannerPage() {
   };
 
   // ── Confirm inbound ──
+  // Keeper (SUBMITTED → finalize-count → PENDING_COUNT): Keeper quét xong, gửi cho QC
+  // QC (PENDING_COUNT → qc-submit-session → QC_APPROVED): QC kiểm đếm xong
   const confirmInbound = async () => {
     if (!receivingId) { toast('Không có ID phiếu!', true); return; }
-    if (!confirm('Xác nhận kiểm đếm xong? Phiếu sẽ gửi cho QC.')) return;
+
+    const isQCRole = userRole === 'QC';
+    const endpoint = isQCRole
+      ? `${API_BASE}/v1/receiving-orders/${receivingId}/qc-submit-session`
+      : `${API_BASE}/v1/receiving-orders/${receivingId}/finalize-count`;
+    const confirmMsg = isQCRole
+      ? 'QC xác nhận kiểm đếm xong? Phiếu chuyển sang QC Approved.'
+      : 'Xác nhận kiểm đếm xong? Phiếu sẽ gửi QC kiểm tra.';
+    const successMsg = isQCRole
+      ? '✅ QC hoàn tất! Phiếu đã được duyệt.'
+      : '✅ Đã gửi QC! Chờ QC kiểm tra.';
+
+    if (!window.confirm(confirmMsg)) return;
     setSubmitting(true);
     try {
-      const r = await fetch(`${API_BASE}/v1/receiving-orders/${receivingId}/finalize-count`, {
+      const r = await fetch(endpoint, {
         method: 'POST', headers: { Authorization: `Bearer ${token}` },
       });
       const d = await r.json();
-      if (d?.success) { toast('✅ Đã gửi QC! QR bị khoá.'); lockUI('Đã gửi QC — Chờ kiểm đếm'); }
-      else toast(d?.message ?? 'Lỗi', true);
+      if (d?.success) {
+        toast(successMsg);
+        lockUI(isQCRole ? 'QC hoàn tất — phiếu đã duyệt' : 'Đã gửi QC — chờ kiểm tra');
+      } else {
+        toast(d?.message ?? 'Lỗi', true);
+      }
     } catch { toast('Lỗi kết nối', true); }
     finally { setSubmitting(false); }
   };
@@ -387,8 +439,8 @@ export default function ScannerPage() {
           </div>
         )}
 
-        {/* QC condition toggle */}
-        {mode === 'outbound_qc' && !locked && (
+        {/* QC condition toggle — cả inbound QC lẫn outbound_qc */}
+        {(mode === 'outbound_qc' || (mode === 'inbound' && userRole === 'QC')) && !locked && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
             {(['PASS', 'FAIL', 'HOLD'] as QcCondition[]).map(c => (
               <button key={c} onClick={() => setQcCondition(c)}
@@ -413,6 +465,70 @@ export default function ScannerPage() {
             Scan
           </button>
         </div>
+
+        {/* ── Inbound: Expected items checklist ── */}
+        {mode === 'inbound' && inboundItems.length > 0 && (
+          <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8 }}>
+            <p style={{ fontSize: 11, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10, fontWeight: 700, margin: '0 0 10px' }}>
+              📋 DANH SÁCH CẦN KIỂM ĐẾM
+            </p>
+            {inboundItems.map((item) => {
+              // Tìm qty đã scan từ scanLines (realtime)
+              const scanned = scanLineList.find(l => l.skuCode === item.skuCode)?.qty
+                ?? item.receivedQty;
+              const done = scanned >= item.expectedQty;
+              const pct  = item.expectedQty > 0 ? Math.min(100, Math.round(scanned / item.expectedQty * 100)) : 0;
+              return (
+                <div key={item.receivingItemId} style={{
+                  borderRadius: 8, padding: '10px 12px', marginBottom: 6,
+                  background: done ? 'rgba(16,185,129,.08)' : '#0f172a',
+                  borderLeft: `3px solid ${done ? '#10b981' : scanned > 0 ? '#f59e0b' : '#334155'}`,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>{item.skuCode}</p>
+                      <p style={{ fontSize: 11, color: '#64748b', margin: '2px 0 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.skuName}</p>
+                      {item.lotNumber && <p style={{ fontSize: 10, color: '#475569', margin: '2px 0 0' }}>LOT: {item.lotNumber}</p>}
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <p style={{ fontSize: 15, fontWeight: 800, color: done ? '#10b981' : scanned > 0 ? '#f59e0b' : '#60a5fa', margin: 0 }}>
+                        {scanned}<span style={{ fontSize: 11, color: '#475569', fontWeight: 400 }}>/{item.expectedQty}</span>
+                      </p>
+                      {done
+                        ? <p style={{ fontSize: 10, color: '#10b981', fontWeight: 700, margin: 0 }}>✓ Đủ</p>
+                        : <p style={{ fontSize: 10, color: '#f59e0b', margin: 0 }}>Còn {item.expectedQty - scanned}</p>}
+                    </div>
+                  </div>
+                  {/* Progress bar */}
+                  <div style={{ marginTop: 6, height: 3, background: '#1e3a5f', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', borderRadius: 2, transition: 'width .4s', width: `${pct}%`,
+                      background: done ? '#10b981' : scanned > 0 ? '#f59e0b' : '#3b82f6' }} />
+                  </div>
+                </div>
+              );
+            })}
+            {/* Tổng tiến độ */}
+            {(() => {
+              const totalExp = inboundItems.reduce((s, i) => s + i.expectedQty, 0);
+              const totalScan = inboundItems.reduce((item, i) => {
+                const s = scanLineList.find(l => l.skuCode === i.skuCode)?.qty ?? i.receivedQty;
+                return item + s;
+              }, 0);
+              const allDone = inboundItems.every(i => {
+                const s = scanLineList.find(l => l.skuCode === i.skuCode)?.qty ?? i.receivedQty;
+                return s >= i.expectedQty;
+              });
+              return (
+                <div style={{ marginTop: 8, padding: '8px 10px', background: allDone ? 'rgba(16,185,129,.12)' : '#0f172a', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>Tổng tiến độ</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: allDone ? '#10b981' : '#60a5fa' }}>
+                    {totalScan}/{totalExp} {allDone ? '✓ Hoàn tất' : ''}
+                  </span>
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
         {/* Scanned lines (inbound / outbound_qc) */}
         {mode !== 'outbound_picking' && scanLineList.length > 0 && (
@@ -475,11 +591,22 @@ export default function ScannerPage() {
         {/* Action buttons */}
         {!locked && (
           <div style={{ marginBottom: 8 }}>
-            {/* Inbound keeper */}
+            {/* Inbound: Keeper hoặc QC */}
             {mode === 'inbound' && receivingId && (
               <button onClick={confirmInbound} disabled={submitting}
-                style={{ width: '100%', padding: '14px 18px', border: 'none', borderRadius: 10, fontSize: 17, fontWeight: 800, cursor: 'pointer', background: 'linear-gradient(135deg,#22c55e,#16a34a)', color: '#fff', marginBottom: 8, opacity: submitting ? 0.6 : 1 }}>
-                {submitting ? 'Đang gửi...' : '✅ Xác nhận kiểm đếm — Gửi QC'}
+                style={{
+                  width: '100%', padding: '14px 18px', border: 'none', borderRadius: 10,
+                  fontSize: 17, fontWeight: 800, cursor: 'pointer', color: '#fff',
+                  marginBottom: 8, opacity: submitting ? 0.6 : 1,
+                  background: userRole === 'QC'
+                    ? 'linear-gradient(135deg,#f59e0b,#d97706)'
+                    : 'linear-gradient(135deg,#22c55e,#16a34a)',
+                }}>
+                {submitting
+                  ? 'Đang gửi...'
+                  : userRole === 'QC'
+                    ? '🔍 QC Xác nhận kiểm đếm — Gửi duyệt'
+                    : '✅ Xác nhận kiểm đếm — Gửi QC'}
               </button>
             )}
 
