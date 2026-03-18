@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Portal from '@/components/ui/Portal';
 import toast from 'react-hot-toast';
+import { getExpiryInfo } from '@/utils/expiryUtils';
 
 import QRCode from 'react-qr-code';
 import {
@@ -166,6 +167,26 @@ function AllocatePanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
       setLoading(true);
       const res = await allocateStock(item.documentId, item.orderType);
       setResult(res);
+
+      // Kiểm tra HSD < 60 ngày trong các lot được allocate
+      const allocations: any[] = res.allocations ?? [];
+      const nearExpiryLots = allocations.filter(line => {
+        if (!line.expiryDate) return false;
+        const info = getExpiryInfo(line.expiryDate);
+        return info?.level === 'expired'; // expired = dưới 60 ngày
+      });
+
+      if (nearExpiryLots.length > 0) {
+        const details = nearExpiryLots.map((l: any) => {
+          const info = getExpiryInfo(l.expiryDate);
+          return `${l.skuCode} (${info?.label}, HSD: ${new Date(l.expiryDate).toLocaleDateString('vi-VN')})`;
+        }).join(', ');
+        toast.error(`Không thể xuất — ${nearExpiryLots.length} lot có HSD dưới 60 ngày: ${details}`, { duration: 8000 });
+        // Reset result để block tiến tiếp
+        setResult({ ...res, _blockedByExpiry: true, nearExpiryLots });
+        return;
+      }
+
       if ((res as any).fullyAllocated) toast.success('Phân bổ thành công!');
       else toast('⚠️ Phân bổ một phần — một số SKU thiếu hàng', { icon: '⚠️' });
     } catch { } finally { setLoading(false); }
@@ -222,10 +243,50 @@ function AllocatePanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
   const fullyAllocated = result.fullyAllocated;
   const allocations: any[] = result.allocations ?? [];
   const shortages: any[] = result.shortages ?? [];
+  const blockedByExpiry: boolean = !!(result as any)._blockedByExpiry;
+  const nearExpiryLots: any[] = (result as any).nearExpiryLots ?? [];
 
   return (
     <div className="space-y-3">
-      <div className={`p-4 rounded-xl border ${fullyAllocated ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+      {/* ── Expiry block banner ── */}
+      {blockedByExpiry && (
+        <div className="rounded-xl border border-red-300 overflow-hidden">
+          <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border-b border-red-200">
+            <span className="material-symbols-outlined text-red-500 text-xl">dangerous</span>
+            <div>
+              <p className="text-sm font-bold text-red-800">Không thể xuất — Lot có HSD dưới 60 ngày</p>
+              <p className="text-xs text-red-500 mt-0.5">Hệ thống đã huỷ phân bổ. Liên hệ Manager để xử lý.</p>
+            </div>
+          </div>
+          <div className="divide-y divide-red-100 bg-white">
+            {nearExpiryLots.map((l: any, i: number) => {
+              const info = getExpiryInfo(l.expiryDate);
+              return (
+                <div key={i} className="flex items-center justify-between px-4 py-2.5">
+                  <div>
+                    <p className="text-xs font-bold text-gray-800">{l.skuCode}</p>
+                    <p className="text-[10px] text-gray-400">{l.locationCode}{l.lotNumber ? ` · LOT ${l.lotNumber}` : ''}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-semibold text-red-600">{new Date(l.expiryDate).toLocaleDateString('vi-VN')}</p>
+                    <p className="text-[10px] text-red-500">{info?.label}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="px-4 py-3 bg-red-50 border-t border-red-100">
+            <p className="text-xs text-red-700">
+              Cần xuất hàng này trước ngày{' '}
+              <strong>{new Date(Date.now() + 60 * 86400000).toLocaleDateString('vi-VN')}</strong>{' '}
+              hoặc điều chỉnh đơn hàng sang lot khác.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!blockedByExpiry && (<>
+        <div className={`p-4 rounded-xl border ${fullyAllocated ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
         <div className="flex items-center gap-2">
           <span className={`material-symbols-outlined text-xl ${fullyAllocated ? 'text-emerald-500' : 'text-red-500'}`}>
             {fullyAllocated ? 'check_circle' : 'error'}
@@ -308,6 +369,7 @@ function AllocatePanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
             loading={reporting} onConfirm={handleReportShortage} onCancel={() => setShowShortageConfirm(false)} />
         </div>
       )}
+      </>)}
     </div>
   );
 }
