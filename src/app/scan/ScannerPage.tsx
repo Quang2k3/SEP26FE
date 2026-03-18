@@ -25,6 +25,41 @@ function parseJwt(token: string) {
   catch { return {}; }
 }
 function getSessionId(t: string): string | null { return parseJwt(t)?.sessionId ?? null; }
+
+/**
+ * Trích xuất SKU/barcode từ chuỗi quét:
+ * - Nếu là URL (http/https): lấy path segment cuối cùng không rỗng
+ *   hoặc query param "sku" / "code" / "barcode" nếu có
+ * - Nếu là plain text: trả về nguyên vẹn (đã trim + uppercase)
+ * - Trả về null nếu không thể xác định giá trị hợp lệ
+ */
+function extractCode(raw: string): string | null {
+  const text = raw.trim();
+  if (!text) return null;
+
+  // Kiểm tra xem có phải URL không
+  if (text.toLowerCase().startsWith('http') || text.includes('://')) {
+    try {
+      const url = new URL(text);
+      // Ưu tiên query param phổ biến
+      for (const key of ['sku', 'code', 'barcode', 'id', 'skuCode']) {
+        const val = url.searchParams.get(key);
+        if (val && val.trim().length >= 2) return val.trim().toUpperCase();
+      }
+      // Fallback: lấy path segment cuối cùng không rỗng
+      const segments = url.pathname.split('/').filter(Boolean);
+      const last = segments[segments.length - 1];
+      if (last && last.length >= 2) return decodeURIComponent(last).toUpperCase();
+    } catch {
+      // URL không parse được — bỏ qua
+    }
+    return null;
+  }
+
+  // Plain text barcode/SKU
+  const code = text.toUpperCase();
+  return code.length >= 2 ? code : null;
+}
 function getUserRole(t: string): string {
   const roles: string = parseJwt(t)?.roles ?? '';
   return roles.split(',')[0]?.trim().toUpperCase() ?? 'KEEPER';
@@ -112,9 +147,8 @@ function useCamera(onCode: (code: string) => void, setStatus: (s: string) => voi
         const qr = new Html5Qrcode('reader'); qrRef.current = qr;
         await qr.start(camId, { fps: 10, qrbox: { width: 250, height: 250 }, videoConstraints: { facingMode: 'environment' } },
           (text: string) => {
-            const raw = text.trim();
-            if (raw.toLowerCase().startsWith('http') || raw.includes('//') || raw.length > 80) return;
-            const code = raw.toUpperCase(); if (code.length < 2) return;
+            const code = extractCode(text);
+            if (!code) return;
             const now = Date.now();
             if (code === lastCodeRef.current && now - lastAtRef.current < 1500) return;
             lastCodeRef.current = code; lastAtRef.current = now; onCode(code);
@@ -587,7 +621,13 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
       if (navigator.vibrate) navigator.vibrate(rem <= 0 ? [80, 30, 80] : 80);
       return;
     }
-    if (barcode.toLowerCase().startsWith('http') || barcode.includes('//') || barcode.length > 80) { setStatus('⚠️ Phát hiện URL — đưa barcode sản phẩm'); return; }
+    if (barcode.toLowerCase().startsWith('http') || barcode.includes('://')) {
+      const extracted = extractCode(barcode);
+      if (!extracted) { setStatus('⚠️ Không thể đọc mã từ URL này'); return; }
+      // Gọi lại với code đã extract
+      sendBarcode(extracted);
+      return;
+    }
     inflightRef.current = true; setStatus(`Gửi: ${barcode}`);
     try {
       const body: any = { barcode, qty: 1, condition: conditionRef.current };
