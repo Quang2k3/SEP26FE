@@ -40,6 +40,8 @@ import type {
   QcResult,
 } from '@/interfaces/outbound';
 import { OUTBOUND_STATUS_BADGE } from '@/interfaces/outbound';
+// [NEW] Import nút tải Phiếu Xuất Kho PDF
+import DispatchPdfButton from '@/components/outbound/DispatchPdfButton';
 
 function getUserRole(): string {
   if (typeof window === 'undefined') return 'KEEPER';
@@ -462,7 +464,6 @@ function PickListTable({ pickList }: { pickList: PickListResponse }) {
   );
 }
 
-// ─── Step 3: Picking Panel ──────────────────────────────────────────────────────
 // ─── Step 3: Picking Panel (QR-based) ─────────────────────────────────────────
 function PickingPanel({ item, taskId: initTaskId, onDone }: {
   item: OutboundListItem; taskId: number | null; onDone: (taskId: number) => void;
@@ -508,7 +509,6 @@ function PickingPanel({ item, taskId: initTaskId, onDone }: {
     };
   }, []); // eslint-disable-line
 
-  // Store onDone in ref to keep startPolling stable (avoid re-creating interval)
   const onDoneRef = useRef(onDone);
   useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
 
@@ -659,19 +659,17 @@ function PickingPanel({ item, taskId: initTaskId, onDone }: {
   );
 }
 
-// ─── Step 4: QC Scan Panel (QR-based, giống PickingPanel) ─────────────────────
+// ─── Step 4: QC Scan Panel ─────────────────────────────────────────────────────
 function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { taskId: number; onAllScanned: () => void; onAlreadyDone?: () => void; viewerRole?: string }) {
-  // ── QC summary + items ──
   const [qcSummary, setQcSummary]   = useState<QcSummaryResponse | null>(null);
   const [pickItems, setPickItems]   = useState<PickListItem[]>([]);
   const [summaryLoading, setSummaryLoading] = useState(true);
-  // ── QR session ──
   const [qrValue,    setQrValue]    = useState<string | null>(null);
   const [qrLoading,  setQrLoading]  = useState(false);
   const [qrError,    setQrError]    = useState<string | null>(null);
   const [copied,     setCopied]     = useState(false);
   const [isFinalized, setIsFinalized] = useState(false);
-  // ── Refs ──
+  const [sessionStarted, setSessionStarted] = useState(false);
   const mountedRef   = useRef(true);
   const sessionIdRef = useRef<string | null>(null);
   const pollRef      = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -694,8 +692,6 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   };
 
-  // ── Load summary on mount ──
-  // Use ref for isFinalized so refreshSummary stays stable (no stale closure)
   const isFinalizedRef = useRef(false);
   const refreshSummary = useCallback(async () => {
     try {
@@ -712,7 +708,7 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
         setTimeout(() => { if (mountedRef.current) onAllScannedRef.current(); }, 600);
       }
     } catch {}
-  }, [taskId]); // stable — no isFinalized in deps
+  }, [taskId]);
 
   useEffect(() => {
     setSummaryLoading(true);
@@ -725,17 +721,14 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
         if (s.passCount > 0 || s.failCount > 0 || s.holdCount > 0 || s.allScanned) {
           setSessionStarted(true);
         }
-        // Tự tính allScanned trên FE
         const total = (s.passCount ?? 0) + (s.failCount ?? 0) + (s.holdCount ?? 0) + (s.pendingCount ?? 0);
         const done  = (s.pendingCount ?? 0) === 0 && total > 0;
         if (done) {
           isFinalizedRef.current = true;
           setIsFinalized(true);
           stopPolling();
-          // Already done before opening modal — silent (no toast)
           setTimeout(() => { if (mountedRef.current) (onAlreadyDoneRef.current ?? onAllScannedRef.current)?.(); }, 300);
         } else {
-          // Auto-start polling ngay khi mount — cập nhật real-time kể cả khi chưa tạo QR
           startPolling();
         }
       } catch {}
@@ -743,7 +736,6 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
     })();
   }, [taskId]); // eslint-disable-line
 
-  // ── Polling every 3s after QR generated ──
   const startPolling = useCallback(() => {
     stopPolling();
     pollRef.current = setInterval(() => {
@@ -751,25 +743,19 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
     }, 3000);
   }, [refreshSummary]);
 
-  // ── Generate QR for mobile scan ──
   const generateQR = useCallback(async () => {
-    if (isFinalizedRef.current) return; // Đã QC xong — không cho tạo QR mới
+    if (isFinalizedRef.current) return;
     setQrLoading(true); setQrError(null); setQrValue(null);
     try {
-      // Ensure QC session started (idempotent on BE)
       try { await startQcSession(taskId); } catch { /* already started — ok */ }
       if (!mountedRef.current) return;
-
       const session   = await createReceivingSession();
       if (!mountedRef.current) return;
       sessionIdRef.current = session.sessionId;
-
       const tokenData = await generateScanToken(session.sessionId);
       if (!tokenData.scanToken) throw new Error('Không nhận được scanToken');
-
       const rawUrl = await getScanUrl(tokenData.scanToken, null);
       const url    = rawUrl + `&taskId=${taskId}&mode=outbound_qc`;
-
       if (!mountedRef.current) return;
       setQrValue(url);
       toast.success('QR sẵn sàng — dùng điện thoại quét!', { id: 'qc-qr' });
@@ -788,7 +774,6 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
 
   const pending = pickItems.filter(i => !i.qcResult);
   const scanned = pickItems.filter(i => !!i.qcResult);
-  // Use qcSummary for accurate progress (BE may not return qcResult in pickItems yet)
   const summaryTotal   = qcSummary ? (qcSummary.passCount + qcSummary.failCount + qcSummary.holdCount + qcSummary.pendingCount) : pickItems.length;
   const summaryScanned = qcSummary ? (qcSummary.passCount + qcSummary.failCount + qcSummary.holdCount) : scanned.length;
   const total = summaryTotal;
@@ -796,8 +781,6 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
 
   return (
     <div className="space-y-3">
-
-      {/* ── Header ── */}
       <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
         <div className="flex items-start gap-3">
           <span className="material-symbols-outlined text-purple-600 text-xl mt-0.5">qr_code_scanner</span>
@@ -814,7 +797,6 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
         </div>
       </div>
 
-      {/* ── Summary badges ── */}
       {summaryLoading ? (
         <div className="grid grid-cols-4 gap-2">
           {[0,1,2,3].map(i => <div key={i} className="h-16 rounded-xl bg-gray-100 animate-pulse" />)}
@@ -834,7 +816,6 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
               </div>
             ))}
           </div>
-          {/* Progress bar */}
           <div>
             <div className="flex justify-between text-[11px] text-gray-500 mb-1">
               <span>Tiến độ QC</span>
@@ -847,7 +828,6 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
         </>
       ) : null}
 
-      {/* ── Finalized banner ── */}
       {isFinalized ? (
         <div className="p-4 bg-emerald-50 border-2 border-emerald-200 rounded-xl">
           <div className="flex items-center gap-3 mb-1">
@@ -866,7 +846,6 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
           <p className="text-xs text-purple-700">Đang chờ QC scan trên điện thoại — tự động cập nhật mỗi 3 giây...</p>
         </div>
       ) : (
-        /* ── QR block (QC only) ── */
         <div className="border border-purple-100 rounded-xl overflow-hidden">
           <div className="px-4 py-2.5 bg-purple-50 border-b flex items-center justify-between">
             <span className="text-xs font-bold text-purple-700">📱 Mã QR Scanner</span>
@@ -886,10 +865,7 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
               <div className="flex flex-col items-center gap-3 py-4">
                 <span className="material-symbols-outlined text-red-400 text-3xl">error</span>
                 <p className="text-sm text-red-500 text-center">{qrError}</p>
-                <button onClick={generateQR}
-                  className="px-4 py-2 bg-purple-600 text-white text-sm font-semibold rounded-xl hover:bg-purple-700">
-                  Thử lại
-                </button>
+                <button onClick={generateQR} className="px-4 py-2 bg-purple-600 text-white text-sm font-semibold rounded-xl hover:bg-purple-700">Thử lại</button>
               </div>
             ) : qrValue ? (
               <div className="flex flex-col items-center gap-3">
@@ -902,8 +878,7 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
                 </div>
                 <div className="w-full bg-gray-50 rounded-lg border border-gray-200 px-3 py-2 flex items-center gap-2">
                   <p className="text-[10px] text-gray-500 flex-1 truncate font-mono">{qrValue}</p>
-                  <button onClick={handleCopy}
-                    className="flex-shrink-0 text-[11px] font-semibold text-purple-600 px-2 py-1 bg-white border border-purple-200 rounded-lg">
+                  <button onClick={handleCopy} className="flex-shrink-0 text-[11px] font-semibold text-purple-600 px-2 py-1 bg-white border border-purple-200 rounded-lg">
                     {copied ? '✓ Đã copy' : 'Copy'}
                   </button>
                 </div>
@@ -911,10 +886,7 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
                   className="w-full py-2.5 text-sm font-semibold text-white bg-orange-500 rounded-xl hover:bg-orange-600 flex items-center justify-center">
                   Mở trang scan (test trực tiếp)
                 </a>
-                <button onClick={generateQR}
-                  className="text-xs text-gray-400 hover:text-gray-600">
-                  Tạo lại QR
-                </button>
+                <button onClick={generateQR} className="text-xs text-gray-400 hover:text-gray-600">Tạo lại QR</button>
                 <p className="text-[11px] text-purple-500 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse inline-block" />
                   Đang chờ QC hoàn tất trên điện thoại...
@@ -925,9 +897,7 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
                 <div className="w-12 h-12 rounded-xl bg-purple-50 flex items-center justify-center">
                   <span className="material-symbols-outlined text-purple-500 text-2xl">qr_code</span>
                 </div>
-                <p className="text-xs text-gray-500 text-center">
-                  Bấm nút bên dưới để tạo QR Code scan QC.
-                </p>
+                <p className="text-xs text-gray-500 text-center">Bấm nút bên dưới để tạo QR Code scan QC.</p>
                 <button onClick={generateQR}
                   className="w-full py-2.5 text-sm font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 flex items-center justify-center gap-2">
                   <span className="material-symbols-outlined text-[16px]">qr_code_scanner</span>
@@ -939,7 +909,6 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
         </div>
       )}
 
-      {/* ── Items list: pending + scanned ── */}
       {pickItems.length > 0 && (
         <div className="border border-gray-100 rounded-xl overflow-hidden">
           {pending.length > 0 && (
@@ -1124,7 +1093,6 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
   const [orderDetail, setOrderDetail] = useState<any>(null);
   const role = getUserRole();
 
-  // Dùng ref để track documentId trước — phân biệt "đổi đơn" vs "cùng đơn BE cập nhật"
   const prevDocumentIdRef = React.useRef<number | null>(null);
 
   useEffect(() => {
@@ -1133,9 +1101,7 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
     prevDocumentIdRef.current = item.documentId;
 
     setLocalStatus(prev => {
-      // Mở đơn KHÁC → luôn sync hoàn toàn về BE status (tránh stale localStatus)
       if (isNewDocument) return item.status;
-      // Cùng đơn → chỉ sync nếu BE tiến hơn hoặc terminal state
       const incomingOrder = STATUS_ORDER[item.status] ?? 0;
       const currentOrder  = STATUS_ORDER[prev] ?? 0;
       if (incomingOrder > currentOrder || item.status === 'REJECTED' || item.status === 'CANCELLED') {
@@ -1146,7 +1112,6 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
     if (isNewDocument) { setTaskId(null); setQcDone(false); }
   }, [item?.documentId, item?.status]);
 
-  // Fetch full order with items whenever item changes
   useEffect(() => {
     if (!item) return;
     setOrderDetail(null);
@@ -1160,6 +1125,9 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
   const isSO = item.orderType === 'SALES_ORDER';
   const badge = OUTBOUND_STATUS_BADGE[localStatus as keyof typeof OUTBOUND_STATUS_BADGE]
     ?? { label: localStatus, className: 'bg-gray-100 text-gray-500' };
+
+  // [NEW] Lấy dispatchPdfUrl từ orderDetail (BE trả về sau khi DISPATCHED)
+  const dispatchPdfUrl: string | null = orderDetail?.dispatchPdfUrl ?? null;
 
   const handleSubmit = async () => {
     setShowSubmitConfirm(false);
@@ -1195,9 +1163,7 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
     } catch { } finally { setActionLoading(false); }
   };
 
-  // ─── Role-based step rendering ────────────────────────────────────────────────
   const renderContent = () => {
-    // DRAFT
     if (localStatus === 'DRAFT') {
       if (role === 'KEEPER') return (
         <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
@@ -1217,7 +1183,6 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
       return null;
     }
 
-    // PENDING_APPROVAL
     if (localStatus === 'PENDING_APPROVAL') {
       if (role === 'MANAGER') return (
         <div className="p-4 bg-orange-50 rounded-xl border border-orange-100 space-y-3">
@@ -1237,15 +1202,12 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
       );
       if (role === 'KEEPER') return (
         <div className="p-4 bg-orange-50 rounded-xl border border-orange-100">
-          <div className="flex items-center gap-2">
-            <p className="text-sm text-orange-800 font-medium">Đang chờ Manager duyệt...</p>
-          </div>
+          <p className="text-sm text-orange-800 font-medium">Đang chờ Manager duyệt...</p>
         </div>
       );
       return null;
     }
 
-    // APPROVED → Keeper phân bổ
     if (localStatus === 'APPROVED') {
       if (role === 'KEEPER') return <AllocatePanel item={item} onDone={() => { setLocalStatus('ALLOCATED'); onRefresh(); }} />;
       if (role === 'MANAGER') return (
@@ -1256,7 +1218,6 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
       return null;
     }
 
-    // ALLOCATED → Keeper tạo Pick List
     if (localStatus === 'ALLOCATED') {
       if (role === 'KEEPER') return (
         <PickListGeneratePanel item={item}
@@ -1270,7 +1231,6 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
       );
     }
 
-    // PICKING → Keeper lấy hàng
     if (localStatus === 'PICKING') {
       if (role === 'KEEPER') return (
         <PickingPanel item={item} taskId={taskId}
@@ -1286,7 +1246,6 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
       );
     }
 
-    // QC_SCAN
     if (localStatus === 'QC_SCAN') {
       if (role === 'QC' || role === 'KEEPER') {
         if (taskId) return (
@@ -1304,7 +1263,6 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
                 onRefresh();
               }}
             />
-            {/* DispatchPanel: hiện khi QC vừa xong (qcDone) HOẶC khi mở lại modal đơn đã QC_SCAN */}
             {(qcDone || localStatus === 'QC_SCAN') && role === 'KEEPER' && isSO && (
               <DispatchPanel item={item} onDone={() => { setLocalStatus('DISPATCHED'); onRefresh(); }} />
             )}
@@ -1325,15 +1283,27 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
       );
     }
 
-    // DISPATCHED
+    // [NEW] DISPATCHED — hiển thị nút tải Phiếu Xuất Kho PDF
     if (localStatus === 'DISPATCHED') return (
-      <div className="p-4 bg-teal-50 rounded-xl border border-teal-100">
-        <p className="text-sm font-bold text-teal-800">Đã xuất kho thành công</p>
-        <p className="text-xs text-teal-600 mt-1">Tồn kho đã được trừ khỏi Z-OUT. Lệnh xuất hoàn tất.</p>
+      <div className="space-y-3">
+        <div className="p-4 bg-teal-50 rounded-xl border border-teal-100">
+          <p className="text-sm font-bold text-teal-800">Đã xuất kho thành công</p>
+          <p className="text-xs text-teal-600 mt-1">Tồn kho đã được trừ khỏi Z-OUT. Lệnh xuất hoàn tất.</p>
+        </div>
+        {/* [NEW] Nút tải Phiếu Xuất Kho PDF — chỉ hiện với Sales Order */}
+        {isSO && (
+          <div className="p-4 bg-white rounded-xl border border-gray-200">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Phiếu xuất kho</p>
+            <DispatchPdfButton
+              soId={item.documentId}
+              soCode={item.documentCode}
+              existingPdfUrl={dispatchPdfUrl}
+            />
+          </div>
+        )}
       </div>
     );
 
-    // REJECTED
     if (localStatus === 'REJECTED') return (
       <div className="p-4 bg-red-50 rounded-xl border border-red-100">
         <p className="text-sm font-bold text-red-700">Lệnh xuất bị từ chối</p>
@@ -1362,7 +1332,6 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
                 }`}>
                   {isSO ? 'Sales Order' : 'Transfer'}
                 </span>
-                {/* Role badge */}
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                   role === 'MANAGER' ? 'bg-purple-50 text-purple-700 border-purple-200' :
                   role === 'QC' ? 'bg-teal-50 text-teal-700 border-teal-200' :
@@ -1382,7 +1351,6 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
 
           {/* Body */}
           <div className="overflow-y-auto p-6 space-y-4 flex-1">
-            {/* Order info + items */}
             <div className="bg-gray-50 rounded-xl border border-gray-100 overflow-hidden">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4 border-b border-gray-100">
                 {isSO ? (
@@ -1440,7 +1408,6 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
         </div>
       </div>
 
-      {/* Top-level confirm modals */}
       <ConfirmModal open={showSubmitConfirm} icon="send" iconColor="text-indigo-500"
         title={isSO ? 'Xác nhận gửi duyệt?' : 'Xác nhận submit Transfer?'}
         description={isSO

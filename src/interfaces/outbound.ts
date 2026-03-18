@@ -56,6 +56,7 @@ export interface OutboundOrder {
   createdAt: string;
   updatedAt?: string | null;
   stockWarnings?: OutboundStockWarning[] | null;
+  dispatchPdfUrl?: string | null;
 }
 
 // ─── List response (GET /v1/outbound) — khớp BE OutboundListResponse ──────────
@@ -198,21 +199,22 @@ export interface QcSummaryResponse {
 
 // ─── Dispatch Note (GET /v1/outbound/sales-orders/{soId}/dispatch-note) ───────
 export interface DispatchNoteItem {
-  skuId: number;
   skuCode: string;
   skuName: string;
+  unit?: string | null;
   quantity: number;
-  locationCode: string;
+  locationCode?: string | null;
   lotNumber?: string | null;
 }
 
 export interface DispatchNoteResponse {
-  documentId: number;
-  documentCode: string;
-  customerName: string;
-  deliveryDate?: string | null;
+  dispatchNoteCode?: string | null;
+  warehouseName?: string | null;
+  customerName?: string | null;
+  dispatchDate?: string | null;
   items: DispatchNoteItem[];
-  generatedAt: string;
+  totalItems?: number;
+  createdByName?: string | null;
 }
 
 // ─── Request payloads ─────────────────────────────────────────────────────────
