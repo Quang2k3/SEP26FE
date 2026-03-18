@@ -25,44 +25,45 @@ function parseJwt(token: string) {
   catch { return {}; }
 }
 function getSessionId(t: string): string | null { return parseJwt(t)?.sessionId ?? null; }
-
-/**
- * Trích xuất SKU/barcode từ chuỗi quét:
- * - Nếu là URL (http/https): lấy path segment cuối cùng không rỗng
- *   hoặc query param "sku" / "code" / "barcode" nếu có
- * - Nếu là plain text: trả về nguyên vẹn (đã trim + uppercase)
- * - Trả về null nếu không thể xác định giá trị hợp lệ
- */
-function extractCode(raw: string): string | null {
-  const text = raw.trim();
-  if (!text) return null;
-
-  // Kiểm tra xem có phải URL không
-  if (text.toLowerCase().startsWith('http') || text.includes('://')) {
-    try {
-      const url = new URL(text);
-      // Ưu tiên query param phổ biến
-      for (const key of ['sku', 'code', 'barcode', 'id', 'skuCode']) {
-        const val = url.searchParams.get(key);
-        if (val && val.trim().length >= 2) return val.trim().toUpperCase();
-      }
-      // Fallback: lấy path segment cuối cùng không rỗng
-      const segments = url.pathname.split('/').filter(Boolean);
-      const last = segments[segments.length - 1];
-      if (last && last.length >= 2) return decodeURIComponent(last).toUpperCase();
-    } catch {
-      // URL không parse được — bỏ qua
-    }
-    return null;
-  }
-
-  // Plain text barcode/SKU
-  const code = text.toUpperCase();
-  return code.length >= 2 ? code : null;
-}
 function getUserRole(t: string): string {
   const roles: string = parseJwt(t)?.roles ?? '';
   return roles.split(',')[0]?.trim().toUpperCase() ?? 'KEEPER';
+}
+
+/**
+ * Chuẩn hoá chuỗi quét thành SKU/barcode:
+ * - URL đầy đủ (http/https): thử query param sku/code/barcode/skuCode trước,
+ *   sau đó fallback lấy path segment cuối cùng
+ * - URL tương đối (/scan?token=...): bỏ qua — đây là link mở app, không phải barcode sản phẩm
+ * - Plain text: trả về uppercase nguyên vẹn
+ * - Trả về null nếu không xác định được
+ */
+function extractSkuFromScan(raw: string): string | null {
+  const text = raw.trim();
+  if (!text || text.length < 2) return null;
+
+  // URL đầy đủ
+  if (text.toLowerCase().startsWith('http://') || text.toLowerCase().startsWith('https://')) {
+    try {
+      const url = new URL(text);
+      // Ưu tiên query param phổ biến chứa SKU
+      for (const key of ['sku', 'skuCode', 'code', 'barcode', 'itemCode']) {
+        const val = url.searchParams.get(key);
+        if (val && val.trim().length >= 2) return val.trim().toUpperCase();
+      }
+      // Fallback: path segment cuối — bỏ qua nếu là trang app nội bộ (/scan, /login, ...)
+      const segments = url.pathname.split('/').filter(Boolean);
+      const last = segments[segments.length - 1] ?? '';
+      const appRoutes = ['scan', 'login', 'dashboard', 'inbound', 'outbound', 'receiving'];
+      if (last && last.length >= 2 && !appRoutes.includes(last.toLowerCase())) {
+        return decodeURIComponent(last).toUpperCase();
+      }
+    } catch { /* parse thất bại */ }
+    return null;
+  }
+
+  // Plain text barcode/SKU (kể cả dài > 80 ký tự như barcode GS1)
+  return text.toUpperCase();
 }
 
 function useToast() {
@@ -147,7 +148,7 @@ function useCamera(onCode: (code: string) => void, setStatus: (s: string) => voi
         const qr = new Html5Qrcode('reader'); qrRef.current = qr;
         await qr.start(camId, { fps: 10, qrbox: { width: 250, height: 250 }, videoConstraints: { facingMode: 'environment' } },
           (text: string) => {
-            const code = extractCode(text);
+            const code = extractSkuFromScan(text);
             if (!code) return;
             const now = Date.now();
             if (code === lastCodeRef.current && now - lastAtRef.current < 1500) return;
@@ -622,9 +623,8 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
       return;
     }
     if (barcode.toLowerCase().startsWith('http') || barcode.includes('://')) {
-      const extracted = extractCode(barcode);
-      if (!extracted) { setStatus('⚠️ Không thể đọc mã từ URL này'); return; }
-      // Gọi lại với code đã extract
+      const extracted = extractSkuFromScan(barcode);
+      if (!extracted) { setStatus('⚠️ Không đọc được mã từ URL này'); return; }
       sendBarcode(extracted);
       return;
     }
