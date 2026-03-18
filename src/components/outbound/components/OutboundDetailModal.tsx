@@ -633,22 +633,24 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
   };
 
   // ── Load summary on mount ──
+  // Use ref for isFinalized so refreshSummary stays stable (no stale closure)
+  const isFinalizedRef = useRef(false);
   const refreshSummary = useCallback(async () => {
     try {
       const [s, pl] = await Promise.all([fetchQcSummary(taskId), fetchPickList(taskId)]);
       if (!mountedRef.current) return;
       setQcSummary(s);
       setPickItems(pl.items ?? []);
-      // Tự tính allScanned trên FE: pendingCount=0 VÀ có ít nhất 1 item
       const total = (s.passCount ?? 0) + (s.failCount ?? 0) + (s.holdCount ?? 0) + (s.pendingCount ?? 0);
       const done  = (s.pendingCount ?? 0) === 0 && total > 0;
-      if (done && !isFinalized) {
+      if (done && !isFinalizedRef.current) {
+        isFinalizedRef.current = true;
         setIsFinalized(true);
         stopPolling();
         setTimeout(() => { if (mountedRef.current) onAllScannedRef.current(); }, 600);
       }
     } catch {}
-  }, [taskId, isFinalized]); // eslint-disable-line
+  }, [taskId]); // stable — no isFinalized in deps
 
   useEffect(() => {
     setSummaryLoading(true);
@@ -665,6 +667,7 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
         const total = (s.passCount ?? 0) + (s.failCount ?? 0) + (s.holdCount ?? 0) + (s.pendingCount ?? 0);
         const done  = (s.pendingCount ?? 0) === 0 && total > 0;
         if (done) {
+          isFinalizedRef.current = true;
           setIsFinalized(true);
           stopPolling();
           // Already done before opening modal — silent (no toast)
@@ -688,7 +691,7 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
 
   // ── Generate QR for mobile scan ──
   const generateQR = useCallback(async () => {
-    if (isFinalized) return; // Đã QC xong — không cho tạo QR mới
+    if (isFinalizedRef.current) return; // Đã QC xong — không cho tạo QR mới
     setQrLoading(true); setQrError(null); setQrValue(null);
     try {
       // Ensure QC session started (idempotent on BE)
