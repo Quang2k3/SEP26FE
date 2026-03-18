@@ -30,14 +30,14 @@ export default function GateCheckFilter({
       onSubmit={onSubmit}
       placeholder="Search receipt code, supplier..."
       options={[
-        { value: "ALL",              label: "All" },
-        { value: "DRAFT",            label: "Draft" },
-        { value: "PENDING_COUNT",    label: "Pending Count" },
-        { value: "SUBMITTED",        label: "Submitted" },
-        { value: "PENDING_INCIDENT", label: "Pending Incident" },
-        { value: "QC_APPROVED",      label: "QC Approved" },
-        { value: "GRN_CREATED",      label: "GRN Created" },
-        { value: "POSTED",           label: "Posted" },
+        { value: "ALL",              label: "Tất cả" },
+        { value: "DRAFT",            label: "Nháp" },
+        { value: "PENDING_COUNT",    label: "Chờ kiểm đếm" },
+        { value: "SUBMITTED",        label: "Đang nhận hàng" },
+        { value: "PENDING_INCIDENT", label: "Có sự cố" },
+        { value: "QC_APPROVED",      label: "QC đạt" },
+        { value: "GRN_CREATED",      label: "Đã tạo GRN" },
+        { value: "POSTED",           label: "Đã nhập kho" },
       ]}
     />
   );

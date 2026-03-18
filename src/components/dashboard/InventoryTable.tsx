@@ -8,7 +8,7 @@ import type { ReceivingOrder } from '@/interfaces/receiving';
 const STATUS_CONFIG = {
   DRAFT:            { label: 'Nháp',          cls: 'bg-gray-100 text-gray-600 border-gray-200' },
   PENDING_COUNT:    { label: 'Chờ đếm',       cls: 'bg-sky-50 text-sky-700 border-sky-100' },
-  SUBMITTED:        { label: 'Chờ QC',        cls: 'bg-amber-50 text-amber-700 border-amber-100' },
+  SUBMITTED:        { label: 'Đang nhận hàng', cls: 'bg-cyan-50 text-cyan-700 border-cyan-100' },
   PENDING_INCIDENT: { label: 'Sự cố',         cls: 'bg-red-50 text-red-600 border-red-100' },
   QC_APPROVED:      { label: 'QC duyệt',      cls: 'bg-violet-50 text-violet-700 border-violet-100' },
   GRN_CREATED:      { label: 'GRN đã tạo',   cls: 'bg-orange-50 text-orange-700 border-orange-100' },

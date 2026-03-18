@@ -34,7 +34,7 @@ function getUserRole(): string {
   return "KEEPER";
 }
 
-// ── Submit Confirm Modal (DRAFT → SUBMITTED) ─────────────────────────────────
+// ── Submit Confirm Modal (DRAFT → PENDING_RECEIPT) ───────────────────────────
 function SubmitConfirmModal({
   receiving, loading, onConfirm, onCancel,
 }: {
@@ -52,10 +52,10 @@ function SubmitConfirmModal({
               <span className="material-symbols-outlined text-blue-600 text-[20px]">send</span>
             </div>
             <div>
-              <h3 className="text-sm font-bold text-gray-900">Xác nhận Submit phiếu</h3>
+              <h3 className="text-sm font-bold text-gray-900">Xác nhận nhận hàng</h3>
               <p className="text-xs text-gray-500 mt-0.5">
-                Sau khi submit, phiếu chuyển sang{" "}
-                <span className="font-medium text-blue-600">Đã submit</span>{" "}
+                Sau khi xác nhận, phiếu chuyển sang{" "}
+                <span className="font-medium text-cyan-600">Đang nhận hàng</span>{" "}
                 và bạn có thể quét QR để kiểm đếm.
               </p>
             </div>
@@ -69,7 +69,7 @@ function SubmitConfirmModal({
               <div className="flex items-center gap-1 text-[11px]">
                 <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">Nháp</span>
                 <span className="material-symbols-outlined text-[14px] text-gray-400">arrow_forward</span>
-                <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">Đã submit</span>
+                <span className="px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-600 font-medium">Đang nhận hàng</span>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -89,7 +89,7 @@ function SubmitConfirmModal({
                 info
               </span>
               <p className="text-xs text-blue-700">
-                Sau khi submit, bấm <strong>Quét QR</strong> để scan barcode hàng hoá trên điện thoại, rồi gửi cho QC kiểm đếm.
+                Sau khi xác nhận, bấm <strong>Quét QR</strong> để scan barcode hàng hoá trên điện thoại, rồi gửi cho QC kiểm đếm.
               </p>
             </div>
           </div>
@@ -97,7 +97,7 @@ function SubmitConfirmModal({
             loading={loading}
             onCancel={onCancel}
             onConfirm={onConfirm}
-            confirmLabel="Xác nhận Submit"
+            confirmLabel="Xác nhận nhận hàng"
             confirmIcon="send"
             confirmClass="bg-blue-600 hover:bg-blue-700"
           />
@@ -515,7 +515,7 @@ export default function GateCheckContent() {
     );
   }, [receivings, search]);
 
-  // ── Submit phiếu DRAFT → SUBMITTED ───────────────────────────────────────
+  // ── Xác nhận phiếu DRAFT → PENDING_RECEIPT ───────────────────────────────────────
   const handleSubmitConfirm = (r: ReceivingOrder) => setSubmitConfirmReceiving(r);
   const handleSubmitExecute = async () => {
     if (!submitConfirmReceiving) return;
@@ -649,7 +649,7 @@ export default function GateCheckContent() {
         />
       </Card>
 
-      {/* QR Scan — chỉ mở được khi status = SUBMITTED (Keeper) hoặc PENDING_COUNT/SUBMITTED (QC) */}
+      {/* QR Scan — chỉ mở được khi status = PENDING_RECEIPT (Keeper) hoặc PENDING_COUNT/PENDING_RECEIPT (QC) */}
       {scanReceiving && (
         <GateCheckModal
           open={!!scanReceiving}
@@ -668,7 +668,7 @@ export default function GateCheckContent() {
         onRefresh={() => loadReceivings(page)}
       />
 
-      {/* Submit phiếu confirm (DRAFT → SUBMITTED) */}
+      {/* Xác nhận phiếu (DRAFT → PENDING_RECEIPT) */}
       {submitConfirmReceiving && (
         <SubmitConfirmModal
           receiving={submitConfirmReceiving}

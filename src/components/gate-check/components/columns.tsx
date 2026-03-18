@@ -3,11 +3,11 @@ import type { ReceivingOrder } from "@/interfaces/receiving";
 
 export const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   DRAFT:            { label: "Nháp",            className: "bg-gray-100 text-gray-600" },
-  SUBMITTED:        { label: "Đã submit",        className: "bg-blue-50 text-blue-700" },
+  SUBMITTED:        { label: "Đang nhận hàng",   className: "bg-cyan-50 text-cyan-700" },
   PENDING_COUNT:    { label: "Chờ kiểm đếm",    className: "bg-indigo-50 text-indigo-700" },
   PENDING_INCIDENT: { label: "Có sự cố",        className: "bg-yellow-50 text-yellow-700" },
   QC_APPROVED:      { label: "QC Đạt",          className: "bg-purple-50 text-purple-700" },
-  GRN_CREATED:      { label: "GRN Created",     className: "bg-orange-50 text-orange-700" },
+  GRN_CREATED:      { label: "Đã tạo GRN",      className: "bg-orange-50 text-orange-700" },
   PENDING_APPROVAL: { label: "Chờ duyệt",       className: "bg-amber-50 text-amber-700 ring-1 ring-amber-200" },
   GRN_APPROVED:     { label: "Đã duyệt",        className: "bg-green-50 text-green-700" },
   GRN_REJECTED:     { label: "Bị từ chối",      className: "bg-red-50 text-red-600" },
@@ -126,8 +126,8 @@ export function getReceivingColumns({
     // ── Cột Action ────────────────────────────────────────
     //
     // FLOW ĐÚNG cho Keeper (inbound):
-    //   DRAFT         → nút "Submit" (modal xác nhận) → SUBMITTED
-    //   SUBMITTED     → nút "Quét QR" (scan QR) → sau finalize → PENDING_COUNT
+    //   DRAFT         → nút "Xác nhận nhận hàng" → SUBMITTED (Đang nhận hàng)
+    //   SUBMITTED     → nút "Quét QR" (scan QR) → sau finalize → PENDING_COUNT (Chờ kiểm đếm)
     //   PENDING_COUNT → "Chờ kiểm đếm" (lock, QC đang scan)
     //   QC_APPROVED   → "Gen GRN"
     //   GRN_CREATED   → "Gửi Manager"

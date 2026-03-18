@@ -25,10 +25,10 @@ export default function IncidentFilter({
         style={{ width: 200 }}
         onChange={(value) => setStatusFilter(value)}
         options={[
-          { value: "ALL", label: "All" },
-          { value: "OPEN", label: "Open" },
-          { value: "APPROVED", label: "Approved" },
-          { value: "REJECTED", label: "Rejected" },
+          { value: "ALL", label: "Tất cả" },
+          { value: "OPEN", label: "Đang mở" },
+          { value: "APPROVED", label: "Đã duyệt" },
+          { value: "REJECTED", label: "Từ chối" },
         ]}
       />
     </div>

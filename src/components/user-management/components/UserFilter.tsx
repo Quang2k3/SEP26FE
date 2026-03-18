@@ -34,11 +34,11 @@ export default function UserFilter({
         onChange={(v) => setStatusFilter(v as FilterStatus)}
         style={{ width: 180 }}
         options={[
-          { value: "ALL", label: "All" },
-          { value: "ACTIVE", label: "Active" },
-          { value: "INACTIVE", label: "Inactive" },
-          { value: "PENDING_VERIFY", label: "Pending Verify" },
-          { value: "LOCKED", label: "Locked" },
+          { value: "ALL", label: "Tất cả" },
+          { value: "ACTIVE", label: "Đang hoạt động" },
+          { value: "INACTIVE", label: "Không hoạt động" },
+          { value: "PENDING_VERIFY", label: "Chờ xác minh" },
+          { value: "LOCKED", label: "Đã khoá" },
         ]}
       />
     </Space>
