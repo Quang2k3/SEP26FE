@@ -18,6 +18,7 @@ const SILENT_ENDPOINTS = [
   '/receiving-sessions/',  // polling getSession mỗi 3s
   '/locations',            // MANAGER only — KEEPER sẽ 403, không toast
   '/zones',                // MANAGER only — KEEPER sẽ 403, không toast
+  '/start-qc',             // idempotent — BE trả lỗi nếu đã QC_IN_PROGRESS, FE tự xử lý
   // Notification polling — background calls, lỗi không nên toast
   // (chạy mỗi 30s, 500 từ BE không cần thông báo user)
 ];

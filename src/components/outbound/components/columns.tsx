@@ -357,30 +357,17 @@ export function getOutboundColumns(cb: OutboundColumnCallbacks): Column<Outbound
         );
       }
 
-      // ── Manager: Duyệt/Từ chối chỉ khi PENDING_APPROVAL + SALES_ORDER ──
+      // ── Manager: nút "Chờ duyệt" mở modal detail (có Duyệt/Từ chối bên trong) ──
       if (role === 'MANAGER') {
         if (row.status !== 'PENDING_APPROVAL' || row.orderType !== 'SALES_ORDER') return null;
-        const isApproving = approvingId === row.documentId;
         return (
-          <div className="inline-flex items-center gap-1.5">
-            <button
-              onClick={e => { e.stopPropagation(); onApprove?.(row); }}
-              disabled={isApproving}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 disabled:opacity-60 transition-colors"
-            >
-              {isApproving
-                ? <Spin />
-                : <span className="material-symbols-outlined text-[13px]">check</span>
-              }
-              Duyệt
-            </button>
-            <button
-              onClick={e => { e.stopPropagation(); onReject?.(row); }}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold text-red-600 bg-red-50 border border-red-200 rounded-xl hover:bg-red-100 transition-colors"
-            >
-              Từ chối
-            </button>
-          </div>
+          <button
+            onClick={e => { e.stopPropagation(); onView?.(row); }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100 transition-colors"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            Chờ duyệt
+          </button>
         );
       }
 

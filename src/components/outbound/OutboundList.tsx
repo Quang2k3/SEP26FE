@@ -77,7 +77,7 @@ export default function OutboundList() {
   const [totalPages, setTotalPages]       = useState(0);
   const [totalElements, setTotalElements] = useState(0);
   const [page, setPage]                   = useState(0);
-  const PAGE_SIZE = 20;
+  const PAGE_SIZE = 10;
 
   const [filter, setFilter] = useState<{
     keyword: string;
@@ -183,6 +183,7 @@ export default function OutboundList() {
         pageSize={PAGE_SIZE}
         onPrev={() => load(page - 1)}
         onNext={() => load(page + 1)}
+        onGoToPage={(p) => load(p)}
         onRowClick={(row) => setDetailItem(row)}
       />
 

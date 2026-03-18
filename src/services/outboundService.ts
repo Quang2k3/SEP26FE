@@ -25,6 +25,11 @@ export async function fetchOutboundOrders(params?: OutboundListQuery): Promise<O
   return payload;
 }
 
+export async function fetchOutboundDetail(documentId: number, orderType: string): Promise<OutboundOrder> {
+  const { data } = await api.get<ApiResponse<OutboundOrder>>(`/outbound/${documentId}`, { params: { orderType } });
+  return data.data;
+}
+
 export async function fetchOutboundSummary(): Promise<OutboundSummary> {
   const { data } = await api.get<ApiResponse<OutboundSummary>>('/outbound/summary');
   return data.data;

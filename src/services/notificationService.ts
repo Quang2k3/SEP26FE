@@ -28,6 +28,7 @@ export type NotificationType =
   | 'putaway_pending'            // Keeper: putaway task chờ thực hiện (PENDING / OPEN)
   | 'grn_approved'               // Keeper: GRN đã được Manager duyệt → cần post nhập kho (APPROVED)
   | 'grn_rejected'               // Keeper: GRN bị Manager từ chối → cần xử lý lại (REJECTED)
+  | 'outbound_approved'          // Keeper: lệnh xuất vừa được Manager duyệt → cần phân bổ tồn kho (APPROVED)
   | 'outbound_pick_pending'      // Keeper: outbound được duyệt → có pick task cần thực hiện (PICKING)
   | 'grn_create_ready'           // Keeper: QC kiểm đếm xong (QC_APPROVED) → cần tạo GRN
 
@@ -55,6 +56,7 @@ export const NOTIFICATION_CHANNELS: Record<NotificationType, NotificationChannel
   putaway_pending:           { type: 'putaway_pending',           label: 'Putaway cần thực hiện',       icon: 'shelves',           color: 'text-indigo-600',  dot: 'bg-indigo-400'  },
   grn_approved:              { type: 'grn_approved',              label: 'GRN đã duyệt — cần nhập kho', icon: 'check_circle',      color: 'text-green-600',   dot: 'bg-green-400'   },
   grn_rejected:              { type: 'grn_rejected',              label: 'GRN bị từ chối',               icon: 'cancel',            color: 'text-rose-600',    dot: 'bg-rose-400'    },
+  outbound_approved:         { type: 'outbound_approved',         label: 'Lệnh xuất cần phân bổ',       icon: 'assignment_turned_in', color: 'text-emerald-600', dot: 'bg-emerald-400'  },
   outbound_pick_pending:     { type: 'outbound_pick_pending',     label: 'Có task pick cần thực hiện',  icon: 'inventory',         color: 'text-cyan-600',    dot: 'bg-cyan-400'    },
   grn_create_ready:          { type: 'grn_create_ready',          label: 'QC xong — cần tạo GRN',       icon: 'receipt_long',      color: 'text-purple-600',  dot: 'bg-purple-400'  },
 };
@@ -73,6 +75,7 @@ export const ROLE_CHANNELS: Record<string, NotificationType[]> = {
   ],
   KEEPER: [
     'grn_create_ready',
+    'outbound_approved',
     'putaway_pending',
     'grn_approved',
     'grn_rejected',
@@ -93,6 +96,7 @@ export const NOTIFICATION_NAV: Record<NotificationType, string> = {
   putaway_pending:           '/tasks',
   grn_approved:              '/manager-dashboard/grn',
   grn_rejected:              '/manager-dashboard/grn',
+  outbound_approved:         '/outbound',
   outbound_pick_pending:     '/outbound',
   grn_create_ready:          '/inbound/gate-check',
 };
@@ -252,6 +256,27 @@ async function fetchGrnCreateReady(size = 8): Promise<NotificationItem[]> {
   } catch { return []; }
 }
 
+/**
+ * Keeper — lệnh xuất vừa được Manager duyệt (APPROVED) → cần phân bổ tồn kho.
+ */
+async function fetchOutboundApproved(size = 8): Promise<NotificationItem[]> {
+  try {
+    const { data } = await api.get<ApiResponse<any>>(
+      '/outbound', { params: { status: 'APPROVED', page: 0, size } }
+    );
+    const content: any[] = data.data?.content ?? [];
+    return content.map((o: any) => ({
+      id: `out-approved-${o.documentId}`,
+      code: o.documentCode ?? `Lệnh #${o.documentId}`,
+      subtitle: `${o.destination ?? o.customerName ?? '—'} · Cần phân bổ tồn kho`,
+      createdAt: o.createdAt,
+      status: o.status,
+      type: 'outbound_approved' as NotificationType,
+      navigateTo: '/outbound',
+    }));
+  } catch { return []; }
+}
+
 async function fetchPutawayPending(size = 8): Promise<NotificationItem[]> {
   try {
     const { data } = await api.get<ApiResponse<any>>(
@@ -393,6 +418,10 @@ export async function fetchNotificationsForRole(
 
         case 'grn_create_ready':
           items = await fetchGrnCreateReady();
+          break;
+
+        case 'outbound_approved':
+          items = await fetchOutboundApproved();
           break;
       }
 
