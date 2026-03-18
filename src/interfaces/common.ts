@@ -7,8 +7,15 @@ export interface ApiResponse<T> {
   timestamp: number;
 }
 
+export interface PageResponse<T> {
+  content: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  last: boolean;
+}
+
 export interface ProtectedLayoutProps {
   children: ReactNode;
 }
-
-

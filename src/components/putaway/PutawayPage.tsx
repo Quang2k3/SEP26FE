@@ -295,6 +295,8 @@ export default function PutawayPage() {
   // ── Task list ──
   const [tasks, setTasks]               = useState<PutawayTaskResponse[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
+  const [taskPage, setTaskPage] = useState(0);
+  const TASKS_PER_PAGE = 10;
 
   // ── Current task context ──
   const [task, setTask]                 = useState<PutawayTaskResponse | null>(null);
@@ -373,8 +375,26 @@ export default function PutawayPage() {
   const loadTasks = useCallback(async () => {
     setLoadingTasks(true);
     try {
-      const page = await fetchPutawayTasks({ size: 50 });
-      setTasks(page.content ?? []);
+      // Fetch tất cả tasks — loop qua tất cả pages để không miss đơn nào
+      let allTasks: PutawayTaskResponse[] = [];
+      let currentPage = 0;
+      let isLast = false;
+      while (!isLast) {
+        const page = await fetchPutawayTasks({ size: 50, page: currentPage });
+        allTasks = [...allTasks, ...(page.content ?? [])];
+        isLast = page.last ?? true;
+        currentPage++;
+        if (currentPage > 20) break; // safety cap
+      }
+      // Sort: active tasks first (PENDING, OPEN, IN_PROGRESS), DONE last; newest first within group
+      const ORDER: Record<string, number> = { PENDING: 0, OPEN: 1, IN_PROGRESS: 2, DONE: 3 };
+      const sorted = allTasks.sort((a, b) => {
+        const diff = (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9);
+        if (diff !== 0) return diff;
+        return b.putawayTaskId - a.putawayTaskId;
+      });
+      setTasks(sorted);
+      setTaskPage(0);
     } catch { toast.error('Không tải được danh sách task'); }
     finally { setLoadingTasks(false); }
   }, []);
@@ -675,36 +695,69 @@ export default function PutawayPage() {
               <span className="material-symbols-outlined text-gray-200 text-[48px]">inventory_2</span>
               <p className="text-sm text-gray-400">Không có task nào đang mở</p>
             </div>
-          ) : (
-            <div className="divide-y divide-gray-50">
-              {tasks.map(t => (
-                <div key={t.putawayTaskId}
-                  className={`flex items-center justify-between px-5 py-4 transition-colors group
-                    ${t.status !== 'DONE' ? 'hover:bg-indigo-50/30 cursor-pointer' : 'opacity-60'}`}
-                  onClick={() => t.status !== 'DONE' && openTask(t)}>
-                  <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0
-                      ${t.status === 'DONE' ? 'bg-emerald-50' : t.status === 'IN_PROGRESS' ? 'bg-amber-50' : 'bg-indigo-50'}`}>
-                      <span className={`material-symbols-outlined text-[20px]
-                        ${t.status === 'DONE' ? 'text-emerald-500' : t.status === 'IN_PROGRESS' ? 'text-amber-500' : 'text-indigo-400'}`}>
-                        {t.status === 'DONE' ? 'check_circle' : 'inventory_2'}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">Task #{t.putawayTaskId}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">GRN #{t.grnId} · Kho #{t.warehouseId}</p>
-                    </div>
+          ) : (() => {
+              const totalPages = Math.ceil(tasks.length / TASKS_PER_PAGE);
+              const pageTasks = tasks.slice(taskPage * TASKS_PER_PAGE, (taskPage + 1) * TASKS_PER_PAGE);
+              return (
+                <>
+                  <div className="divide-y divide-gray-50">
+                    {pageTasks.map(t => (
+                      <div key={t.putawayTaskId}
+                        className={`flex items-center justify-between px-5 py-4 transition-colors group
+                          ${t.status !== 'DONE' ? 'hover:bg-indigo-50/30 cursor-pointer' : 'opacity-60'}`}
+                        onClick={() => t.status !== 'DONE' && openTask(t)}>
+                        <div className="flex items-center gap-4">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0
+                            ${t.status === 'DONE' ? 'bg-emerald-50' : t.status === 'IN_PROGRESS' ? 'bg-amber-50' : 'bg-indigo-50'}`}>
+                            <span className={`material-symbols-outlined text-[20px]
+                              ${t.status === 'DONE' ? 'text-emerald-500' : t.status === 'IN_PROGRESS' ? 'text-amber-500' : 'text-indigo-400'}`}>
+                              {t.status === 'DONE' ? 'check_circle' : 'inventory_2'}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">Task #{t.putawayTaskId}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">GRN #{t.grnId} · Kho #{t.warehouseId}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <StatusBadge status={t.status} />
+                          {t.status !== 'DONE' && (
+                            <span className="material-symbols-outlined text-[16px] text-gray-200 group-hover:text-indigo-400 transition-colors">chevron_right</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <StatusBadge status={t.status} />
-                    {t.status !== 'DONE' && (
-                      <span className="material-symbols-outlined text-[16px] text-gray-200 group-hover:text-indigo-400 transition-colors">chevron_right</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                  {totalPages > 1 && (
+                    <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+                      <span className="text-xs text-gray-400">{tasks.length} tasks · Trang {taskPage + 1}/{totalPages}</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setTaskPage(p => Math.max(0, p - 1))}
+                          disabled={taskPage === 0}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                          <span className="material-symbols-outlined text-[16px]">chevron_left</span>
+                        </button>
+                        {Array.from({ length: totalPages }, (_, i) => (
+                          <button key={i}
+                            onClick={() => setTaskPage(i)}
+                            className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-semibold transition-colors
+                              ${i === taskPage ? 'bg-indigo-600 text-white' : 'border border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                            {i + 1}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => setTaskPage(p => Math.min(totalPages - 1, p + 1))}
+                          disabled={taskPage >= totalPages - 1}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                          <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
         </div>
       )}
 
