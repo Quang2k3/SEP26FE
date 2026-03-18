@@ -85,6 +85,44 @@ function RejectModal({ code, onConfirm, onCancel, loading }: {
   );
 }
 
+
+// ─── Confirm Modal (dùng chung cho Duyệt + Nhập kho) ─────────────────────────
+function ConfirmModal({ icon, iconBg, iconColor, title, description, confirmLabel, confirmClass, loading, onConfirm, onCancel }: {
+  icon: string; iconBg: string; iconColor: string;
+  title: string; description: string;
+  confirmLabel: string; confirmClass: string;
+  loading: boolean; onConfirm: () => void; onCancel: () => void;
+}) {
+  return (
+    <Portal>
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
+        <div className="px-6 pt-6 pb-4 flex flex-col items-center text-center gap-3">
+          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${iconBg}`}>
+            <span className={`material-symbols-outlined text-3xl ${iconColor}`}>{icon}</span>
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-gray-900">{title}</h3>
+            <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">{description}</p>
+          </div>
+        </div>
+        <div className="px-6 pb-6 flex gap-3">
+          <button onClick={onCancel} disabled={loading}
+            className="flex-1 py-2.5 text-sm font-semibold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-50">
+            Huỷ
+          </button>
+          <button onClick={onConfirm} disabled={loading}
+            className={`flex-1 py-2.5 text-sm font-semibold text-white rounded-xl flex items-center justify-center gap-2 disabled:opacity-60 ${confirmClass}`}>
+            {loading && <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+            {loading ? 'Đang xử lý...' : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+    </Portal>
+  );
+}
+
 // ─── Detail + Action Modal ────────────────────────────────────────────────────
 function DetailModal({ receiving, onClose, onRefresh }: {
   receiving: ReceivingOrder; onClose: () => void; onRefresh: () => void;
@@ -93,6 +131,8 @@ function DetailModal({ receiving, onClose, onRefresh }: {
   const [loadingGrn, setLoadingGrn] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [showReject, setShowReject] = useState(false);
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
+  const [showPostConfirm, setShowPostConfirm] = useState(false);
   // localStatus luôn được đồng bộ theo GRN.status thực tế sau khi fetch xong
   const [localStatus, setLocalStatus] = useState(receiving.status);
 
@@ -280,13 +320,11 @@ function DetailModal({ receiving, onClose, onRefresh }: {
                   <span className="material-symbols-outlined text-[16px]">block</span>
                   Không duyệt
                 </button>
-                <button onClick={handleApprove} disabled={actionLoading}
+                <button onClick={() => setShowApproveConfirm(true)} disabled={actionLoading}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white rounded-xl disabled:opacity-50"
                   style={{ background: 'linear-gradient(135deg,#4f46e5,#6366f1)' }}>
-                  {actionLoading
-                    ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                    : <span className="material-symbols-outlined text-[16px]">check_circle</span>}
-                  {actionLoading ? 'Đang xử lý...' : 'Duyệt'}
+                  <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                  Duyệt
                 </button>
               </div>
             )}
@@ -298,13 +336,11 @@ function DetailModal({ receiving, onClose, onRefresh }: {
                   <span className="material-symbols-outlined text-[14px]">check_circle</span>
                   Đã duyệt — sẵn sàng nhập kho
                 </div>
-                <button onClick={handlePost} disabled={actionLoading}
+                <button onClick={() => setShowPostConfirm(true)} disabled={actionLoading}
                   className="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold text-white rounded-xl disabled:opacity-50 active:scale-95"
                   style={{ background: 'linear-gradient(135deg,#059669,#10b981)', boxShadow: '0 4px 14px rgba(5,150,105,0.3)' }}>
-                  {actionLoading
-                    ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                    : <span className="material-symbols-outlined text-[18px]">inventory</span>}
-                  {actionLoading ? 'Đang nhập kho...' : 'Nhập kho (Post GRN)'}
+                  <span className="material-symbols-outlined text-[18px]">inventory</span>
+                  Nhập kho (Post GRN)
                 </button>
               </div>
             )}
@@ -337,6 +373,30 @@ function DetailModal({ receiving, onClose, onRefresh }: {
       {showReject && (
         <RejectModal code={receiving.receivingCode} loading={actionLoading}
           onConfirm={handleReject} onCancel={() => setShowReject(false)} />
+      )}
+
+      {showApproveConfirm && (
+        <ConfirmModal
+          icon="check_circle" iconBg="bg-indigo-50" iconColor="text-indigo-500"
+          title="Xác nhận duyệt GRN?"
+          description={`Duyệt phiếu ${receiving.receivingCode}. Keeper sẽ tiến hành nhập kho sau khi duyệt.`}
+          confirmLabel="Duyệt GRN" confirmClass="bg-indigo-600 hover:bg-indigo-700"
+          loading={actionLoading}
+          onConfirm={() => { setShowApproveConfirm(false); handleApprove(); }}
+          onCancel={() => setShowApproveConfirm(false)}
+        />
+      )}
+
+      {showPostConfirm && (
+        <ConfirmModal
+          icon="inventory" iconBg="bg-emerald-50" iconColor="text-emerald-500"
+          title="Xác nhận nhập kho?"
+          description={`Nhập kho GRN ${grn?.grnCode ?? ''}. Hệ thống sẽ tạo Putaway Task để Keeper phân bổ hàng vào kho.`}
+          confirmLabel="Nhập kho" confirmClass="bg-emerald-600 hover:bg-emerald-700"
+          loading={actionLoading}
+          onConfirm={() => { setShowPostConfirm(false); handlePost(); }}
+          onCancel={() => setShowPostConfirm(false)}
+        />
       )}
     </>
   );
