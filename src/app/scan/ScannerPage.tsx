@@ -140,20 +140,23 @@ export default function ScannerPage() {
       const currentItems = pickItemsRef.current;
       const currentQty   = scannedQtyRef.current;
 
-      const matched = currentItems.filter(it =>
-        it.skuCode.toUpperCase() === barcode || (it.barcode ?? '').toUpperCase() === barcode
-      );
-      if (!matched.length) { toast(`Mã ${barcode} không có trong Pick List!`, true); return; }
+      // Find matching items WITH their original index in pickItems (for consistent key)
+      const matchedWithIdx = currentItems
+        .map((it, idx) => ({ it, idx }))
+        .filter(({ it }) =>
+          it.skuCode.toUpperCase() === barcode || (it.barcode ?? '').toUpperCase() === barcode
+        );
+      if (!matchedWithIdx.length) { toast(`Mã ${barcode} không có trong Pick List!`, true); return; }
 
       let target: { item: PickItem; key: string; req: number; cur: number } | null = null;
-      for (let i = 0; i < matched.length; i++) {
-        const it = matched[i];
-        const key = it.taskItemId ? String(it.taskItemId) : `${it.skuCode}_${i}`;
+      for (const { it, idx } of matchedWithIdx) {
+        // Use taskItemId if available, otherwise use ORIGINAL index in pickItems array
+        const key = it.taskItemId ? String(it.taskItemId) : `${it.skuCode}_${idx}`;
         const req = it.requiredQty;
         const cur = currentQty[key] ?? 0;
         if (cur < req) { target = { item: it, key, req, cur }; break; }
       }
-      if (!target) { toast(`Đã đủ số lượng cho ${matched[0].skuCode}`); return; }
+      if (!target) { toast(`Đã đủ số lượng cho ${matchedWithIdx[0].it.skuCode}`); return; }
 
       const newCur = target.cur + 1;
       const rem = target.req - newCur;
