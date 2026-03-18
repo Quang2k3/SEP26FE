@@ -10,132 +10,237 @@ import { fetchWarehouses, type Warehouse } from '@/services/warehouseService';
 import { fetchPutawayTasks } from '@/services/putawayService';
 import { fetchGrns } from '@/services/grnService';
 import { getStoredSession } from '@/services/authService';
-import { fetchThroughput7Days, type ThroughputPoint } from '@/services/dashboardService';
+import { fetchThroughput, type ThroughputPoint, type ThroughputRange } from '@/services/dashboardService';
 
-// ─── Chart ────────────────────────────────────────────────────────────────────
+// ─── Grouped Bar Chart ────────────────────────────────────────────────────────
 
-function ThroughputChart({ data, loading }: { data: ThroughputPoint[]; loading: boolean }) {
-  const W = 620, H = 180, PAD_L = 36, PAD_R = 12, PAD_T = 12, PAD_B = 32;
+interface TooltipState {
+  visible: boolean;
+  x: number;
+  y: number;
+  point: ThroughputPoint | null;
+}
+
+function ThroughputChart({ data, loading, range }: {
+  data: ThroughputPoint[];
+  loading: boolean;
+  range: ThroughputRange;
+}) {
+  const [tooltip, setTooltip] = useState<TooltipState>({ visible: false, x: 0, y: 0, point: null });
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
+  const W = 620, H = 210, PAD_L = 40, PAD_R = 16, PAD_T = 16, PAD_B = 36;
   const chartW = W - PAD_L - PAD_R;
   const chartH = H - PAD_T - PAD_B;
+  const n = data.length || 7;
 
-  // Loading skeleton
+  // ── Loading skeleton ─────────────────────────────────────────────────────
   if (loading) {
     return (
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="none">
-        {[0, 1, 2, 3].map(i => (
-          <rect key={i} x={PAD_L} y={PAD_T + i * (chartH / 4)} width={chartW} height="1" fill="#f1f5f9" />
-        ))}
-        {[0, 1, 2, 3, 4, 5, 6].map(i => {
-          const x = PAD_L + i * (chartW / 6);
-          return (
-            <g key={i}>
-              <rect x={x - 20} y={PAD_T + 20} width={40} height={chartH - 20} rx="4" fill="#f8fafc" />
-              <text x={x} y={H - 6} fontSize="10" fill="#cbd5e1" textAnchor="middle">...</text>
-            </g>
-          );
-        })}
-      </svg>
+      <div className="w-full h-full flex flex-col gap-3 px-1 pt-2 pb-1">
+        <div className="flex items-end gap-1 flex-1">
+          {Array.from({ length: 7 }, (_, i) => (
+            <div key={i} className="flex-1 flex gap-0.5 items-end h-full">
+              <div className="flex-1 rounded-t-md bg-blue-100 animate-pulse"
+                style={{ height: `${35 + Math.sin(i) * 25}%`, animationDelay: `${i * 80}ms` }} />
+              <div className="flex-1 rounded-t-md bg-violet-100 animate-pulse"
+                style={{ height: `${25 + Math.cos(i) * 20}%`, animationDelay: `${i * 80 + 120}ms` }} />
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-1">
+          {Array.from({ length: 7 }, (_, i) => (
+            <div key={i} className="flex-1 h-3 bg-gray-100 rounded animate-pulse"
+              style={{ animationDelay: `${i * 60}ms` }} />
+          ))}
+        </div>
+      </div>
     );
   }
 
-  // Tất cả đều 0 → empty state
-  const allZero = data.every(d => d.inbound === 0 && d.outbound === 0);
+  // ── Empty state ──────────────────────────────────────────────────────────
+  const allZero = data.length === 0 || data.every(d => d.inbound === 0 && d.outbound === 0);
   if (allZero) {
     return (
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="none">
-        {/* Grid lines */}
-        {[0, 1, 2, 3, 4].map(i => {
-          const y = PAD_T + (chartH / 4) * i;
-          return <line key={i} x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="#f1f5f9" strokeWidth="1" />;
-        })}
-        {/* Day labels */}
-        {data.map((d, i) => {
-          const x = PAD_L + i * (chartW / 6);
-          return <text key={d.label} x={x} y={H - 6} fontSize="10" fill="#94a3b8" textAnchor="middle">{d.label}</text>;
-        })}
-        {/* Empty message */}
-        <text x={W / 2} y={H / 2 - 6} fontSize="12" fill="#cbd5e1" textAnchor="middle">Chưa có dữ liệu trong 7 ngày qua</text>
-        <text x={W / 2} y={H / 2 + 10} fontSize="10" fill="#e2e8f0" textAnchor="middle">GRN đã nhập kho và đơn xuất kho sẽ hiển thị tại đây</text>
-      </svg>
+      <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-center">
+        <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center">
+          <span className="material-symbols-outlined text-[24px] text-gray-300">bar_chart</span>
+        </div>
+        <p className="text-sm font-medium text-gray-400">Chưa có dữ liệu giao dịch</p>
+        <p className="text-xs text-gray-300">GRN đã nhập kho và đơn xuất kho sẽ hiển thị tại đây</p>
+      </div>
     );
   }
 
-  const maxVal = Math.max(...data.map(d => Math.max(d.inbound, d.outbound)), 1);
-  const yMax   = Math.ceil(maxVal / 5) * 5 || 5; // step 5, tối thiểu 5
-  const n      = data.length;
-  const xStep  = chartW / (n - 1);
-  const toX    = (i: number) => PAD_L + i * xStep;
-  const toY    = (v: number) => PAD_T + chartH - (v / yMax) * chartH;
+  // ── Tính toán ────────────────────────────────────────────────────────────
+  const maxVal   = Math.max(...data.map(d => Math.max(d.inbound, d.outbound)), 1);
+  const niceStep = maxVal <= 5 ? 1 : maxVal <= 10 ? 2 : maxVal <= 20 ? 5 : maxVal <= 50 ? 10 : maxVal <= 100 ? 20 : 50;
+  const yMax     = Math.ceil(maxVal / niceStep) * niceStep;
+  const baseY    = PAD_T + chartH;
+  const toY      = (v: number) => PAD_T + chartH - (v / yMax) * chartH;
 
-  const inboundPts  = data.map((d, i) => `${toX(i)},${toY(d.inbound)}`).join(' ');
-  const outboundPts = data.map((d, i) => `${toX(i)},${toY(d.outbound)}`).join(' ');
-  const areaIn  = `M${PAD_L},${PAD_T + chartH} L` + data.map((d, i) => `${toX(i)},${toY(d.inbound)}`).join(' L')  + ` L${toX(n-1)},${PAD_T + chartH} Z`;
-  const areaOut = `M${PAD_L},${PAD_T + chartH} L` + data.map((d, i) => `${toX(i)},${toY(d.outbound)}`).join(' L') + ` L${toX(n-1)},${PAD_T + chartH} Z`;
-  // Grid: tối đa 5 đường ngang, step gọn
-  const gridStep = Math.ceil(yMax / 4);
-  const gridVals = Array.from({ length: 5 }, (_, i) => Math.min(i * gridStep, yMax));
+  const slotW  = chartW / n;
+  // Giới hạn barW theo số lượng bucket: tháng có ~31 ngày cần thanh mỏng hơn
+  const barW   = Math.max(Math.min(slotW * 0.32, n <= 7 ? 20 : n <= 12 ? 16 : 6), 3);
+  const gap    = Math.max(Math.min(slotW * 0.06, 4), 1);
+  const groupW = barW * 2 + gap;
+
+  // Grid
+  const gridCount = Math.min(4, yMax);
+  const gridStep  = yMax / gridCount;
+  const gridVals  = Array.from({ length: gridCount + 1 }, (_, i) => Math.round(i * gridStep));
+
+  // Tooltip position clamped trong SVG
+  const TOOLTIP_W = 130, TOOLTIP_H = 68;
+
+  const handleMouseEnter = (e: React.MouseEvent<SVGGElement>, point: ThroughputPoint, i: number, cx: number) => {
+    const svg = (e.currentTarget.closest('svg') as SVGSVGElement);
+    const rect = svg.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    const scaleY = H / rect.height;
+    const mouseX = (e.clientX - rect.left) * scaleX;
+    const mouseY = (e.clientY - rect.top)  * scaleY;
+    // Clamp tooltip
+    const tx = Math.min(Math.max(cx - TOOLTIP_W / 2, PAD_L), W - PAD_R - TOOLTIP_W);
+    const ty = Math.max(PAD_T, mouseY - TOOLTIP_H - 10);
+    setTooltip({ visible: true, x: tx, y: ty, point });
+    setHoveredIdx(i);
+  };
+
+  const handleMouseLeave = () => {
+    setTooltip(t => ({ ...t, visible: false }));
+    setHoveredIdx(null);
+  };
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="none">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full overflow-visible"
+      preserveAspectRatio="xMidYMid meet"
+      onMouseLeave={handleMouseLeave}>
       <defs>
-        <linearGradient id="gIn"  x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stopColor="#3b82f6" stopOpacity="0.2"/>
-          <stop offset="100%" stopColor="#3b82f6" stopOpacity="0"/>
+        <linearGradient id="barIn" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor="#3b82f6" stopOpacity="1"/>
+          <stop offset="100%" stopColor="#93c5fd" stopOpacity="0.8"/>
         </linearGradient>
-        <linearGradient id="gOut" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stopColor="#8b5cf6" stopOpacity="0.13"/>
-          <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0"/>
+        <linearGradient id="barInHover" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor="#1d4ed8" stopOpacity="1"/>
+          <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.9"/>
         </linearGradient>
+        <linearGradient id="barOut" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor="#8b5cf6" stopOpacity="1"/>
+          <stop offset="100%" stopColor="#c4b5fd" stopOpacity="0.8"/>
+        </linearGradient>
+        <linearGradient id="barOutHover" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor="#6d28d9" stopOpacity="1"/>
+          <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.9"/>
+        </linearGradient>
+        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#0000001a"/>
+        </filter>
       </defs>
 
-      {/* Grid lines + Y labels */}
-      {gridVals.map((v, gi) => {
-        const y = toY(v);
+      {/* ── Grid lines + Y labels ── */}
+      {gridVals.map((v, gi) => (
+        <g key={gi}>
+          <line x1={PAD_L} y1={toY(v)} x2={W - PAD_R} y2={toY(v)}
+            stroke={v === 0 ? '#e2e8f0' : '#f1f5f9'}
+            strokeWidth={v === 0 ? 1.5 : 1}
+            strokeDasharray={v === 0 ? undefined : '3 3'} />
+          <text x={PAD_L - 6} y={toY(v) + 4} fontSize="9" fill="#94a3b8" textAnchor="end"
+            fontFamily="ui-monospace, monospace">{v}</text>
+        </g>
+      ))}
+
+      {/* ── Bars + hover area ── */}
+      {data.map((d, i) => {
+        const cx     = PAD_L + slotW * i + slotW / 2;
+        const inX    = cx - groupW / 2;
+        const outX   = inX + barW + gap;
+        const inH    = d.inbound  > 0 ? Math.max((d.inbound  / yMax) * chartH, 2) : 0;
+        const outH   = d.outbound > 0 ? Math.max((d.outbound / yMax) * chartH, 2) : 0;
+        const inY    = baseY - inH;
+        const outY   = baseY - outH;
+        const r      = Math.min(3, barW / 2);
+        const isHov  = hoveredIdx === i;
+
         return (
-          <g key={gi}>
-            <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="#f1f5f9" strokeWidth="1"/>
-            <text x={PAD_L - 6} y={y + 4} fontSize="9" fill="#94a3b8" textAnchor="end">{v}</text>
+          <g key={i}
+            onMouseEnter={e => handleMouseEnter(e, d, i, cx)}
+            style={{ cursor: 'pointer' }}>
+
+            {/* Hover highlight zone — invisible rect covering full column height */}
+            <rect
+              x={inX - 2} y={PAD_T} width={groupW + 4} height={chartH}
+              fill={isHov ? '#f8faff' : 'transparent'}
+              rx="4"
+            />
+
+            {/* ── Cột nhập kho ── */}
+            {d.inbound > 0
+              ? <rect x={inX} y={inY} width={barW} height={inH} rx={r} ry={r}
+                  fill={isHov ? 'url(#barInHover)' : 'url(#barIn)'}
+                  filter={isHov ? 'url(#shadow)' : undefined}
+                  style={{ transition: 'all 0.15s ease' }} />
+              : <rect x={inX} y={baseY - 3} width={barW} height={3} rx="1"
+                  fill="#dbeafe" opacity="0.6" />
+            }
+
+            {/* ── Cột xuất kho ── */}
+            {d.outbound > 0
+              ? <rect x={outX} y={outY} width={barW} height={outH} rx={r} ry={r}
+                  fill={isHov ? 'url(#barOutHover)' : 'url(#barOut)'}
+                  filter={isHov ? 'url(#shadow)' : undefined}
+                  style={{ transition: 'all 0.15s ease' }} />
+              : <rect x={outX} y={baseY - 3} width={barW} height={3} rx="1"
+                  fill="#ede9fe" opacity="0.6" />
+            }
+
+            {/* ── X label ── */}
+            <text x={cx} y={H - 10} fontSize={n > 20 ? '8' : '10'} fill={isHov ? '#4b5563' : '#94a3b8'}
+              textAnchor="middle" fontWeight={isHov ? '600' : '400'}
+              style={{ transition: 'fill 0.15s' }}>
+              {d.label}
+            </text>
           </g>
         );
       })}
 
-      {/* Area fills */}
-      <path d={areaIn}  fill="url(#gIn)"/>
-      <path d={areaOut} fill="url(#gOut)"/>
+      {/* ── Tooltip ── */}
+      {tooltip.visible && tooltip.point && (
+        <g style={{ pointerEvents: 'none' }}>
+          {/* Shadow */}
+          <rect x={tooltip.x + 2} y={tooltip.y + 2} width={TOOLTIP_W} height={TOOLTIP_H}
+            rx="8" fill="black" opacity="0.08" />
+          {/* Background */}
+          <rect x={tooltip.x} y={tooltip.y} width={TOOLTIP_W} height={TOOLTIP_H}
+            rx="8" fill="white" stroke="#e2e8f0" strokeWidth="1" />
 
-      {/* Lines */}
-      <polyline points={inboundPts}  fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-      <polyline points={outboundPts} fill="none" stroke="#8b5cf6" strokeWidth="2"   strokeLinecap="round" strokeLinejoin="round" strokeDasharray="5 3"/>
+          {/* Date label */}
+          <text x={tooltip.x + TOOLTIP_W / 2} y={tooltip.y + 16}
+            fontSize="10" fill="#6b7280" textAnchor="middle" fontWeight="500">
+            {(tooltip.point as any).sublabel ?? tooltip.point.date}
+          </text>
 
-      {/* Dots + tooltip values on inbound line */}
-      {data.map((d, i) => (
-        <g key={i}>
-          <circle cx={toX(i)} cy={toY(d.inbound)} r="3.5" fill="white" stroke="#3b82f6" strokeWidth="2"/>
-          {d.inbound > 0 && (
-            <text x={toX(i)} y={toY(d.inbound) - 7} fontSize="8.5" fill="#3b82f6" textAnchor="middle" fontWeight="600">
-              {d.inbound}
-            </text>
-          )}
+          {/* Separator */}
+          <line x1={tooltip.x + 10} y1={tooltip.y + 22} x2={tooltip.x + TOOLTIP_W - 10} y2={tooltip.y + 22}
+            stroke="#f1f5f9" strokeWidth="1" />
+
+          {/* Inbound row */}
+          <rect x={tooltip.x + 12} y={tooltip.y + 29} width="8" height="8" rx="2" fill="#3b82f6" />
+          <text x={tooltip.x + 26} y={tooltip.y + 37} fontSize="11" fill="#374151">Nhập kho</text>
+          <text x={tooltip.x + TOOLTIP_W - 12} y={tooltip.y + 37}
+            fontSize="12" fill="#1d4ed8" fontWeight="700" textAnchor="end">
+            {tooltip.point.inbound}
+          </text>
+
+          {/* Outbound row */}
+          <rect x={tooltip.x + 12} y={tooltip.y + 47} width="8" height="8" rx="2" fill="#8b5cf6" />
+          <text x={tooltip.x + 26} y={tooltip.y + 55} fontSize="11" fill="#374151">Xuất kho</text>
+          <text x={tooltip.x + TOOLTIP_W - 12} y={tooltip.y + 55}
+            fontSize="12" fill="#6d28d9" fontWeight="700" textAnchor="end">
+            {tooltip.point.outbound}
+          </text>
         </g>
-      ))}
-
-      {/* Dots on outbound line */}
-      {data.map((d, i) => (
-        <g key={`o${i}`}>
-          <circle cx={toX(i)} cy={toY(d.outbound)} r="3" fill="white" stroke="#8b5cf6" strokeWidth="1.5"/>
-          {d.outbound > 0 && (
-            <text x={toX(i)} y={toY(d.outbound) - 6} fontSize="8" fill="#8b5cf6" textAnchor="middle">
-              {d.outbound}
-            </text>
-          )}
-        </g>
-      ))}
-
-      {/* X labels */}
-      {data.map((d, i) => (
-        <text key={d.label} x={toX(i)} y={H - 6} fontSize="10" fill="#94a3b8" textAnchor="middle">{d.label}</text>
-      ))}
+      )}
     </svg>
   );
 }
@@ -179,6 +284,20 @@ export default function DashboardPage() {
   // Throughput chart
   const [throughputData,    setThroughputData]    = useState<ThroughputPoint[]>([]);
   const [loadingThroughput, setLoadingThroughput] = useState(true);
+  const [chartRange,        setChartRange]        = useState<ThroughputRange>('week');
+
+  const loadThroughput = useCallback((range: ThroughputRange) => {
+    setLoadingThroughput(true);
+    fetchThroughput(range)
+      .then(setThroughputData)
+      .catch(() => setThroughputData([]))
+      .finally(() => setLoadingThroughput(false));
+  }, []);
+
+  const handleRangeChange = (r: ThroughputRange) => {
+    setChartRange(r);
+    loadThroughput(r);
+  };
 
   // Manager stats
   const [managerStats, setManagerStats] = useState({
@@ -253,13 +372,8 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchWarehouses().then(setWarehouses).catch(() => {});
     loadStats();
-    // Throughput: fetch riêng, không block stats loading
-    setLoadingThroughput(true);
-    fetchThroughput7Days()
-      .then(setThroughputData)
-      .catch(() => setThroughputData([]))
-      .finally(() => setLoadingThroughput(false));
-  }, [loadStats]);
+    loadThroughput('week');
+  }, [loadStats, loadThroughput]);
 
   // ── Greeting ──
   const hour = new Date().getHours();
@@ -310,24 +424,53 @@ export default function DashboardPage() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="px-5 pt-4 pb-3 flex items-center justify-between border-b border-gray-100">
-                <div>
-                  <h3 className="text-sm font-bold text-gray-900">Xu hướng thông lượng</h3>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {loadingThroughput
-                      ? 'Đang tải dữ liệu thực...'
-                      : throughputData.every(d => d.inbound === 0 && d.outbound === 0)
-                        ? '7 ngày gần nhất — chưa có giao dịch'
-                        : `7 ngày gần nhất · ${throughputData.reduce((s, d) => s + d.inbound, 0)} GRN nhập · ${throughputData.reduce((s, d) => s + d.outbound, 0)} đơn xuất`}
-                  </p>
+              <div className="px-5 pt-4 pb-3 border-b border-gray-100">
+                {/* Title row */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900">Thông lượng nhập / xuất kho</h3>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {loadingThroughput
+                        ? 'Đang tải...'
+                        : throughputData.every(d => d.inbound === 0 && d.outbound === 0)
+                          ? 'Chưa có giao dịch trong kỳ này'
+                          : (() => {
+                              const totalIn  = throughputData.reduce((s, d) => s + d.inbound, 0);
+                              const totalOut = throughputData.reduce((s, d) => s + d.outbound, 0);
+                              const label = chartRange === 'week' ? '7 ngày qua' : chartRange === 'month' ? `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}` : '12 tháng qua';
+                              return `${label} · ${totalIn} GRN nhập · ${totalOut} đơn xuất`;
+                            })()}
+                    </p>
+                  </div>
+                  {/* Range tabs */}
+                  <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                    {(['week', 'month', 'year'] as ThroughputRange[]).map(r => (
+                      <button key={r}
+                        onClick={() => handleRangeChange(r)}
+                        className={`px-3 py-1.5 text-[11px] font-semibold rounded-md transition-all ${
+                          chartRange === r
+                            ? 'bg-white text-gray-900 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                        }`}>
+                        {r === 'week' ? 'Tuần' : r === 'month' ? 'Tháng' : 'Năm'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex items-center gap-4 mr-2">
-                  <div className="flex items-center gap-1.5"><span className="w-6 h-0.5 rounded-full bg-blue-500 inline-block" /><span className="text-xs text-gray-500">Nhập kho</span></div>
-                  <div className="flex items-center gap-1.5"><span className="w-5 border-t-2 border-dashed border-violet-400 inline-block" /><span className="text-xs text-gray-500">Xuất kho</span></div>
+                {/* Legend */}
+                <div className="flex items-center gap-4 mt-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-sm bg-blue-500 inline-block" />
+                    <span className="text-xs text-gray-500">Nhập kho (GRN Posted)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-sm bg-violet-500 inline-block" />
+                    <span className="text-xs text-gray-500">Xuất kho (Dispatched)</span>
+                  </div>
                 </div>
               </div>
-              <div className="px-3 pb-3 pt-2 h-[220px] relative">
-                <ThroughputChart data={throughputData} loading={loadingThroughput} />
+              <div className="px-3 pb-3 pt-2 h-[240px] relative">
+                <ThroughputChart data={throughputData} loading={loadingThroughput} range={chartRange} />
               </div>
             </div>
             <AlertsList />

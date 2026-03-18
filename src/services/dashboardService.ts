@@ -4,61 +4,123 @@ import { fetchGrns } from '@/services/grnService';
 import { fetchOutboundOrders } from '@/services/outboundService';
 
 export interface ThroughputPoint {
-  label: string;   // "T2", "T3"… hoặc "CN"
-  date: string;    // "2026-03-18"
-  inbound: number; // số GRN POSTED trong ngày
-  outbound: number;// số Outbound DISPATCHED trong ngày
+  label: string;
+  date: string;
+  inbound: number;
+  outbound: number;
 }
 
+export type ThroughputRange = 'week' | 'month' | 'year';
+
 const DAY_LABELS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+const MONTH_LABELS = ['Th1','Th2','Th3','Th4','Th5','Th6','Th7','Th8','Th9','Th10','Th11','Th12'];
 
-/** Trả về mảng 7 ngày (D-6 → hôm nay), mỗi phần tử là ThroughputPoint */
-export async function fetchThroughput7Days(): Promise<ThroughputPoint[]> {
-  // ── Build date range ──────────────────────────────────────────────────────
-  const today = new Date();
-  today.setHours(23, 59, 59, 999);
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-  const days: { date: Date; key: string }[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    d.setHours(0, 0, 0, 0);
-    const key = d.toISOString().slice(0, 10); // "YYYY-MM-DD"
-    days.push({ date: d, key });
+/** Local date string YYYY-MM-DD (tránh UTC offset) */
+function localDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function dateKey(d: Date, range: ThroughputRange): string {
+  if (range === 'week')  return localDateKey(d);
+  if (range === 'month') return localDateKey(d);          // group theo ngày trong tháng
+  if (range === 'year')  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return localDateKey(d);
+}
+
+function buildBuckets(range: ThroughputRange): { key: string; label: string; sublabel?: string }[] {
+  const now = new Date();
+
+  if (range === 'week') {
+    // 7 ngày gần nhất
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(now);
+      d.setDate(now.getDate() - (6 - i));
+      d.setHours(0, 0, 0, 0);
+      const isToday = i === 6;
+      return {
+        key: localDateKey(d),
+        label: isToday ? 'Hôm nay' : DAY_LABELS[d.getDay()],
+        sublabel: `${d.getDate()}/${d.getMonth() + 1}`,
+      };
+    });
   }
 
-  // ── Fetch cả hai nguồn song song ─────────────────────────────────────────
+  if (range === 'month') {
+    // Tất cả các ngày trong tháng hiện tại (1 → hôm nay)
+    const year  = now.getFullYear();
+    const month = now.getMonth();
+    const today = now.getDate();
+    return Array.from({ length: today }, (_, i) => {
+      const day = i + 1;
+      const d   = new Date(year, month, day);
+      const key = localDateKey(d);
+      // Chỉ hiện label mỗi 5 ngày để tránh chật
+      const label = (day === 1 || day % 5 === 0 || day === today) ? String(day) : '';
+      return { key, label, sublabel: `${day}/${month + 1}` };
+    });
+  }
+
+  if (range === 'year') {
+    // 12 tháng gần nhất
+    return Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      return {
+        key,
+        label: MONTH_LABELS[d.getMonth()],
+        sublabel: `${d.getMonth() + 1}/${d.getFullYear()}`,
+      };
+    });
+  }
+
+  return [];
+}
+
+// ── Main fetch ────────────────────────────────────────────────────────────────
+
+export async function fetchThroughput(range: ThroughputRange): Promise<ThroughputPoint[]> {
   const [grnPage, outboundPage] = await Promise.allSettled([
     fetchGrns({ size: 500 }),
     fetchOutboundOrders({ size: 500 } as any),
   ]);
 
-  // ── Map GRN POSTED theo ngày ──────────────────────────────────────────────
-  const inboundByDay: Record<string, number> = {};
+  const inboundByKey: Record<string, number> = {};
   if (grnPage.status === 'fulfilled') {
     for (const grn of grnPage.value.content) {
       if (grn.status !== 'POSTED') continue;
-      const dateKey = (grn.createdAt ?? '').slice(0, 10);
-      if (dateKey) inboundByDay[dateKey] = (inboundByDay[dateKey] ?? 0) + 1;
+      const d = new Date(grn.createdAt ?? '');
+      if (isNaN(d.getTime())) continue;
+      const k = dateKey(d, range);
+      inboundByKey[k] = (inboundByKey[k] ?? 0) + 1;
     }
   }
 
-  // ── Map Outbound DISPATCHED theo ngày ─────────────────────────────────────
-  const outboundByDay: Record<string, number> = {};
+  const outboundByKey: Record<string, number> = {};
   if (outboundPage.status === 'fulfilled') {
-    const content = outboundPage.value.content ?? [];
-    for (const order of content) {
+    for (const order of outboundPage.value.content ?? []) {
       if (order.status !== 'DISPATCHED') continue;
-      const dateKey = (order.createdAt ?? '').slice(0, 10);
-      if (dateKey) outboundByDay[dateKey] = (outboundByDay[dateKey] ?? 0) + 1;
+      const d = new Date(order.createdAt ?? '');
+      if (isNaN(d.getTime())) continue;
+      const k = dateKey(d, range);
+      outboundByKey[k] = (outboundByKey[k] ?? 0) + 1;
     }
   }
 
-  // ── Assemble kết quả ─────────────────────────────────────────────────────
-  return days.map(({ date, key }) => ({
-    label: DAY_LABELS[date.getDay()],
+  const buckets = buildBuckets(range);
+  return buckets.map(({ key, label, sublabel }) => ({
+    label,
     date: key,
-    inbound:  inboundByDay[key]  ?? 0,
-    outbound: outboundByDay[key] ?? 0,
+    sublabel,
+    inbound:  inboundByKey[key]  ?? 0,
+    outbound: outboundByKey[key] ?? 0,
   }));
+}
+
+export async function fetchThroughput7Days(): Promise<ThroughputPoint[]> {
+  return fetchThroughput('week');
 }
