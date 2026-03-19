@@ -242,6 +242,10 @@ function KeeperInboundScanner({ token, receivingId }: { token: string; receiving
   const allDone   = expectedItems.length > 0 && expectedItems.every(i => (scannedMap[i.skuCode] ?? i.receivedQty) >= i.expectedQty);
   const hasOver   = expectedItems.some(i => (scannedMap[i.skuCode] ?? 0) > i.expectedQty);
 
+  // SKUs scanned but NOT on the receiving order
+  const expectedSkuSet = new Set(expectedItems.map(i => i.skuCode));
+  const extraSkus = Object.entries(scannedMap).filter(([sku, qty]) => !expectedSkuSet.has(sku) && qty > 0);
+
   return (
     <div style={{ fontFamily: '-apple-system,BlinkMacSystemFont,sans-serif', background: '#0f172a', color: '#e2e8f0', minHeight: '100vh' }}>
       <header style={{ background: 'linear-gradient(135deg,#16a34a,#15803d)', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -306,6 +310,38 @@ function KeeperInboundScanner({ token, receivingId }: { token: string; receiving
                 ⚠️ Một số SKU quét thừa — bấm − để điều chỉnh trước khi xác nhận.
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── HÀNG NGOÀI PHIẾU — SKUs scanned but not on the order ── */}
+        {extraSkus.length > 0 && (
+          <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8, border: '1px solid rgba(249,115,22,.3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <p style={{ fontSize: 11, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 700, margin: 0 }}>⚠️ Hàng ngoài phiếu</p>
+              <span style={{ fontSize: 11, color: '#f59e0b', fontWeight: 700 }}>{extraSkus.length} SKU</span>
+            </div>
+            {extraSkus.map(([skuCode, qty]) => (
+              <div key={skuCode} style={{ borderRadius: 8, padding: '10px 12px', marginBottom: 6, background: 'rgba(249,115,22,.06)', borderLeft: '3px solid #f59e0b' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>{skuCode}</p>
+                    <p style={{ fontSize: 10, color: '#f59e0b', margin: '2px 0 0', fontWeight: 600 }}>Không có trên phiếu nhận</p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                    {!locked && (
+                      <button onClick={() => decrementSku(skuCode)}
+                        style={{ width: 34, height: 34, borderRadius: 8, border: '1.5px solid #475569', background: 'transparent', color: '#f97316', fontSize: 22, fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                        −
+                      </button>
+                    )}
+                    <div style={{ textAlign: 'right' }}>
+                      <p style={{ fontSize: 15, fontWeight: 800, color: '#f59e0b', margin: 0 }}>{qty}</p>
+                      <p style={{ fontSize: 10, margin: 0, color: '#f59e0b', fontWeight: 600 }}>NGOÀI PHIẾU</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
