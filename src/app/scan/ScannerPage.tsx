@@ -226,12 +226,21 @@ function KeeperInboundScanner({ token, receivingId }: { token: string; receiving
   const { stopQr } = useCamera(scanBarcode, setStatus);
 
   const confirmFinalize = async () => {
-    if (!window.confirm('Xác nhận kiểm đếm xong? Phiếu sẽ gửi QC kiểm tra chất lượng.')) return;
+    if (!window.confirm('Xác nhận kiểm đếm xong?\nNếu số lượng khớp → gửi QC.\nNếu chênh lệch → gửi Manager duyệt.')) return;
     setSubmitting(true);
     try {
       const r = await fetch(`${API_BASE}/v1/receiving-orders/${receivingId}/finalize-count`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
       const d = await r.json();
-      if (d?.success) { toast('✅ Đã gửi QC!'); lockUI('Đã gửi QC — chờ kiểm tra chất lượng'); }
+      if (d?.success) {
+        const orderStatus = d.data?.status;
+        if (orderStatus === 'PENDING_INCIDENT') {
+          toast('⚠️ Chênh lệch số lượng — gửi Manager duyệt');
+          lockUI('Phát hiện thừa/thiếu — chờ Manager xử lý');
+        } else {
+          toast('✅ Đã gửi QC!');
+          lockUI('Đã gửi QC — chờ kiểm tra chất lượng');
+        }
+      }
       else toast(d?.message ?? 'Lỗi', true);
     } catch { toast('Lỗi kết nối', true); }
     finally { setSubmitting(false); }
