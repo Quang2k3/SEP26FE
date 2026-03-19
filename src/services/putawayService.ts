@@ -21,6 +21,14 @@ export interface PutawayTaskResponse {
   putawayTaskId: number;
   warehouseId: number;
   grnId: number;
+  /** Mã GRN dạng string, ví dụ: GRN-1773906771871 */
+  grnCode: string | null;
+  /** ID phiếu nhận hàng gốc */
+  receivingId: number | null;
+  /** Mã phiếu nhận hàng, ví dụ: RCV-2026-001 */
+  receivingCode: string | null;
+  /** Số SKU trong task — để hiện nhanh trên list mà không cần load items */
+  itemCount: number;
   status: 'PENDING' | 'OPEN' | 'IN_PROGRESS' | 'DONE';
   fromLocationId: number | null;
   assignedTo: number | null;

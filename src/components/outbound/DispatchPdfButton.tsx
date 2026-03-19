@@ -193,7 +193,7 @@ function buildHtml(note: Awaited<ReturnType<typeof fetchDispatchNote>>, soCode: 
     </thead>
     <tbody>
       <tr><td>Người lập phiếu</td><td></td><td></td></tr>
-      <tr><td>Kế toán xác nhận</td><td></td><td></td></tr>
+      <tr><td>KCS(QC) xác nhận</td><td></td><td></td></tr>
       <tr><td>Người giao hàng</td><td></td><td></td></tr>
       <tr><td>Người nhận hàng</td><td></td><td></td></tr>
     </tbody>

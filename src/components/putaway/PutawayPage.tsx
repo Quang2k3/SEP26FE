@@ -61,12 +61,17 @@ function ProgressBar({ value, colorClass = 'bg-indigo-500' }: { value: number; c
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    PENDING: 'bg-gray-100 text-gray-500',
-    OPEN: 'bg-blue-50 text-blue-700',
+    PENDING:     'bg-orange-50 text-orange-600 ring-1 ring-orange-200',
+    OPEN:        'bg-blue-50 text-blue-700',
     IN_PROGRESS: 'bg-amber-50 text-amber-700',
-    DONE: 'bg-emerald-50 text-emerald-700',
+    DONE:        'bg-emerald-50 text-emerald-700',
   };
-  const labels: Record<string, string> = { PENDING: 'Chờ', OPEN: 'Mở', IN_PROGRESS: 'Đang làm', DONE: 'Hoàn thành' };
+  const labels: Record<string, string> = {
+    PENDING:     'Chờ xử lý',
+    OPEN:        'Mở',
+    IN_PROGRESS: 'Đang làm',
+    DONE:        'Hoàn thành',
+  };
   return (
     <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${map[status] ?? 'bg-gray-100 text-gray-500'}`}>
       {labels[status] ?? status}
@@ -401,6 +406,14 @@ export default function PutawayPage() {
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
 
+  // Auto-refresh mỗi 10s nếu có task PENDING (chờ items được tạo từ GRN post)
+  useEffect(() => {
+    const hasPending = tasks.some(t => t.status === 'PENDING');
+    if (!hasPending) return;
+    const timer = setInterval(() => { loadTasks(); }, 10_000);
+    return () => clearInterval(timer);
+  }, [tasks, loadTasks]);
+
   // ── Open task ───────────────────────────────────────────────────────────────
   const openTask = async (t: PutawayTaskResponse) => {
     try {
@@ -680,12 +693,23 @@ export default function PutawayPage() {
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <div>
               <h3 className="text-sm font-bold text-gray-900">Danh sách Putaway Task</h3>
-              <p className="text-xs text-gray-400 mt-0.5">Manager duyệt GRN xong, task sẽ xuất hiện ở đây</p>
+              <p className="text-xs text-gray-400 mt-0.5">Manager nhập kho GRN xong, task sẽ xuất hiện ở đây</p>
             </div>
             <button onClick={loadTasks} className="flex items-center gap-1.5 text-xs text-indigo-600 font-medium hover:text-indigo-800">
               <span className="material-symbols-outlined text-[14px]">refresh</span>Tải lại
             </button>
           </div>
+          {/* Banner cảnh báo khi có task PENDING chưa có items */}
+          {tasks.some(t => t.status === 'PENDING' && t.itemCount === 0) && (
+            <div className="px-5 py-3 bg-amber-50 border-b border-amber-100 flex items-start gap-2">
+              <span className="material-symbols-outlined text-amber-500 text-[16px] mt-0.5 flex-shrink-0">warning</span>
+              <p className="text-xs text-amber-700">
+                <span className="font-semibold">Có task chưa có hàng</span> — Manager cần hoàn thành bước
+                {' '}<span className="font-semibold">Nhập kho (Post GRN)</span> để Keeper có thể thực hiện putaway.
+                Trang tự cập nhật mỗi 10 giây.
+              </p>
+            </div>
+          )}
           {loadingTasks ? (
             <div className="flex justify-center py-16">
               <span className="material-symbols-outlined animate-spin text-indigo-400 text-[36px]">progress_activity</span>
@@ -708,18 +732,45 @@ export default function PutawayPage() {
                         onClick={() => t.status !== 'DONE' && openTask(t)}>
                         <div className="flex items-center gap-4">
                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0
-                            ${t.status === 'DONE' ? 'bg-emerald-50' : t.status === 'IN_PROGRESS' ? 'bg-amber-50' : 'bg-indigo-50'}`}>
+                            ${t.status === 'DONE' ? 'bg-emerald-50' : t.status === 'IN_PROGRESS' ? 'bg-amber-50' : t.status === 'PENDING' ? 'bg-orange-50' : 'bg-indigo-50'}`}>
                             <span className={`material-symbols-outlined text-[20px]
-                              ${t.status === 'DONE' ? 'text-emerald-500' : t.status === 'IN_PROGRESS' ? 'text-amber-500' : 'text-indigo-400'}`}>
-                              {t.status === 'DONE' ? 'check_circle' : 'inventory_2'}
+                              ${t.status === 'DONE' ? 'text-emerald-500' : t.status === 'IN_PROGRESS' ? 'text-amber-500' : t.status === 'PENDING' ? 'text-orange-400' : 'text-indigo-400'}`}>
+                              {t.status === 'DONE' ? 'check_circle' : t.status === 'PENDING' ? 'hourglass_empty' : 'inventory_2'}
                             </span>
                           </div>
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900">Task #{t.putawayTaskId}</p>
-                            <p className="text-xs text-gray-400 mt-0.5">GRN #{t.grnId} · Kho #{t.warehouseId}</p>
+                          <div className="min-w-0">
+                            {/* GRN code — hiển thị rõ để Keeper nhận ra đơn */}
+                            <p className="text-sm font-semibold text-gray-900 font-mono truncate">
+                              {t.grnCode ?? `GRN #${t.grnId}`}
+                            </p>
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              {t.receivingCode && (
+                                <span className="text-[11px] text-indigo-500 font-medium">{t.receivingCode}</span>
+                              )}
+                              <span className="text-[11px] text-gray-400">
+                                Task #{t.putawayTaskId} · Kho #{t.warehouseId}
+                              </span>
+                              <span className="text-[11px] text-gray-400">
+                                {new Date(t.createdAt).toLocaleDateString('vi-VN')}
+                              </span>
+                            </div>
+                            {/* Cảnh báo itemCount = 0 — task chưa có items */}
+                            {t.itemCount === 0 && t.status !== 'DONE' && (
+                              <div className="flex items-center gap-1 mt-1">
+                                <span className="material-symbols-outlined text-amber-400 text-[12px]">warning</span>
+                                <span className="text-[11px] text-amber-600 font-medium">
+                                  Chưa có hàng — GRN chưa hoàn tất nhập kho
+                                </span>
+                              </div>
+                            )}
+                            {t.itemCount > 0 && (
+                              <span className="text-[11px] text-gray-400 mt-0.5 block">
+                                {t.itemCount} SKU cần cất
+                              </span>
+                            )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-shrink-0">
                           <StatusBadge status={t.status} />
                           {t.status !== 'DONE' && (
                             <span className="material-symbols-outlined text-[16px] text-gray-200 group-hover:text-indigo-400 transition-colors">chevron_right</span>

@@ -17,7 +17,6 @@ interface ItemRow {
   skuCode: string;
   skuName: string;
   expectedQty: string;
-  lotNumber: string;
   manufactureDate: string;
   expiryDate: string;
   // validation
@@ -211,7 +210,7 @@ function SkuCombobox({ value, onSelect }: {
 // ─── Main Modal ───────────────────────────────────────────────────────────────
 
 function makeItem(id?: string): ItemRow {
-  return { id: id ?? Date.now().toString(), skuId: null, skuCode: '', skuName: '', expectedQty: '', lotNumber: '', manufactureDate: '', expiryDate: '' };
+  return { id: id ?? Date.now().toString(), skuId: null, skuCode: '', skuName: '', expectedQty: '', manufactureDate: '', expiryDate: '' };
 }
 
 export default function CreateReceivingOrderModal({ open, onClose, onCreated }: Props) {
@@ -227,6 +226,15 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
   const [sourceRef,       setSourceRef]        = useState('');
   const [note,            setNote]             = useState('');
   const [items,           setItems]            = useState<ItemRow[]>([makeItem('1')]);
+  // LOT là cấp phiếu — 1 phiếu nhận hàng = 1 LOT duy nhất cho tất cả SKU
+  const [orderLotNumber,  setOrderLotNumber]  = useState('');
+  const [orderLotError,   setOrderLotError]   = useState<string | undefined>(undefined);
+  // LOT check state
+  const [lotChecking, setLotChecking]   = useState(false);
+  const lotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [poChecking,  setPoChecking]    = useState(false);
+  const [poError,     setPoError]       = useState<string | undefined>(undefined);
+  const poTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const supplierRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -237,6 +245,8 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
     setSourceType('SUPPLIER'); setSupplierCode(''); setSupplierSearch('');
     setWarehouseId(null); setSourceRef(''); setNote('');
     setItems([makeItem('1')]);
+    setOrderLotNumber('');
+    setOrderLotError(undefined);
   }, [open]);
 
   useEffect(() => {
@@ -251,7 +261,7 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
     setItems(p => p.map(i => {
       if (i.id !== id) return i;
       const updated = { ...i, [field]: val };
-      // Re-validate dates whenever either date field changes
+      // Re-validate dates
       if (field === 'manufactureDate' || field === 'expiryDate') {
         const mfg = field === 'manufactureDate' ? String(val ?? '') : i.manufactureDate;
         const exp = field === 'expiryDate'      ? String(val ?? '') : i.expiryDate;
@@ -262,8 +272,70 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
     }));
   }, []);
 
+  // Check LOT trùng — debounce 400ms gọi API /v1/skus/lots/check
+  const handleLotNumberChange = useCallback((val: string) => {
+    setOrderLotNumber(val);
+    setOrderLotError(undefined);
+    if (lotTimerRef.current) clearTimeout(lotTimerRef.current);
+    const lotVal = val.trim();
+    if (!lotVal) { setLotChecking(false); return; }
+    setLotChecking(true);
+    lotTimerRef.current = setTimeout(async () => {
+      try {
+        const { default: api } = await import('@/config/axios');
+        const r = await api.get('/skus/lots/check', { params: { lotNumber: lotVal } });
+        const data = r.data?.data;
+        if (data?.exists && data.matches?.length > 0) {
+          const skuList = (data.matches as any[])
+            .map((m: any) => `${m.skuCode}${m.expiryDate ? ` (HSD: ${m.expiryDate})` : ''}`)
+            .join(', ');
+          setOrderLotError(`LOT "${lotVal}" đã tồn tại cho: ${skuList}. Mỗi SKU chỉ có 1 LOT — vui lòng dùng LOT khác.`);
+        } else {
+          setOrderLotError(undefined);
+        }
+      } catch {
+        setOrderLotError(undefined); // Lỗi mạng → không block user
+      } finally {
+        setLotChecking(false);
+      }
+    }, 400);
+  }, []);
+
+  // Check số chứng từ / PO trùng — debounce 400ms gọi API /v1/grns/check-po
+  const handlePoChange = useCallback((val: string) => {
+    setSourceRef(val);
+    setPoError(undefined);
+    if (poTimerRef.current) clearTimeout(poTimerRef.current);
+    const poVal = val.trim();
+    if (!poVal) { setPoChecking(false); return; }
+    setPoChecking(true);
+    poTimerRef.current = setTimeout(async () => {
+      try {
+        const { default: api } = await import('@/config/axios');
+        const r = await api.get('/grns/check-po', { params: { sourceReferenceCode: poVal } });
+        const data = r.data?.data;
+        if (data?.exists && data.orders?.length > 0) {
+          const orderList = (data.orders as any[])
+            .map((o: any) => `${o.receivingCode} (${o.status})`)
+            .join(', ');
+          setPoError(`Số chứng từ "${poVal}" đã được dùng trong: ${orderList}. Vui lòng kiểm tra lại.`);
+        } else {
+          setPoError(undefined);
+        }
+      } catch {
+        setPoError(undefined);
+      } finally {
+        setPoChecking(false);
+      }
+    }, 400);
+  }, []);
+
   const handleSelectSku = useCallback((id: string, sku: SkuOption | null) => {
-    setItems(p => p.map(i => i.id === id ? { ...i, skuCode: sku?.skuCode ?? '', skuName: sku?.skuName ?? '', skuId: sku?.skuId ?? null } : i));
+    setItems(p => p.map(i => i.id === id
+      ? { ...i, skuCode: sku?.skuCode ?? '', skuName: sku?.skuName ?? '', skuId: sku?.skuId ?? null }
+      : i
+    ));
+
   }, []);
 
   // Bước 1: validate
@@ -274,6 +346,24 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
     if (!valid.length)                              { toast.error('Thêm ít nhất 1 sản phẩm'); return; }
     const noQty = valid.find(i => !i.expectedQty || Number(i.expectedQty) <= 0);
     if (noQty)                                      { toast.error(`Nhập số lượng cho: ${noQty.skuCode}`); return; }
+
+    // Chặn nếu LOT phiếu bị trùng
+    if (orderLotError) {
+      toast.error(orderLotError);
+      return;
+    }
+
+    // Cảnh báo PO trùng — vẫn cho tạo vì có thể nhập nhiều chuyến từ cùng 1 PO
+    if (poError) {
+      const confirmed = window.confirm(
+        `⚠️ Số chứng từ đã được dùng trước đó.
+
+${poError}
+
+Bạn có chắc muốn tiếp tục tạo phiếu mới với số chứng từ này?`
+      );
+      if (!confirmed) return;
+    }
 
     // Chặn hàng đã hết hạn HOẶC dưới 60 ngày
     const blockedItems = valid.filter(i => i.expiryDate && getExpiryInfo(i.expiryDate)?.level === 'expired');
@@ -316,7 +406,8 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
         items: valid.map(i => ({
           skuCode: i.skuCode,
           expectedQty: Number(i.expectedQty),
-          lotNumber: i.lotNumber.trim() || null,
+          // LOT là cấp phiếu — tất cả SKU trong phiếu dùng chung 1 LOT
+          lotNumber: orderLotNumber.trim() || null,
           manufactureDate: i.manufactureDate || null,
           expiryDate: i.expiryDate || null,
         })),
@@ -423,8 +514,35 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
                 </Field>
               )}
               <Field label="Số chứng từ / PO">
-                <input type="text" placeholder="VD: PO-2024-001" value={sourceRef}
-                  onChange={e => setSourceRef(e.target.value)} className={inputCls} />
+                <div className="space-y-1.5">
+                  <div className="relative">
+                    <input type="text" placeholder="VD: PO-2024-001" value={sourceRef}
+                      onChange={e => handlePoChange(e.target.value)}
+                      className={`${inputCls} pr-9 ${
+                        poError
+                          ? 'border-orange-400 bg-orange-50 ring-1 ring-orange-300'
+                          : sourceRef.trim() && !poChecking
+                            ? 'border-emerald-400 bg-emerald-50/40'
+                            : ''
+                      }`}
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      {poChecking ? (
+                        <span className="w-4 h-4 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin block" />
+                      ) : poError ? (
+                        <span className="material-symbols-outlined text-orange-500 text-[18px]">warning</span>
+                      ) : sourceRef.trim() ? (
+                        <span className="material-symbols-outlined text-emerald-500 text-[18px]">check_circle</span>
+                      ) : null}
+                    </div>
+                  </div>
+                  {poError && (
+                    <div className="flex items-start gap-1.5 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2">
+                      <span className="material-symbols-outlined text-orange-500 text-[14px] mt-0.5 flex-shrink-0">warning</span>
+                      <p className="text-xs text-orange-700 leading-relaxed">{poError}</p>
+                    </div>
+                  )}
+                </div>
               </Field>
             </div>
 
@@ -432,6 +550,55 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
             <Field label="Ghi chú">
               <input type="text" placeholder="VD: Xe tải 29C-12345 giao lúc 10h"
                 value={note} onChange={e => setNote(e.target.value)} className={inputCls} />
+            </Field>
+
+            {/* Số lô — cấp phiếu: 1 phiếu = 1 LOT cho tất cả SKU */}
+            <Field label="Số lô (LOT)">
+              <div className="space-y-1.5">
+                <div className="relative">
+                  <input type="text" placeholder="VD: LOT-001"
+                    value={orderLotNumber}
+                    onChange={e => handleLotNumberChange(e.target.value)}
+                    className={`${inputCls} pr-9 ${
+                      orderLotError
+                        ? 'border-red-400 bg-red-50 ring-1 ring-red-300'
+                        : orderLotNumber.trim() && !lotChecking
+                          ? 'border-emerald-400 bg-emerald-50/40'
+                          : ''
+                    }`}
+                  />
+                  {/* Icon trạng thái bên phải */}
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    {lotChecking ? (
+                      <span className="w-4 h-4 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin block" />
+                    ) : orderLotError ? (
+                      <span className="material-symbols-outlined text-red-500 text-[18px]">error</span>
+                    ) : orderLotNumber.trim() ? (
+                      <span className="material-symbols-outlined text-emerald-500 text-[18px]">check_circle</span>
+                    ) : null}
+                  </div>
+                </div>
+                {orderLotError ? (
+                  <div className="flex items-start gap-1.5 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                    <span className="material-symbols-outlined text-red-500 text-[14px] mt-0.5 flex-shrink-0">error</span>
+                    <p className="text-xs text-red-600 leading-relaxed">{orderLotError}</p>
+                  </div>
+                ) : lotChecking ? (
+                  <p className="text-xs text-indigo-500 flex items-center gap-1 px-1">
+                    <span className="w-3 h-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin inline-block" />
+                    Đang kiểm tra LOT...
+                  </p>
+                ) : orderLotNumber.trim() ? (
+                  <p className="text-xs text-emerald-600 flex items-center gap-1 px-1">
+                    <span className="material-symbols-outlined text-[13px]">check_circle</span>
+                    LOT hợp lệ — áp dụng cho tất cả sản phẩm trong phiếu
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400 px-1">
+                    Để trống nếu chưa có số lô — hệ thống sẽ tự tạo khi nhập kho
+                  </p>
+                )}
+              </div>
             </Field>
 
             {/* ── Sản phẩm ── */}
@@ -456,10 +623,9 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
 
               {/* Column headers */}
               <div className="grid gap-2 px-3 mb-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest"
-                style={{ gridTemplateColumns: '2.8fr 0.8fr 1fr 1.1fr 1.2fr 28px' }}>
+                style={{ gridTemplateColumns: '2.8fr 0.8fr 1.2fr 1.4fr 28px' }}>
                 <div>SKU</div>
                 <div className="text-center">SL *</div>
-                <div>Số lô</div>
                 <div>Ngày SX</div>
                 <div>Hạn dùng *</div>
                 <div />
@@ -490,7 +656,7 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
                     )}
 
                     <div className="grid gap-2 items-center px-3 py-3"
-                      style={{ gridTemplateColumns: '2.8fr 0.8fr 1fr 1.1fr 1.2fr 28px' }}>
+                      style={{ gridTemplateColumns: '2.8fr 0.8fr 1.2fr 1.4fr 28px' }}>
 
                     {/* SKU combobox */}
                     <SkuCombobox
@@ -505,13 +671,6 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
                       className={`w-full px-2 py-2 text-sm border rounded-xl text-center focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all ${
                         item.skuCode && (!item.expectedQty || Number(item.expectedQty) <= 0)
                           ? 'border-red-300 bg-red-50 text-red-700' : 'border-gray-200 bg-white'}`}
-                    />
-
-                    {/* Lot */}
-                    <input type="text" placeholder="LOT-001"
-                      value={item.lotNumber}
-                      onChange={e => updateItem(item.id, 'lotNumber', e.target.value)}
-                      className="w-full px-2 py-2 text-sm border border-gray-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
                     />
 
                     {/* Manufacture date */}

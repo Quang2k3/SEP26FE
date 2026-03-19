@@ -568,29 +568,63 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
   const [lockedMsg, setLockedMsg]   = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [qcCondition, setQcCondition] = useState<QcCondition>('PASS');
-  const [pickItems, setPickItems]   = useState<PickItem[]>([]);
-  const [scannedQty, setScannedQty] = useState<Record<string, number>>({});
+  const [pickItems, setPickItems]         = useState<PickItem[]>([]);
+  const [pickItemsLoading, setPickItemsLoading] = useState(false);
+  const [scannedQty, setScannedQty]       = useState<Record<string, number>>({});
   const [scanLines, setScanLines]   = useState<Record<string, ScanLine>>({});
+  // QC mode: track số lần quét vật lý per item (key = taskItemId hoặc skuCode_idx)
+  const [qcScannedQty, setQcScannedQty] = useState<Record<string, number>>({});
+  // QC mode: track condition đã chọn per item (key = taskItemId hoặc skuCode_idx)
+  const [qcItemCondition, setQcItemCondition] = useState<Record<string, QcCondition>>({});
 
   const inflightRef  = useRef(false);
   const pickItemsRef = useRef<PickItem[]>([]);
   const scannedRef   = useRef<Record<string, number>>({});
+  const qcScannedRef = useRef<Record<string, number>>({});
+  const qcItemCondRef = useRef<Record<string, QcCondition>>({});
   const conditionRef = useRef<QcCondition>('PASS');
   const sessionId    = getSessionId(token);
   useEffect(() => { pickItemsRef.current = pickItems; }, [pickItems]);
   useEffect(() => { scannedRef.current = scannedQty; }, [scannedQty]);
+  useEffect(() => { qcScannedRef.current = qcScannedQty; }, [qcScannedQty]);
+  useEffect(() => { qcItemCondRef.current = qcItemCondition; }, [qcItemCondition]);
   useEffect(() => { conditionRef.current = qcCondition; }, [qcCondition]);
 
+  // Load pick list cho cả picking và outbound_qc
   useEffect(() => {
-    if (mode !== 'outbound_picking' || !taskId) return;
+    if (!taskId) return;
+    if (mode !== 'outbound_picking' && mode !== 'outbound_qc') return;
+    setPickItemsLoading(true);
     fetch(`${API_BASE}/v1/outbound/pick-list/${taskId}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json()).then(d => { if (d?.success) { pickItemsRef.current = d.data?.items ?? []; setPickItems(d.data?.items ?? []); } }).catch(() => {});
+      .then(r => r.json()).then(d => {
+        if (d?.success) {
+          const raw: any[] = d.data?.items ?? [];
+          // Normalize field names: API trả pickingTaskItemId nhưng FE dùng taskItemId
+          // API trả requiredQty (BigDecimal) — parse về number
+          const items: PickItem[] = raw.map((it: any) => ({
+            taskItemId:   it.pickingTaskItemId ?? it.taskItemId ?? undefined,
+            skuCode:      it.skuCode ?? '',
+            skuName:      it.skuName ?? '',
+            locationCode: it.locationCode ?? '',
+            lotNumber:    it.lotNumber ?? undefined,
+            barcode:      it.barcode ?? undefined,
+            requiredQty:  Number(it.requiredQty ?? it.qtyToPick ?? 1),
+          }));
+          pickItemsRef.current = items;
+          setPickItems(items);
+        } else {
+          console.warn('[ScannerPage] pick-list fetch failed:', d?.message);
+        }
+      }).catch(err => console.warn('[ScannerPage] pick-list fetch error:', err))
+      .finally(() => setPickItemsLoading(false));
   }, [mode, taskId, token]);
 
   const lockUI = useCallback((msg: string) => { setLocked(true); setLockedMsg(msg); }, []);
 
   const sendBarcode = useCallback(async (barcode: string) => {
     if (locked || inflightRef.current) return;
+
+    // ── PICKING mode: track locally, không gọi API ──────────────────────────
     if (mode === 'outbound_picking') {
       const cur = scannedRef.current;
       const matched = pickItemsRef.current.map((it, idx) => ({ it, idx })).filter(({ it }) => it.skuCode.toUpperCase() === barcode || (it.barcode ?? '').toUpperCase() === barcode);
@@ -608,24 +642,110 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
       if (navigator.vibrate) navigator.vibrate(rem <= 0 ? [80, 30, 80] : 80);
       return;
     }
-    // Nếu là link scanner nội bộ → bỏ qua
+
+    // ── QC mode: track qty per item, gửi API khi đủ qty ────────────────────
+    if (mode === 'outbound_qc') {
+      // Bỏ qua link scanner nội bộ
+      if (barcode.includes('/v1/scan') && barcode.includes('token=')) { setStatus('⚠️ Đây là link mở trang scan, không phải barcode sản phẩm'); return; }
+      if (barcode.toLowerCase().startsWith('http://') || barcode.toLowerCase().startsWith('https://')) { setStatus('⚠️ Phát hiện URL — vui lòng quét barcode sản phẩm'); return; }
+
+      const items = pickItemsRef.current;
+      if (!items.length) {
+        // Pick list chưa load xong → gửi thẳng API (fallback)
+        inflightRef.current = true; setStatus(`Gửi QC: ${barcode}`);
+        try {
+          const body: any = { barcode, qty: 1, condition: conditionRef.current, mode: 'outbound_qc', taskId };
+          const r = await fetch(`${API_BASE}/v1/scan-events`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+          const d = await r.json();
+          if (d?.success) {
+            toast(`✓ ${d.data?.skuCode} [${conditionRef.current}]`);
+            if (navigator.vibrate) navigator.vibrate(60);
+            if (d.data?.allScanned) { lockUI('✅ QC hoàn tất'); toast('✅ QC hoàn tất!'); }
+          } else toast(d?.message ?? 'Lỗi', true);
+        } catch { toast('Mất kết nối', true); }
+        finally { inflightRef.current = false; setStatus('Camera sẵn sàng'); setTimeout(() => { inflightRef.current = false; }, 600); }
+        return;
+      }
+
+      // Tìm item khớp barcode/skuCode và chưa đủ qty
+      const matched = items.map((it, idx) => ({ it, idx })).filter(({ it }) =>
+        it.skuCode.toUpperCase() === barcode || (it.barcode ?? '').toUpperCase() === barcode
+      );
+      if (!matched.length) { toast(`${barcode} không có trong Pick List QC!`, true); if (navigator.vibrate) navigator.vibrate([80, 30, 80]); return; }
+
+      const curQcQty = qcScannedRef.current;
+      let target: { item: PickItem; key: string; req: number; curVal: number } | null = null;
+      for (const { it, idx } of matched) {
+        const key = it.taskItemId ? String(it.taskItemId) : `${it.skuCode}_${idx}`;
+        const req = it.requiredQty;
+        const curVal = curQcQty[key] ?? 0;
+        if (curVal < req) { target = { item: it, key, req, curVal }; break; }
+      }
+
+      if (!target) {
+        // Tất cả qty của SKU này đã quét đủ
+        toast(`✓ Đã quét đủ ${matched[0].it.skuCode}`, false);
+        return;
+      }
+
+      const newVal = target.curVal + 1;
+      const rem = target.req - newVal;
+
+      // Cập nhật local tracking trước (optimistic)
+      const newQcQty = { ...curQcQty, [target.key]: newVal };
+      qcScannedRef.current = newQcQty;
+      setQcScannedQty({ ...newQcQty });
+      // Ghi nhớ condition cho item này (dùng condition lần đầu quét, hoặc cập nhật nếu chưa đủ)
+      if (!qcItemCondRef.current[target.key]) {
+        const newCond = { ...qcItemCondRef.current, [target.key]: conditionRef.current };
+        qcItemCondRef.current = newCond;
+        setQcItemCondition({ ...newCond });
+      }
+
+      if (rem > 0) {
+        // Chưa đủ qty — chỉ toast, chưa gửi API
+        toast(`${target.item.skuCode} [${conditionRef.current}] ${newVal}/${target.req} — còn ${rem} cái`);
+        if (navigator.vibrate) navigator.vibrate(80);
+        setStatus(`${target.item.skuCode}: ${newVal}/${target.req}`);
+        return;
+      }
+
+      // Đủ qty → gửi API
+      toast(`✅ Đủ! ${target.item.skuCode} [${conditionRef.current}] — đang gửi...`);
+      if (navigator.vibrate) navigator.vibrate([80, 30, 80]);
+      inflightRef.current = true;
+      setStatus(`Gửi QC: ${target.item.skuCode} ×${target.req}`);
+      try {
+        const body: any = { barcode, qty: target.req, condition: conditionRef.current, mode: 'outbound_qc', taskId };
+        const r = await fetch(`${API_BASE}/v1/scan-events`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+        const d = await r.json();
+        if (d?.success) {
+          setScanLines(prev => {
+            const lineKey = `${d.data.skuCode}_${conditionRef.current}`;
+            const ex = prev[lineKey];
+            return { ...prev, [lineKey]: { ...d.data, qty: (ex?.qty ?? 0) + target!.req, condition: conditionRef.current } };
+          });
+          toast(`✓ ${d.data?.skuCode} ×${target.req} [${conditionRef.current}] — Ghi nhận!`);
+          if (d.data?.allScanned) { lockUI('✅ QC hoàn tất — tất cả đã kiểm tra!'); toast('✅ QC hoàn tất!'); }
+        } else {
+          // Rollback local tracking nếu API lỗi
+          qcScannedRef.current = { ...qcScannedRef.current, [target.key]: target.curVal };
+          setQcScannedQty({ ...qcScannedRef.current });
+          toast(d?.message ?? 'Lỗi ghi nhận QC', true);
+        }
+      } catch {
+        // Rollback
+        qcScannedRef.current = { ...qcScannedRef.current, [target.key]: target.curVal };
+        setQcScannedQty({ ...qcScannedRef.current });
+        toast('Mất kết nối', true);
+      }
+      finally { inflightRef.current = false; setStatus('Camera sẵn sàng'); setTimeout(() => { inflightRef.current = false; }, 600); }
+      return;
+    }
+
+    // Fallback cho mode không xác định
     if (barcode.includes('/v1/scan') && barcode.includes('token=')) { setStatus('⚠️ Đây là link mở trang scan, không phải barcode sản phẩm'); return; }
-    // Nếu là URL khác → không xử lý trong outbound
     if (barcode.toLowerCase().startsWith('http://') || barcode.toLowerCase().startsWith('https://')) { setStatus('⚠️ Phát hiện URL — vui lòng quét barcode sản phẩm'); return; }
-    inflightRef.current = true; setStatus(`Gửi: ${barcode}`);
-    try {
-      const body: any = { barcode, qty: 1, condition: conditionRef.current };
-      if (mode === 'outbound_qc' && taskId) { body.mode = 'outbound_qc'; body.taskId = taskId; }
-      const r = await fetch(`${API_BASE}/v1/scan-events`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
-      const d = await r.json();
-      if (d?.success) {
-        toast(`✓ ${d.data?.skuCode} qty:${d.data?.newQty}`);
-        setScanLines(prev => { const key = `${d.data.skuCode}_${conditionRef.current}`; const ex = prev[key]; return { ...prev, [key]: { ...d.data, qty: ex ? ex.qty + (d.data.newQty - ex.qty) : d.data.newQty, condition: conditionRef.current } }; });
-        if (navigator.vibrate) navigator.vibrate(60);
-        if (mode === 'outbound_qc' && d.data?.allScanned) { lockUI('✅ QC hoàn tất'); toast('✅ QC hoàn tất!'); }
-      } else toast(d?.message ?? 'Lỗi', true);
-    } catch { toast('Mất kết nối', true); }
-    finally { inflightRef.current = false; setStatus('Camera sẵn sàng'); setTimeout(() => { inflightRef.current = false; }, 600); }
   }, [locked, mode, token, taskId, toast, lockUI]);
 
   const { stopQr } = useCamera(sendBarcode, setStatus);
@@ -638,6 +758,9 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
   const pickAllDone   = pickItems.length > 0 && pickItems.every((it, i) => { const key = it.taskItemId ? String(it.taskItemId) : `${it.skuCode}_${i}`; return (scannedQty[key] ?? 0) >= it.requiredQty; });
   const totalScanned  = Object.values(scannedQty).reduce((s, v) => s + v, 0);
   const totalRequired = pickItems.reduce((s, it) => s + it.requiredQty, 0);
+  // QC: tính tổng qty đã quét và tổng qty yêu cầu
+  const qcTotalScanned  = Object.values(qcScannedQty).reduce((s, v) => s + v, 0);
+  const qcTotalRequired = pickItems.reduce((s, it) => s + it.requiredQty, 0);
   const condClr       = qcCondition === 'PASS' ? '#10b981' : qcCondition === 'FAIL' ? '#ef4444' : '#f59e0b';
   const headerBg      = mode === 'outbound_qc' ? 'linear-gradient(135deg,#7c3aed,#6d28d9)' : 'linear-gradient(135deg,#1e40af,#1d4ed8)';
   const modeLabel     = mode === 'outbound_picking' ? '📦 Picking' : '🔍 QC Xuất kho';
@@ -671,7 +794,7 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
       <header style={{ background: headerBg, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
         <h1 style={{ fontSize: 16, fontWeight: 700, flex: 1, margin: 0 }}>{modeLabel}</h1>
         <span style={{ background: 'rgba(255,255,255,.15)', color: '#fff', borderRadius: 20, padding: '3px 12px', fontSize: 12, fontWeight: 700 }}>
-          {mode === 'outbound_picking' ? `${totalScanned}/${totalRequired}` : `${scanLineList.length} dòng`}
+          {mode === 'outbound_picking' ? `${totalScanned}/${totalRequired}` : `${qcTotalScanned}/${qcTotalRequired}`}
         </span>
       </header>
       <div style={{ padding: 12, maxWidth: 520, margin: '0 auto' }}>
@@ -705,15 +828,76 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
           </div>
         )}
 
+        {/* QC mode: loading indicator */}
+        {mode === 'outbound_qc' && pickItemsLoading && (
+          <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8, textAlign: 'center' }}>
+            <p style={{ fontSize: 12, color: '#a78bfa', margin: 0 }}>⏳ Đang tải danh sách kiểm tra...</p>
+          </div>
+        )}
+
+        {/* QC mode: hiển thị danh sách items với qty tracking */}
+        {mode === 'outbound_qc' && pickItems.length > 0 && !pickItemsLoading && (
+          <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <p style={{ fontSize: 11, color: '#a78bfa', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 700, margin: 0 }}>🔍 QC — Quét từng sản phẩm</p>
+              <span style={{ fontSize: 11, color: qcTotalScanned >= qcTotalRequired ? '#10b981' : '#94a3b8', fontWeight: 700 }}>
+                {qcTotalScanned}/{qcTotalRequired}
+              </span>
+            </div>
+            {pickItems.map((it, i) => {
+              const key = it.taskItemId ? String(it.taskItemId) : `${it.skuCode}_${i}`;
+              const cur = qcScannedQty[key] ?? 0;
+              const req = it.requiredQty;
+              const done = cur >= req;
+              const cond = qcItemCondition[key];
+              const condClrItem = cond === 'PASS' ? '#10b981' : cond === 'FAIL' ? '#ef4444' : cond === 'HOLD' ? '#f59e0b' : '#334155';
+              return (
+                <div key={key} style={{ borderRadius: 8, padding: '10px 12px', marginBottom: 6, background: done ? `rgba(${cond==='FAIL'?'239,68,68':cond==='HOLD'?'245,158,11':'16,185,129'},.08)` : '#0f172a', borderLeft: `3px solid ${done ? condClrItem : cur > 0 ? '#f59e0b' : '#334155'}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>{it.skuCode}</p>
+                      <p style={{ fontSize: 11, color: '#64748b', margin: '2px 0 0' }}>{it.skuName} · {it.locationCode}</p>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      {done ? (
+                        <>
+                          <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 4, background: `rgba(${cond==='FAIL'?'239,68,68':cond==='HOLD'?'245,158,11':'16,185,129'},.15)`, color: condClrItem }}>{cond ?? 'PASS'}</span>
+                          <p style={{ fontSize: 10, color: '#10b981', fontWeight: 700, margin: '4px 0 0' }}>✓ {req}/{req}</p>
+                        </>
+                      ) : (
+                        <>
+                          <p style={{ fontSize: 15, fontWeight: 800, color: '#a78bfa', margin: 0 }}>×{req}</p>
+                          <p style={{ fontSize: 10, color: cur > 0 ? '#f59e0b' : '#475569', margin: '2px 0 0' }}>{cur > 0 ? `${cur}/${req} quét` : 'Chưa quét'}</p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {/* Progress bar mini */}
+                  {req > 1 && (
+                    <div style={{ marginTop: 6, height: 3, background: '#1e3a5f', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${Math.min(100, (cur / req) * 100)}%`, background: done ? condClrItem : '#f59e0b', borderRadius: 2, transition: 'width .3s' }} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <p style={{ fontSize: 12, color: '#94a3b8', margin: '8px 0 0' }}>
+              {qcTotalScanned}/{qcTotalRequired} đã quét.
+              {qcTotalScanned >= qcTotalRequired ? ' ✓ Sẵn sàng finalize!' : ` Còn ${qcTotalRequired - qcTotalScanned} cái.`}
+            </p>
+          </div>
+        )}
+
+        {/* QC mode: bảng đã gửi API (confirmed) */}
         {mode === 'outbound_qc' && scanLineList.length > 0 && (
           <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8 }}>
-            <p style={{ fontSize: 11, color: '#a78bfa', textTransform: 'uppercase', fontWeight: 700, margin: '0 0 10px' }}>Đã QC scan</p>
+            <p style={{ fontSize: 11, color: '#a78bfa', textTransform: 'uppercase', fontWeight: 700, margin: '0 0 10px' }}>✅ Đã ghi nhận</p>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <tbody>{scanLineList.map((l, i) => (
                 <tr key={i} style={{ borderBottom: '1px solid #1e3a5f' }}>
                   <td style={{ padding: '7px 4px', color: '#94a3b8' }}>{l.skuCode}</td>
-                  <td style={{ padding: '7px 4px', textAlign: 'center' }}><span style={{ fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: l.condition === 'FAIL' ? 'rgba(239,68,68,.15)' : 'rgba(16,185,129,.15)', color: l.condition === 'FAIL' ? '#ef4444' : '#10b981' }}>{l.condition}</span></td>
-                  <td style={{ padding: '7px 4px', textAlign: 'right', fontWeight: 800, color: '#34d399' }}>{l.qty}</td>
+                  <td style={{ padding: '7px 4px', textAlign: 'center' }}><span style={{ fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: l.condition === 'FAIL' ? 'rgba(239,68,68,.15)' : l.condition === 'HOLD' ? 'rgba(245,158,11,.15)' : 'rgba(16,185,129,.15)', color: l.condition === 'FAIL' ? '#ef4444' : l.condition === 'HOLD' ? '#f59e0b' : '#10b981' }}>{l.condition}</span></td>
+                  <td style={{ padding: '7px 4px', textAlign: 'right', fontWeight: 800, color: '#34d399' }}>×{l.qty}</td>
                 </tr>
               ))}</tbody>
             </table>

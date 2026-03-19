@@ -138,14 +138,12 @@ function DetailModal({ receiving, onClose, onRefresh }: {
 
   useEffect(() => {
     setLoadingGrn(true);
+    // Chỉ fetch GRN để lấy grnId dùng cho actions (approve/reject/post)
+    // KHÔNG sync localStatus theo GRN.status — dùng receiving.status làm source of truth
+    // Lý do: 1 receivingId có thể có nhiều GRN, GRN mới nhất có thể là POSTED
+    // nhưng receiving vẫn đang PENDING_APPROVAL (GRN chờ duyệt khác)
     fetchGrnByReceivingId(receiving.receivingId)
-      .then(g => {
-        setGrn(g);
-        // ✅ FIX: Đồng bộ localStatus theo GRN.status thực tế từ BE
-        // Tránh trường hợp ReceivingOrder.status lệch với GRN.status
-        const syncedStatus = grnStatusToReceivingStatus(g.status);
-        setLocalStatus(syncedStatus);
-      })
+      .then(g => { setGrn(g); })
       .catch(() => setGrn(null))
       .finally(() => setLoadingGrn(false));
   }, [receiving.receivingId]);
