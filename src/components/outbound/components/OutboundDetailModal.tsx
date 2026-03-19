@@ -1120,6 +1120,24 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
       .catch(() => {});
   }, [item?.documentId]);
 
+  // Poll 1.5s khi DISPATCHED + chưa có ảnh ký.
+  // Khi phát hiện signedNoteUrl → chỉ update orderDetail state (modal vẫn mở).
+  useEffect(() => {
+    if (localStatus !== 'DISPATCHED' || !item) return;
+    if (orderDetail?.signedNoteUrl) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const d = await fetchOutboundDetail(item.documentId, item.orderType);
+        if (d?.signedNoteUrl) {
+          setOrderDetail(d); // chỉ update state, modal không đóng
+        }
+      } catch { /* silent */ }
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [localStatus, item?.documentId, orderDetail?.signedNoteUrl]);
+
   if (!item) return null;
 
   const isSO = item.orderType === 'SALES_ORDER';
@@ -1368,13 +1386,10 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => { onRefresh(); }}
-                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors font-semibold"
-                  >
-                    <span className="material-symbols-outlined text-[14px]">refresh</span>
-                    Tải lại để kiểm tra ảnh đã gửi chưa
-                  </button>
+                  <div className="flex items-center justify-center gap-2 py-2 text-xs text-indigo-400">
+                    <span className="material-symbols-outlined text-[14px] animate-spin">progress_activity</span>
+                    Đang chờ ảnh từ điện thoại...
+                  </div>
                 </div>
               )}
             </div>
