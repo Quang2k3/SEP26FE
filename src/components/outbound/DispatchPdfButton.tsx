@@ -49,10 +49,10 @@ function buildHtml(note: Awaited<ReturnType<typeof fetchDispatchNote>>, soCode: 
 
     body {
       font-family: 'Be Vietnam Pro', sans-serif;
-      font-size: 11px;
+      font-size: 9.5px;
       color: #111;
       background: #fff;
-      padding: 16mm 14mm;
+      padding: 8mm 8mm;
     }
 
     /* Header */
@@ -64,7 +64,7 @@ function buildHtml(note: Awaited<ReturnType<typeof fetchDispatchNote>>, soCode: 
     }
 
     .title {
-      font-size: 18px;
+      font-size: 14px;
       font-weight: 700;
       text-align: center;
       flex: 1;
@@ -96,21 +96,17 @@ function buildHtml(note: Awaited<ReturnType<typeof fetchDispatchNote>>, soCode: 
     th {
       background: #d6eaf8;
       border: 0.5px solid #aed6f1;
-      padding: 4px 3px;
+      padding: 3px 2px;
       text-align: center;
       font-weight: 700;
       vertical-align: middle;
     }
     td {
       border: 0.5px solid #aed6f1;
-      padding: 3px 3px;
+      padding: 2px 3px;
       vertical-align: middle;
     }
-    .cat-row td {
-      background: #f2f3f4;
-      font-weight: 700;
-      text-align: center;
-    }
+
     .total-row td {
       background: #ebf5fb;
       font-weight: 700;
@@ -120,11 +116,11 @@ function buildHtml(note: Awaited<ReturnType<typeof fetchDispatchNote>>, soCode: 
 
     /* Signature */
     .sig-table th { background: #d6eaf8; }
-    .sig-table td { height: 28px; }
+    .sig-table td { height: 52px; vertical-align: top; padding-top: 6px; }
 
     /* Print settings */
     @media print {
-      @page { size: A4 landscape; margin: 10mm 12mm; }
+      @page { size: A5 landscape; margin: 6mm 8mm; }
       body { padding: 0; }
     }
   </style>
@@ -132,14 +128,14 @@ function buildHtml(note: Awaited<ReturnType<typeof fetchDispatchNote>>, soCode: 
 <body>
   <div class="header">
     <div style="display:flex;align-items:center;gap:8px;min-width:140px">
-      <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#4f46e5,#6366f1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 96 960 960" fill="white">
+      <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#4f46e5,#6366f1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 96 960 960" fill="white">
           <path d="M80 856V490l400-314 400 314v366H560V676H400v180H80Zm80-80h160V596h320v180h160V534L480 270 160 534v242Zm220-300h40v-80h-40v80Zm0 120h40v-80h-40v80Zm120-120h40v-80h-40v80Zm0 120h40v-80h-40v80ZM480 516Z"/>
         </svg>
       </div>
       <div>
-        <div style="font-size:13px;font-weight:800;color:#1a1a2e;letter-spacing:0.3px;line-height:1.1">WMS Portal</div>
-        <div style="font-size:8px;color:#6366f1;font-weight:600;letter-spacing:0.5px">WAREHOUSE MANAGEMENT</div>
+        <div style="font-size:11px;font-weight:800;color:#1a1a2e;letter-spacing:0.3px;line-height:1.1">WMS Portal</div>
+        <div style="font-size:7px;color:#6366f1;font-weight:600;letter-spacing:0.5px">WAREHOUSE MANAGEMENT</div>
       </div>
     </div>
     <span class="title">PHIẾU XUẤT KHO</span>
@@ -156,9 +152,11 @@ function buildHtml(note: Awaited<ReturnType<typeof fetchDispatchNote>>, soCode: 
     <div class="info-row"><span class="info-label">Ghi chú:</span><span class="info-value"></span></div>
   </div>
 
+  <div style="font-size:10px;font-weight:700;color:#1a5276;margin-bottom:4px;letter-spacing:0.3px">
+    ▸ Hàng xuất kho
+  </div>
   <table>
     <thead>
-      <tr class="cat-row"><td colspan="11">Hàng xuất kho</td></tr>
       <tr>
         <th style="width:4%">Stt</th>
         <th style="width:9%">Mã hàng</th>
