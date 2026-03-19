@@ -373,7 +373,11 @@ export default function ProfilePage() {
         } catch { }
       }
       toast.success('Cập nhật hồ sơ thành công');
-    } catch { } finally { setSaving(false); }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message;
+      if (msg) toast.error(msg);
+      else toast.error('Cập nhật thất bại. Vui lòng thử lại.');
+    } finally { setSaving(false); }
   };
 
   const roleLabels: Record<string, string> = {
