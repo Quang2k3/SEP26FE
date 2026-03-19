@@ -24,6 +24,7 @@ interface ItemRow {
   expiryDate: string;
   mfgError?: string;
   expError?: string;
+  lotError?: string;
 }
 
 interface Props {
@@ -277,10 +278,11 @@ function EditItemRow({ item, onUpdate, onSelectSku, onDelete, canDelete }: {
             item.skuCode && (!item.expectedQty || Number(item.expectedQty) <= 0)
               ? 'border-red-300 bg-red-50 text-red-700' : 'border-gray-200 bg-white'}`}
         />
-        <input type="text" placeholder="LOT-001" value={item.lotNumber}
-          onChange={e => onUpdate(item.id, 'lotNumber', e.target.value)}
-          className="w-full px-2 py-2 text-sm border border-gray-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
-        />
+        {/* LOT readonly — được set từ field LOT cấp đơn bên trên */}
+        <div className="w-full px-2 py-2 text-sm border border-indigo-100 bg-indigo-50/30 rounded-xl text-indigo-700 font-medium truncate"
+          title={item.lotNumber || 'Chưa nhập LOT'}>
+          {item.lotNumber || <span className="text-gray-300 font-normal">—</span>}
+        </div>
         <div>
           <input type="date" value={item.manufactureDate}
             max={item.expiryDate || new Date().toISOString().split('T')[0]}
@@ -351,6 +353,10 @@ export default function ReceivingDetailModal({ open, receiving, onClose, onRefre
   const [sourceRef,      setSourceRef]      = useState('');
   const [note,           setNote]           = useState('');
   const [items,          setItems]          = useState<ItemRow[]>([]);
+  // LOT check: debounce state cho field LOT duy nhất của đơn
+  const [lotChecking,    setLotChecking]    = useState(false);
+  const [orderLotError,  setOrderLotError]  = useState<string | undefined>(undefined);
+  const lotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const supplierRef = useRef<HTMLDivElement>(null);
 
@@ -361,6 +367,8 @@ export default function ReceivingDetailModal({ open, receiving, onClose, onRefre
     // Fill items (cả hai mode)
     const filled = (receiving.items ?? []).map(makeItemFromReceivingItem);
     setItems(filled.length > 0 ? filled : [makeEmptyItem()]);
+    setOrderLotError(undefined);
+    setLotChecking(false);
 
     if (!isEditMode) return; // View mode: dừng ở đây
 
@@ -414,6 +422,33 @@ export default function ReceivingDetailModal({ open, receiving, onClose, onRefre
     }));
   }, []);
 
+  // Check LOT trùng — debounce 400ms, gọi API /v1/skus/lots/check
+  const handleLotChange = useCallback((val: string) => {
+    // Cập nhật LOT cho TẤT CẢ items (1 đơn = 1 LOT)
+    setItems(prev => prev.map(i => ({ ...i, lotNumber: val })));
+    setOrderLotError(undefined);
+    if (lotTimerRef.current) clearTimeout(lotTimerRef.current);
+    const lotVal = val.trim();
+    if (!lotVal) { setLotChecking(false); return; }
+    setLotChecking(true);
+    lotTimerRef.current = setTimeout(async () => {
+      try {
+        const { default: api } = await import('@/config/axios');
+        const r = await api.get('/skus/lots/check', { params: { lotNumber: lotVal } });
+        const data = r.data?.data;
+        if (data?.exists && data.matches?.length > 0) {
+          const skuList = (data.matches as any[])
+            .map((m: any) => `${m.skuCode}${m.expiryDate ? ` (HSD: ${m.expiryDate})` : ''}`)
+            .join(', ');
+          setOrderLotError(`LOT "${lotVal}" đã được nhập trước đó cho: ${skuList}. Vui lòng chọn số LOT khác.`);
+        } else {
+          setOrderLotError(undefined);
+        }
+      } catch { setOrderLotError(undefined); }
+      finally { setLotChecking(false); }
+    }, 400);
+  }, []);
+
   const handleSelectSku = useCallback((id: string, sku: SkuOption | null) => {
     setItems(prev => prev.map(i =>
       i.id === id
@@ -433,6 +468,12 @@ export default function ReceivingDetailModal({ open, receiving, onClose, onRefre
 
     const noQty = valid.find(i => !i.expectedQty || Number(i.expectedQty) <= 0);
     if (noQty) { toast.error(`Nhập số lượng cho: ${noQty.skuCode}`); return; }
+
+    // Chặn nếu LOT trùng
+    if (orderLotError) {
+      toast.error(orderLotError);
+      return;
+    }
 
     const hardDateError = valid.find(i =>
       (i.mfgError && !i.mfgError.startsWith('Lưu ý') && !i.mfgError.startsWith('Cảnh báo')) ||
@@ -648,7 +689,11 @@ export default function ReceivingDetailModal({ open, receiving, onClose, onRefre
                   )}
                 </div>
                 {isEditMode && (
-                  <button type="button" onClick={() => setItems(p => [...p, makeEmptyItem()])}
+                  <button type="button" onClick={() => {
+                    // Kế thừa LOT từ đơn (lấy từ item đầu tiên có lotNumber)
+                    const orderLot = items.find(i => i.lotNumber.trim())?.lotNumber ?? '';
+                    setItems(p => [...p, { ...makeEmptyItem(), lotNumber: orderLot }]);
+                  }}
                     className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-xl transition-colors">
                     <span className="material-symbols-outlined text-[14px]">add</span>
                     Thêm dòng
@@ -666,6 +711,53 @@ export default function ReceivingDetailModal({ open, receiving, onClose, onRefre
                 <div>Hạn dùng</div>
                 {isEditMode && <div />}
               </div>
+
+              {/* LOT cấp phiếu — chỉ hiện trong edit mode, đồng bộ toàn bộ items */}
+              {isEditMode && (() => {
+                const currentLot = items.find(i => i.lotNumber.trim())?.lotNumber ?? '';
+                return (
+                  <div className="mb-3 px-1">
+                    <div className="flex items-center gap-2 bg-indigo-50/60 border border-indigo-100 rounded-xl px-3 py-2.5">
+                      <span className="material-symbols-outlined text-indigo-400 text-[15px] flex-shrink-0">inventory_2</span>
+                      <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wide flex-shrink-0">Số lô đơn hàng</span>
+                      <div className="flex-1 relative">
+                        <input type="text" placeholder="LOT-001 (áp dụng cho tất cả sản phẩm)"
+                          value={currentLot}
+                          onChange={e => handleLotChange(e.target.value)}
+                          className={`w-full px-2.5 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all pr-8 ${
+                            orderLotError
+                              ? 'border-red-400 bg-red-50 focus:ring-red-300'
+                              : currentLot && !lotChecking
+                                ? 'border-emerald-400 bg-emerald-50/40 focus:ring-emerald-300'
+                                : 'border-indigo-200 bg-white focus:ring-indigo-300'
+                          }`}
+                        />
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                          {lotChecking ? (
+                            <span className="w-3.5 h-3.5 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin block" />
+                          ) : orderLotError ? (
+                            <span className="material-symbols-outlined text-red-500 text-[15px]">error</span>
+                          ) : currentLot ? (
+                            <span className="material-symbols-outlined text-emerald-500 text-[15px]">check_circle</span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                    {orderLotError && (
+                      <div className="mt-1.5 flex items-start gap-1.5 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                        <span className="material-symbols-outlined text-red-500 text-[13px] mt-0.5 flex-shrink-0">error</span>
+                        <p className="text-[11px] text-red-600 leading-relaxed">{orderLotError}</p>
+                      </div>
+                    )}
+                    {!orderLotError && currentLot && !lotChecking && (
+                      <p className="text-[10px] text-emerald-600 mt-1 px-1 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[11px]">check_circle</span>
+                        LOT hợp lệ — áp dụng cho {items.filter(i => i.skuCode).length} sản phẩm trong đơn
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Rows */}
               <div className="space-y-2">

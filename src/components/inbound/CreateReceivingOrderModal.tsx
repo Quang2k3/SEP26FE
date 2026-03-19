@@ -289,7 +289,7 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
           const skuList = (data.matches as any[])
             .map((m: any) => `${m.skuCode}${m.expiryDate ? ` (HSD: ${m.expiryDate})` : ''}`)
             .join(', ');
-          setOrderLotError(`LOT "${lotVal}" đã tồn tại cho: ${skuList}. Mỗi SKU chỉ có 1 LOT — vui lòng dùng LOT khác.`);
+          setOrderLotError(`LOT "${lotVal}" đã tồn tại cho: ${skuList}. Vui lòng dùng LOT khác.`);
         } else {
           setOrderLotError(undefined);
         }
