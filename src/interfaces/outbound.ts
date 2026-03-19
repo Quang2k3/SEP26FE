@@ -57,6 +57,8 @@ export interface OutboundOrder {
   updatedAt?: string | null;
   stockWarnings?: OutboundStockWarning[] | null;
   dispatchPdfUrl?: string | null;
+  signedNoteUrl?: string | null;
+  signedNoteUploadedAt?: string | null;
 }
 
 // ─── List response (GET /v1/outbound) — khớp BE OutboundListResponse ──────────

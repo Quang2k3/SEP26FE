@@ -1283,26 +1283,105 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
       );
     }
 
-    // [NEW] DISPATCHED — hiển thị nút tải Phiếu Xuất Kho PDF
-    if (localStatus === 'DISPATCHED') return (
-      <div className="space-y-3">
-        <div className="p-4 bg-teal-50 rounded-xl border border-teal-100">
-          <p className="text-sm font-bold text-teal-800">Đã xuất kho thành công</p>
-          <p className="text-xs text-teal-600 mt-1">Tồn kho đã được trừ khỏi Z-OUT. Lệnh xuất hoàn tất.</p>
-        </div>
-        {/* [NEW] Nút tải Phiếu Xuất Kho PDF — chỉ hiện với Sales Order */}
-        {isSO && (
-          <div className="p-4 bg-white rounded-xl border border-gray-200">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Phiếu xuất kho</p>
-            <DispatchPdfButton
-              soId={item.documentId}
-              soCode={item.documentCode}
-              existingPdfUrl={dispatchPdfUrl}
-            />
+    // DISPATCHED — Phiếu xuất kho + QR chụp ảnh ký
+    if (localStatus === 'DISPATCHED') {
+      const feBase = process.env.NEXT_PUBLIC_FE_BASE_URL ?? 'https://cleanhousewms.id.vn';
+      const signUrl = `${feBase}/sign-note/${item.documentId}`;
+      const signedNoteUrl   = orderDetail?.signedNoteUrl ?? null;
+      const signedNoteAt    = orderDetail?.signedNoteUploadedAt ?? null;
+
+      return (
+        <div className="space-y-3">
+          {/* Status */}
+          <div className="p-4 bg-teal-50 rounded-xl border border-teal-100">
+            <p className="text-sm font-bold text-teal-800">Đã xuất kho thành công</p>
+            <p className="text-xs text-teal-600 mt-1">Tồn kho đã được trừ khỏi Z-OUT. Lệnh xuất hoàn tất.</p>
           </div>
-        )}
-      </div>
-    );
+
+          {/* Phiếu xuất kho PDF */}
+          {isSO && (
+            <div className="p-4 bg-white rounded-xl border border-gray-200">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Phiếu xuất kho</p>
+              <DispatchPdfButton
+                soId={item.documentId}
+                soCode={item.documentCode}
+                existingPdfUrl={dispatchPdfUrl}
+              />
+            </div>
+          )}
+
+          {/* QR + ảnh ký */}
+          {isSO && (
+            <div className="p-4 bg-white rounded-xl border border-gray-200 space-y-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Phiếu xuất kho đã ký
+              </p>
+
+              {signedNoteUrl ? (
+                /* Đã có ảnh ký — hiện ảnh */
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-emerald-500 text-[16px]">verified</span>
+                    <span className="text-xs text-emerald-600 font-semibold">Đã có chữ ký</span>
+                    {signedNoteAt && (
+                      <span className="text-xs text-gray-400 ml-auto">
+                        {new Date(signedNoteAt).toLocaleString('vi-VN')}
+                      </span>
+                    )}
+                  </div>
+                  <a href={signedNoteUrl} target="_blank" rel="noreferrer" className="block">
+                    <img
+                      src={signedNoteUrl}
+                      alt="Phiếu xuất kho đã ký"
+                      className="w-full rounded-xl border border-gray-200 object-contain max-h-64 bg-gray-50 hover:opacity-90 transition-opacity cursor-zoom-in"
+                    />
+                  </a>
+                  <p className="text-[11px] text-gray-400 text-center">
+                    Nhấn vào ảnh để xem full size
+                  </p>
+                  {/* Nút chụp lại */}
+                  <div className="pt-1 border-t border-gray-100">
+                    <p className="text-[11px] text-gray-400 mb-2">Cần cập nhật ảnh mới?</p>
+                    <div className="flex items-center justify-center bg-gray-50 rounded-xl p-3 border border-dashed border-gray-200">
+                      <QRCode value={signUrl} size={80} />
+                      <div className="ml-3">
+                        <p className="text-xs font-semibold text-gray-600">Scan để chụp lại</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Ảnh mới sẽ ghi đè ảnh cũ</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Chưa có ảnh — hiện QR để scan */
+                <div className="space-y-3">
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Sau khi in phiếu và thu đầy đủ chữ ký, dùng điện thoại scan QR bên dưới để chụp và lưu ảnh phiếu.
+                  </p>
+                  <div className="flex flex-col items-center gap-3 bg-gradient-to-b from-indigo-50 to-white rounded-xl p-5 border border-indigo-100">
+                    <div className="bg-white p-3 rounded-xl shadow-sm border border-indigo-100">
+                      <QRCode value={signUrl} size={120} />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs font-semibold text-indigo-700">Scan bằng camera điện thoại</p>
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        Chụp ảnh phiếu → tự động lưu vào đơn này
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { onRefresh(); }}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors font-semibold"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">refresh</span>
+                    Tải lại để kiểm tra ảnh đã gửi chưa
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
 
     if (localStatus === 'REJECTED') return (
       <div className="p-4 bg-red-50 rounded-xl border border-red-100">
