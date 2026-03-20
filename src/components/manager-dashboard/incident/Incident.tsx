@@ -9,11 +9,13 @@ import {
 } from "@/services/incidentService";
 import { getIncidentColumns } from "./components/column";
 import IncidentFilter from "./components/IncidentFilter";
+import IncidentDetailModal from "./components/IncidentDetailModal";
 import type { Incident, IncidentPagePayload } from "@/interfaces/incident";
 import { Modal, Input } from "antd";
 import toast from "react-hot-toast";
+import { getStoredSession } from "@/services/authService";
 
-type IncidentStatus = "OPEN" | "APPROVED" | "REJECTED" | "ALL";
+type IncidentStatus = "OPEN" | "APPROVED" | "REJECTED" | "RESOLVED" | "ALL";
 
 export default function IncidentListPage() {
   const [incidentPage, setIncidentPage] = useState<IncidentPagePayload | null>(
@@ -25,6 +27,11 @@ export default function IncidentListPage() {
   const [loading, setLoading] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState<IncidentStatus>("OPEN");
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+
+  // Role check
+  const session = getStoredSession();
+  const isManager = session?.user?.roleCodes?.includes("MANAGER") ?? false;
 
   async function loadIncidents() {
     try {
@@ -59,6 +66,7 @@ export default function IncidentListPage() {
 
     setPage(newPage);
   };
+
   async function handleApprove(incident: Incident) {
     try {
       await approveIncident(incident.incidentId);
@@ -92,11 +100,15 @@ export default function IncidentListPage() {
     });
   }
 
+  function handleDetail(incident: Incident) {
+    setSelectedIncident(incident);
+  }
+
   return (
     <div className="p-6 space-y-4">
       <div>
         <h1 className="text-xl font-semibold text-gray-900">Incident List</h1>
-        <p className="text-gray-500 text-sm">Danh sách Incident</p>
+        <p className="text-gray-500 text-sm">Danh sách sự cố nhập kho</p>
       </div>
 
       <IncidentFilter
@@ -106,7 +118,7 @@ export default function IncidentListPage() {
 
       <DataTable
         data={incidentPage?.content ?? []}
-        columns={getIncidentColumns(handleApprove, handleReject)}
+        columns={getIncidentColumns(handleDetail, handleApprove, handleReject, isManager)}
         loading={loading}
         page={page}
         pageSize={incidentPage?.pageSize ?? 10}
@@ -115,6 +127,18 @@ export default function IncidentListPage() {
         onPrev={() => handleChangePage(page - 1)}
         onNext={() => handleChangePage(page + 1)}
       />
+
+      {selectedIncident && (
+        <IncidentDetailModal
+          incident={selectedIncident}
+          isManager={isManager}
+          onClose={() => setSelectedIncident(null)}
+          onResolved={() => {
+            setSelectedIncident(null);
+            loadIncidents();
+          }}
+        />
+      )}
     </div>
   );
 }

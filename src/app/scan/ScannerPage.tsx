@@ -226,16 +226,31 @@ function KeeperInboundScanner({ token, receivingId }: { token: string; receiving
   const { stopQr } = useCamera(scanBarcode, setStatus);
 
   const confirmFinalize = async () => {
-    if (!window.confirm('Xác nhận kiểm đếm xong?\nNếu số lượng khớp → gửi QC.\nNếu chênh lệch → gửi Manager duyệt.')) return;
+    if (!window.confirm('Xác nhận kiểm đếm xong?\nNếu số lượng khớp → gửi QC.\nNếu chênh lệch hoặc có hàng ngoài phiếu → gửi Manager duyệt.')) return;
     setSubmitting(true);
     try {
       const r = await fetch(`${API_BASE}/v1/receiving-orders/${receivingId}/finalize-count`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
       const d = await r.json();
       if (d?.success) {
         const orderStatus = d.data?.status;
+        const apiMsg = d.message ?? '';
         if (orderStatus === 'PENDING_INCIDENT') {
-          toast('⚠️ Chênh lệch số lượng — gửi Manager duyệt');
-          lockUI('Phát hiện thừa/thiếu — chờ Manager xử lý');
+          const hasUnexpected = apiMsg.includes('ngoài phiếu');
+          const hasMismatch = apiMsg.includes('chênh lệch');
+          let toastMsg = '⚠️ ';
+          let lockMsg = '';
+          if (hasUnexpected && hasMismatch) {
+            toastMsg += 'Phát hiện hàng ngoài phiếu + chênh lệch số lượng — gửi Manager';
+            lockMsg = '⚠️ Hàng ngoài phiếu + chênh lệch — chờ Manager xử lý';
+          } else if (hasUnexpected) {
+            toastMsg += 'Phát hiện hàng ngoài phiếu — gửi Manager duyệt';
+            lockMsg = '⚠️ Hàng ngoài phiếu — chờ Manager xử lý';
+          } else {
+            toastMsg += 'Chênh lệch số lượng — gửi Manager duyệt';
+            lockMsg = '⚠️ Thừa/thiếu — chờ Manager xử lý';
+          }
+          toast(toastMsg);
+          lockUI(lockMsg);
         } else {
           toast('✅ Đã gửi QC!');
           lockUI('Đã gửi QC — chờ kiểm tra chất lượng');
