@@ -97,3 +97,94 @@ export async function generateGrn(id: number): Promise<void> {
 export async function deleteReceivingOrder(id: number): Promise<void> {
   await api.delete(`/receiving-orders/${id}`);
 }
+
+// ─── QC Reconciliation APIs ─────────────────────────────────────────────────
+
+export interface QcCountItem {
+  skuId: number;
+  qcCountedQty: number;
+  condition: "PASS" | "FAIL";
+  failQty?: number;
+  note?: string;
+}
+
+export interface QcSubmitCountPayload {
+  items: QcCountItem[];
+}
+
+export interface QcMismatch {
+  skuId: number;
+  skuCode: string;
+  keeperQty: number;
+  qcQty: number;
+  diff: number;
+}
+
+export interface QcSubmitCountResponse {
+  receivingId: number;
+  status: string;
+  matched: boolean;
+  mismatches?: QcMismatch[];
+  incidentCode?: string;
+  incidentItemCount?: number;
+}
+
+// POST /v1/receiving-orders/{id}/qc-submit-count
+export async function qcSubmitCount(
+  id: number,
+  payload: QcSubmitCountPayload,
+): Promise<QcSubmitCountResponse> {
+  const { data } = await api.post<ApiResponse<QcSubmitCountResponse>>(
+    `/receiving-orders/${id}/qc-submit-count`,
+    payload,
+  );
+  return data.data;
+}
+
+export interface QcAmendmentItem {
+  skuId: number;
+  proposedQty: number;
+  reason?: string;
+}
+
+export interface QcReconcilePayload {
+  action: "REJECT" | "AMEND";
+  note: string;
+  amendments?: QcAmendmentItem[];
+}
+
+// POST /v1/receiving-orders/{id}/qc-reconcile
+export async function qcReconcile(
+  id: number,
+  payload: QcReconcilePayload,
+): Promise<ReceivingOrder> {
+  const { data } = await api.post<ApiResponse<ReceivingOrder>>(
+    `/receiving-orders/${id}/qc-reconcile`,
+    payload,
+  );
+  return data.data;
+}
+
+export interface KeeperRecountItem {
+  skuId: number;
+  newCountQty: number;
+  note?: string;
+}
+
+export interface KeeperRecountPayload {
+  action: "ACCEPT_QC" | "RECOUNT";
+  note?: string;
+  items?: KeeperRecountItem[];
+}
+
+// POST /v1/receiving-orders/{id}/keeper-recount
+export async function keeperRecount(
+  id: number,
+  payload: KeeperRecountPayload,
+): Promise<ReceivingOrder> {
+  const { data } = await api.post<ApiResponse<ReceivingOrder>>(
+    `/receiving-orders/${id}/keeper-recount`,
+    payload,
+  );
+  return data.data;
+}
