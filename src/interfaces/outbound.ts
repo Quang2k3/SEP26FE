@@ -42,10 +42,12 @@ export interface OutboundOrder {
   warehouseId: number;
   // Sales Order fields
   customerId?: number | null;
+  customerCode?: string | null;
   customerName?: string | null;
   deliveryDate?: string | null;
   // Internal Transfer fields
   destinationWarehouseId?: number | null;
+  destinationWarehouseCode?: string | null;
   destinationWarehouseName?: string | null;
   // Common
   items: OutboundItemResponse[];
@@ -59,6 +61,9 @@ export interface OutboundOrder {
   dispatchPdfUrl?: string | null;
   signedNoteUrl?: string | null;
   signedNoteUploadedAt?: string | null;
+  /** Ảnh phiếu lấy hàng đã ký của nhân viên kho */
+  pickSignedNoteUrl?: string | null;
+  pickSignedNoteUploadedAt?: string | null;
 }
 
 // ─── List response (GET /v1/outbound) — khớp BE OutboundListResponse ──────────
@@ -183,8 +188,9 @@ export interface PickListResponse {
 export type QcResult = 'PASS' | 'FAIL' | 'HOLD';
 
 export interface QcScanRequest {
-  taskId: number;
-  taskItemId: number;
+  // [FIX] BE expects pickingTaskId / pickingTaskItemId, không phải taskId / taskItemId
+  pickingTaskId: number;
+  pickingTaskItemId: number;
   result: QcResult;
   reason?: string | null;
 }

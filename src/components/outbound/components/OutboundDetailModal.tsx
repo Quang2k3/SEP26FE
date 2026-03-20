@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { getExpiryInfo } from '@/utils/expiryUtils';
 
 import QRCode from 'react-qr-code';
+import CreateOutboundModal from './CreateOutboundModal';
 import {
   createReceivingSession,
   generateScanToken,
@@ -19,6 +20,8 @@ import {
   rejectSalesOrder,
   allocateStock,
   reportShortage,
+  deleteSalesOrder,
+  deleteTransfer,
   generatePickList,
   fetchPickList,
   fetchPickListByDocument,
@@ -28,6 +31,7 @@ import {
   fetchQcSummary,
   fetchDispatchNote,
   confirmDispatch,
+  uploadPickSignedNote,
   buildOrderFromListItem,
   fetchOutboundDetail,
 } from '@/services/outboundService';
@@ -42,6 +46,7 @@ import type {
 import { OUTBOUND_STATUS_BADGE } from '@/interfaces/outbound';
 // [NEW] Import nút tải Phiếu Xuất Kho PDF
 import DispatchPdfButton from '@/components/outbound/DispatchPdfButton';
+import PickListPdfButton from '@/components/outbound/PickListPdfButton';
 
 function getUserRole(): string {
   if (typeof window === 'undefined') return 'KEEPER';
@@ -189,9 +194,20 @@ function AllocatePanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
         return;
       }
 
-      if ((res as any).fullyAllocated) toast.success('Phân bổ thành công!');
-      else toast('⚠️ Phân bổ một phần — một số SKU thiếu hàng', { icon: '⚠️' });
-    } catch { } finally { setLoading(false); }
+      if ((res as any).fullyAllocated) {
+        toast.success('Phân bổ thành công! Bạn có thể tạo Pick List.');
+      } else {
+        // [FIX-BUG-1-FE] PARTIALLY_ALLOCATED: KHÔNG advance localStatus → ALLOCATED.
+        // Backend đã fix để chỉ cho tạo Pick List khi ALLOCATED, nhưng FE cũng phải
+        // giữ đúng localStatus để không hiện nút Tạo Pick List khi chưa đủ tồn.
+        toast('⚠️ Phân bổ một phần — một số SKU thiếu hàng. Không thể tạo Pick List cho đến khi đủ tồn kho.', { icon: '⚠️', duration: 6000 });
+        return; // KHÔNG gọi onDone() — giữ nguyên UI ở trạng thái AllocatePanel
+      }
+    } catch (err: unknown) {
+      // [FIX] Hiển thị lỗi allocate từ BE
+      const msg = (err as any)?.response?.data?.message ?? (err as any)?.message ?? 'Phân bổ tồn kho thất bại.';
+      toast.error(msg, { duration: 6000 });
+    } finally { setLoading(false); }
   };
 
   const handleReportShortage = async () => {
@@ -393,7 +409,11 @@ function PickListGeneratePanel({ item, onDone, onCreated }: {
       onCreated(res.taskId, res.items ?? []);
       toast.success('Tạo Pick List thành công!');
       onDone();
-    } catch { } finally { setLoading(false); }
+    } catch (err: unknown) {
+      // [FIX] Hiển thị lỗi từ BE — ví dụ: "Đơn hàng phải ALLOCATED trước khi tạo Pick List"
+      const msg = (err as any)?.response?.data?.message ?? (err as any)?.message ?? 'Tạo Pick List thất bại.';
+      toast.error(msg, { duration: 8000 });
+    } finally { setLoading(false); }
   };
 
   return (
@@ -460,6 +480,67 @@ function PickListTable({ pickList }: { pickList: PickListResponse }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ─── Pick Note Upload Block ────────────────────────────────────────────────────
+// Hiện sau khi nhân viên xác nhận lấy đủ hàng (isFinalized).
+// Cho phép nhân viên chụp ảnh phiếu lấy hàng đã ký qua QR → upload lên hệ thống.
+function PickNoteUploadBlock({ soId }: { soId: number }) {
+  const feBase = process.env.NEXT_PUBLIC_FE_BASE_URL ?? 'https://cleanhousewms.id.vn';
+  const pickSignUrl = `${feBase}/sign-note/${soId}?type=pick`;
+
+  const [pickNoteUrl, setPickNoteUrl] = React.useState<string | null>(null);
+  const [checking,   setChecking]     = React.useState(false);
+
+  // Lắng nghe BroadcastChannel khi nhân viên upload xong từ điện thoại
+  React.useEffect(() => {
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel(`pick_signed_${soId}`);
+      bc.onmessage = (e) => {
+        if (e.data?.type === 'pick_signed_uploaded' && e.data?.url) {
+          setPickNoteUrl(e.data.url);
+        }
+      };
+    } catch { /* ignore */ }
+    return () => { bc?.close(); };
+  }, [soId]);
+
+  return (
+    <div className="p-4 bg-white rounded-xl border border-blue-200 space-y-3">
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        QR ký — Keeper chụp ảnh phiếu đã ký
+      </p>
+      {pickNoteUrl ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-emerald-500 text-[16px]">verified</span>
+            <span className="text-xs text-emerald-600 font-semibold">Đã có ảnh phiếu lấy hàng</span>
+          </div>
+          <a href={pickNoteUrl} target="_blank" rel="noreferrer" className="block">
+            <img src={pickNoteUrl} alt="Phiếu lấy hàng đã ký"
+              className="w-full rounded-xl border border-gray-200 object-contain max-h-48 bg-gray-50 hover:opacity-90 cursor-zoom-in" />
+          </a>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500 leading-relaxed">
+            Keeper đã ký phiếu? Scan QR bên dưới để chụp ảnh phiếu đã ký và lưu lên hệ thống.
+          </p>
+          <div className="flex flex-col items-center gap-2 bg-gradient-to-b from-blue-50 to-white rounded-xl p-4 border border-blue-100">
+            <div className="bg-white p-2 rounded-xl shadow-sm border border-blue-100">
+              <QRCode value={pickSignUrl} size={100} />
+            </div>
+            <p className="text-[11px] font-semibold text-blue-700">Keeper scan để chụp ảnh phiếu đã ký</p>
+          </div>
+          <div className="flex items-center justify-center gap-2 py-1 text-xs text-blue-400">
+            <span className="material-symbols-outlined text-[13px] animate-spin">progress_activity</span>
+            Đang chờ ảnh từ điện thoại...
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -569,20 +650,27 @@ function PickingPanel({ item, taskId: initTaskId, onDone }: {
 
   return (
     <div className="space-y-3">
-      <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
+      <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 space-y-3">
         <div className="flex items-start gap-3">
-          <span className="material-symbols-outlined text-blue-600 text-xl mt-0.5">qr_code_scanner</span>
+          <span className="material-symbols-outlined text-blue-600 text-xl mt-0.5">forklift</span>
           <div>
-            <p className="text-sm font-semibold text-blue-800">Bước 3 — Keeper quét mã lấy hàng</p>
+            <p className="text-sm font-semibold text-blue-800">Bước 3 — Keeper lấy hàng theo Pick List</p>
             <p className="text-xs text-blue-600 mt-1 leading-relaxed">
-              Tạo link scan → Gửi Keeper mở trên điện thoại → Keeper quét từng SKU theo Pick List → Bấm{' '}
-              <span className="font-bold">"Gửi sang QC"</span> khi lấy đủ hàng.
+              <strong>1.</strong> In phiếu → Keeper lấy đúng BIN / SKU / số lô / SL → Ký phiếu.<br/>
+              <strong>2.</strong> QR ký: Keeper scan QR bên dưới để chụp ảnh phiếu đã ký.<br/>
+              <strong>3.</strong> QR quét: Keeper dùng link scan để quét barcode từng SKU → gửi sang QC.
             </p>
           </div>
         </div>
+        {/* Nút in phiếu lấy hàng */}
+        <PickListPdfButton soId={item.documentId} soCode={item.documentCode} />
       </div>
 
-      {isFinalized ? (
+      {/* QR ký — luôn hiện để Keeper chụp ảnh phiếu đã ký (trước hoặc sau khi quét barcode) */}
+      <PickNoteUploadBlock soId={item.documentId} />
+
+      {/* Banner hoàn tất khi Keeper đã quét xong barcode */}
+      {isFinalized && (
         <div className="p-4 bg-emerald-50 border-2 border-emerald-200 rounded-xl flex items-center gap-3">
           <span className="material-symbols-outlined text-emerald-600 text-2xl">check_circle</span>
           <div>
@@ -590,10 +678,13 @@ function PickingPanel({ item, taskId: initTaskId, onDone }: {
             <p className="text-xs text-emerald-600 mt-0.5">Đơn hàng đã chuyển sang bước QC Scan.</p>
           </div>
         </div>
-      ) : (
+      )}
+
+      {/* QR quét barcode — chỉ hiện khi chưa hoàn tất */}
+      {!isFinalized && (
         <div className="border border-blue-100 rounded-xl overflow-hidden">
           <div className="px-4 py-2.5 bg-blue-50 border-b flex items-center justify-between">
-            <span className="text-xs font-bold text-blue-700">📱 Link scan cho Keeper</span>
+            <span className="text-xs font-bold text-blue-700">📱 QR quét barcode (Keeper)</span>
             {resolvedTaskId && (
               <span className="text-[10px] font-mono text-blue-400 bg-blue-100 px-2 py-0.5 rounded">Pick #{resolvedTaskId}</span>
             )}
@@ -629,7 +720,7 @@ function PickingPanel({ item, taskId: initTaskId, onDone }: {
                 <button onClick={generateQR} className="text-xs text-gray-400 hover:text-gray-600">Tạo lại QR</button>
                 <p className="text-[11px] text-blue-500 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse inline-block" />
-                  Đang chờ Keeper hoàn tất picking trên điện thoại...
+                  Đang chờ Keeper hoàn tất quét barcode trên điện thoại...
                 </p>
               </div>
             ) : (
@@ -640,7 +731,7 @@ function PickingPanel({ item, taskId: initTaskId, onDone }: {
                 <p className="text-xs text-gray-500 text-center">Bấm nút bên dưới để tạo QR Code cho Keeper quét.</p>
                 <button onClick={generateQR} disabled={!resolvedTaskId}
                   className="w-full py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50">
-                  Tạo QR để Keeper scan
+                  Tạo QR quét barcode cho Keeper
                 </button>
               </div>
             )}
@@ -971,7 +1062,14 @@ function DispatchPanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
       await confirmDispatch(item.documentId);
       toast.success('Xuất kho thành công!');
       onDone();
-    } catch { } finally { setDispatching(false); }
+    } catch (err: unknown) {
+      // [FIX] Hiển thị lỗi từ BE thay vì nuốt im lặng
+      // BE có thể throw 400: chưa allocate, còn incident OPEN, chưa QC scan đủ
+      const msg = (err as any)?.response?.data?.message
+        ?? (err as any)?.message
+        ?? 'Xuất kho thất bại. Vui lòng kiểm tra lại.';
+      toast.error(msg, { duration: 8000 });
+    } finally { setDispatching(false); }
   };
 
   return (
@@ -1084,6 +1182,9 @@ interface Props {
 
 export default function OutboundDetailModal({ item, onClose, onRefresh }: Props) {
   const [localStatus, setLocalStatus] = useState(item?.status ?? 'DRAFT');
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showReject, setShowReject] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showApproveConfirm, setShowApproveConfirm] = useState(false);
@@ -1092,6 +1193,18 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
   const [qcDone, setQcDone] = useState(false);
   const [orderDetail, setOrderDetail] = useState<any>(null);
   const role = getUserRole();
+
+  // [FIX] Khi modal mở fresh ở QC_SCAN + taskId load xong → init qcDone từ BE
+  // Tránh: qcDone=false dù QC đã xong → Dispatch button ẩn sai
+  useEffect(() => {
+    if (!taskId || localStatus !== 'QC_SCAN' || qcDone) return;
+    fetchQcSummary(taskId)
+      .then(s => {
+        const total = (s.passCount ?? 0) + (s.failCount ?? 0) + (s.holdCount ?? 0) + (s.pendingCount ?? 0);
+        if ((s.pendingCount ?? 0) === 0 && total > 0) setQcDone(true);
+      })
+      .catch(() => {});
+  }, [taskId, localStatus, qcDone]);
 
   const prevDocumentIdRef = React.useRef<number | null>(null);
 
@@ -1182,16 +1295,64 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
   };
 
   const renderContent = () => {
+  const handleDelete = async () => {
+    try {
+      setDeleting(true);
+      setShowDeleteConfirm(false);
+      if (item.orderType === 'SALES_ORDER') await deleteSalesOrder(item.documentId);
+      else await deleteTransfer(item.documentId);
+      toast.success('Đã xoá lệnh xuất kho!');
+      onClose(); onRefresh();
+    } catch (err: unknown) {
+      const msg = (err as any)?.response?.data?.message ?? 'Xoá thất bại.';
+      toast.error(msg, { duration: 6000 });
+    } finally { setDeleting(false); }
+  };
+
     if (localStatus === 'DRAFT') {
       if (role === 'KEEPER') return (
+        <>
         <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
           <p className="text-sm text-gray-600">{isSO ? 'Submit để gửi Manager duyệt.' : 'Submit → tự động APPROVED (không cần Manager).'}</p>
-          <button onClick={() => setShowSubmitConfirm(true)} disabled={actionLoading}
+          <button onClick={() => setShowSubmitConfirm(true)} disabled={actionLoading || deleting}
             className="w-full py-2.5 text-sm font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 flex items-center justify-center gap-2 disabled:opacity-60">
             {actionLoading && <Spin />}
             {actionLoading ? 'Đang gửi...' : 'Gửi duyệt'}
           </button>
+          <div className="flex gap-2">
+            <button onClick={() => setShowEditModal(true)} disabled={actionLoading || deleting}
+              className="flex-1 py-2 text-sm font-semibold text-indigo-600 bg-white border border-indigo-200 rounded-xl hover:bg-indigo-50 flex items-center justify-center gap-1.5 disabled:opacity-60">
+              <span className="material-symbols-outlined text-[15px]">edit</span>
+              Sửa
+            </button>
+            <button onClick={() => setShowDeleteConfirm(true)} disabled={actionLoading || deleting}
+              className="flex-1 py-2 text-sm font-semibold text-red-600 bg-white border border-red-200 rounded-xl hover:bg-red-50 flex items-center justify-center gap-1.5 disabled:opacity-60">
+              {deleting ? <Spin /> : <span className="material-symbols-outlined text-[15px]">delete</span>}
+              {deleting ? 'Đang xoá...' : 'Xoá'}
+            </button>
+            <ConfirmModal
+              open={showDeleteConfirm}
+              icon="delete_forever"
+              iconColor="text-red-500"
+              title="Xoá lệnh xuất kho?"
+              confirmLabel="Xoá"
+              confirmColor="bg-red-600 hover:bg-red-700"
+              description={`Bạn chắc chắn muốn xoá lệnh "${item.documentCode}"? Thao tác này không thể hoàn tác.`}
+              loading={deleting}
+              onConfirm={handleDelete}
+              onCancel={() => setShowDeleteConfirm(false)}
+            />
+          </div>
         </div>
+        {showEditModal && (
+          <CreateOutboundModal
+            open={showEditModal}
+            onClose={() => setShowEditModal(false)}
+            onCreated={() => { setShowEditModal(false); onRefresh(); }}
+            editItem={orderDetail ?? null}
+          />
+        )}
+        </>
       );
       if (role === 'MANAGER') return (
         <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
@@ -1281,8 +1442,16 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
                 onRefresh();
               }}
             />
-            {(qcDone || localStatus === 'QC_SCAN') && role === 'KEEPER' && isSO && (
+            {/* [FIX] Chỉ hiện Dispatch khi QC đã xong (qcDone=true).
+                 Trước đây: (qcDone || localStatus==='QC_SCAN') → luôn hiện ngay,
+                 user bấm Dispatch khi chưa scan xong → BE throw 400 → FE nuốt lỗi im lặng */}
+            {qcDone && role === 'KEEPER' && isSO && (
               <DispatchPanel item={item} onDone={() => { setLocalStatus('DISPATCHED'); onRefresh(); }} />
+            )}
+            {!qcDone && role === 'KEEPER' && isSO && (
+              <div className="p-3 bg-purple-50 rounded-xl border border-purple-100 text-center">
+                <p className="text-xs text-purple-600 font-semibold">⏳ Chờ QC scan xong toàn bộ hàng trước khi xuất kho</p>
+              </div>
             )}
           </div>
         );
@@ -1328,7 +1497,39 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
             </div>
           )}
 
-          {/* QR + ảnh ký */}
+          {/* Ảnh phiếu lấy hàng đã ký (nhân viên kho) */}
+          {isSO && (
+            <div className="p-4 bg-white rounded-xl border border-gray-200 space-y-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Ảnh phiếu lấy hàng đã ký
+              </p>
+              {orderDetail?.pickSignedNoteUrl ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-emerald-500 text-[16px]">verified</span>
+                    <span className="text-xs text-emerald-600 font-semibold">Nhân viên đã ký xác nhận</span>
+                    {orderDetail?.pickSignedNoteUploadedAt && (
+                      <span className="text-xs text-gray-400 ml-auto">
+                        {new Date(orderDetail.pickSignedNoteUploadedAt).toLocaleString('vi-VN')}
+                      </span>
+                    )}
+                  </div>
+                  <a href={orderDetail.pickSignedNoteUrl} target="_blank" rel="noreferrer" className="block">
+                    <img src={orderDetail.pickSignedNoteUrl} alt="Phiếu lấy hàng đã ký"
+                      className="w-full rounded-xl border border-gray-200 object-contain max-h-64 bg-gray-50 hover:opacity-90 transition-opacity cursor-zoom-in" />
+                  </a>
+                  <p className="text-[11px] text-gray-400 text-center">Nhấn vào ảnh để xem full size</p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 py-2 text-xs text-gray-400">
+                  <span className="material-symbols-outlined text-[16px]">image_not_supported</span>
+                  Chưa có ảnh phiếu lấy hàng
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* QR + ảnh ký phiếu xuất kho */}
           {isSO && (
             <div className="p-4 bg-white rounded-xl border border-gray-200 space-y-3">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -1467,8 +1668,16 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
                     <tr className="bg-gray-100/80 text-gray-500 font-semibold uppercase tracking-wide text-[11px]">
                       <th className="px-4 py-2 text-left">SKU</th>
                       <th className="px-4 py-2 text-left">Tên sản phẩm</th>
-                      <th className="px-4 py-2 text-center">SL yêu cầu</th>
-                      <th className="px-4 py-2 text-center">Tồn khả dụng</th>
+                      <th className="px-4 py-2 text-center">
+                        {localStatus === 'DISPATCHED' ? 'Đã lấy' : 'SL yêu cầu'}
+                      </th>
+                      <th className="px-4 py-2 text-center">
+                        {localStatus === 'DISPATCHED'
+                          ? 'SL cần kiểm tra'
+                          : ['PICKING','QC_SCAN'].includes(localStatus)
+                          ? 'SL cần kiểm tra'
+                          : 'Tồn khả dụng'}
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -1476,13 +1685,23 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
                       <tr key={it.itemId} className="hover:bg-white/60 transition-colors">
                         <td className="px-4 py-2.5 font-mono font-bold text-gray-800">{it.skuCode}</td>
                         <td className="px-4 py-2.5 text-gray-600">{it.skuName}</td>
-                        <td className="px-4 py-2.5 text-center font-bold text-gray-900">{it.requestedQty}</td>
+                        <td className="px-4 py-2.5 text-center font-bold text-gray-900">
+                          {it.requestedQty}
+                        </td>
                         <td className="px-4 py-2.5 text-center">
-                          <span className={`font-semibold ${it.insufficientStock ? 'text-red-600' : 'text-emerald-600'}`}>
-                            {it.availableQty}
-                          </span>
-                          {it.insufficientStock && (
-                            <span className="ml-1.5 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-semibold">Thiếu</span>
+                          {['PICKING','QC_SCAN','DISPATCHED'].includes(localStatus) ? (
+                            <span className="font-semibold text-indigo-600">
+                              {it.requestedQty}
+                            </span>
+                          ) : (
+                            <>
+                              <span className={`font-semibold ${it.insufficientStock ? 'text-red-600' : 'text-emerald-600'}`}>
+                                {it.availableQty}
+                              </span>
+                              {it.insufficientStock && (
+                                <span className="ml-1.5 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-semibold">Thiếu</span>
+                              )}
+                            </>
                           )}
                         </td>
                       </tr>

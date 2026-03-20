@@ -13,6 +13,7 @@ export default function SignNotePage() {
 
   // Nếu có ?type=putaway&taskId=X thì đây là upload cho putaway task
   const isPutaway = searchParams.get('type') === 'putaway';
+  const isPick    = searchParams.get('type') === 'pick';
   const taskId    = searchParams.get('taskId') ?? soId;
 
   const [state, setState]         = useState<State>('idle');
@@ -45,6 +46,8 @@ export default function SignNotePage() {
 
       const url = isPutaway
         ? `${API}/putaway-tasks/${taskId}/signed-note`
+        : isPick
+        ? `${API}/outbound/sales-orders/${soId}/pick-signed-note`
         : `${API}/outbound/sales-orders/${soId}/signed-note`;
 
       const res = await fetch(url, { method: 'POST', body: form });
@@ -62,10 +65,14 @@ export default function SignNotePage() {
       try {
         const channelName = isPutaway
           ? `putaway_signed_${taskId}`
+          : isPick
+          ? `pick_signed_${soId}`
           : `signed_note_${soId}`;
         const bc = new BroadcastChannel(channelName);
         bc.postMessage(isPutaway
           ? { type: 'putaway_signed_uploaded', taskId, url: json.data?.url }
+          : isPick
+          ? { type: 'pick_signed_uploaded', soId, url: json.data?.url }
           : { type: 'signed_note_uploaded', soId, url: json.data?.url }
         );
         bc.close();
@@ -89,19 +96,23 @@ export default function SignNotePage() {
     if (input2Ref.current) input2Ref.current.value = '';
   };
 
-  const accent       = isPutaway ? '#1a5276' : '#4f46e5';
-  const accentBright = isPutaway ? '#2980b9' : '#6366f1';
-  const accentLight  = isPutaway ? 'rgba(41,128,185,0.08)' : 'rgba(99,102,241,0.08)';
-  const accentBorder = isPutaway ? 'rgba(41,128,185,0.5)'  : 'rgba(99,102,241,0.5)';
-  const accentText   = isPutaway ? '#5dade2' : '#818cf8';
+  const accent       = isPutaway ? '#1a5276' : isPick ? '#166534' : '#4f46e5';
+  const accentBright = isPutaway ? '#2980b9' : isPick ? '#16a34a' : '#6366f1';
+  const accentLight  = isPutaway ? 'rgba(41,128,185,0.08)' : isPick ? 'rgba(22,163,74,0.08)' : 'rgba(99,102,241,0.08)';
+  const accentBorder = isPutaway ? 'rgba(41,128,185,0.5)' : isPick ? 'rgba(22,163,74,0.5)' : 'rgba(99,102,241,0.5)';
+  const accentText   = isPutaway ? '#5dade2' : isPick ? '#4ade80' : '#818cf8';
 
   const docLabel  = isPutaway ? `PUTAWAY TASK #${taskId}` : `ĐƠN HÀNG #${soId}`;
-  const pageTitle = isPutaway ? 'Chụp phiếu cất hàng đã ký' : 'Chụp phiếu xuất kho đã ký';
+  const pageTitle = isPutaway ? 'Chụp phiếu cất hàng đã ký' : isPick ? 'Chụp phiếu lấy hàng đã ký' : 'Chụp phiếu xuất kho đã ký';
   const pageDesc  = isPutaway
     ? 'Chụp ảnh phiếu hướng dẫn cất hàng sau khi đã có đầy đủ chữ ký. Ảnh sẽ mở khoá bước Confirm trên hệ thống.'
+    : isPick
+    ? 'Chụp ảnh phiếu lấy hàng sau khi nhân viên đã ký xác nhận lấy đủ hàng. Ảnh sẽ được lưu vào đơn hàng.'
     : 'Chụp ảnh phiếu sau khi đã có đầy đủ chữ ký. Ảnh sẽ được lưu vào hệ thống.';
   const doneDesc  = isPutaway
     ? `Ảnh phiếu ký Task #${taskId} đã được lưu. Quản lý có thể xác nhận cất hàng trên hệ thống.`
+    : isPick
+    ? `Ảnh phiếu lấy hàng đơn #${soId} đã được lưu. Có thể xem lại trên hệ thống WMS.`
     : `Ảnh phiếu ký đơn #${soId} đã được lưu. Quản lý có thể xem lại trên hệ thống WMS.`;
 
   const card: React.CSSProperties = {
