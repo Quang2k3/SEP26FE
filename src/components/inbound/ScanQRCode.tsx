@@ -59,6 +59,7 @@ export default function ScanQRCode({ receivingId, userRole = 'KEEPER', onDone, o
   const [isFinalized,  setIsFinalized]  = useState(false);
   const [finalStatus,  setFinalStatus]  = useState<string | null>(null);
   const isFinalizedRef = useRef(false); // ref để cleanup effect đọc được giá trị mới nhất
+  const finalStatusRef  = useRef<string | null>(null); // ref để cleanup biết status cuối
 
   const pollingRef       = useRef<ReturnType<typeof setInterval> | null>(null);
   const statusPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -108,6 +109,7 @@ export default function ScanQRCode({ receivingId, userRole = 'KEEPER', onDone, o
         clearInterval(statusPollingRef.current!);
         clearInterval(pollingRef.current!);
         isFinalizedRef.current = true;
+        finalStatusRef.current = order.status;
         setIsFinalized(true);
         setFinalStatus(order.status);
         const msg = FINALIZED_MSG[order.status] ?? `Hoàn tất — trạng thái: ${order.status}`;
@@ -132,6 +134,7 @@ export default function ScanQRCode({ receivingId, userRole = 'KEEPER', onDone, o
     setQrValue(null);
     setScannedLines([]);
     isFinalizedRef.current = false;
+    finalStatusRef.current = null;
     setIsFinalized(false);
     setFinalStatus(null);
     stopPolling();
@@ -171,9 +174,13 @@ export default function ScanQRCode({ receivingId, userRole = 'KEEPER', onDone, o
     return () => {
       mountedRef.current = false;
       stopPolling();
-      // Chỉ xóa session khi đã finalized — giữ session sống để finalizeCount vẫn sync được
+      // Xóa session khi đã finalized, NGOẠI TRỪ KEEPER_RESCAN
+      // vì Keeper vẫn cần QC session trong Redis để đối chiếu khi rescan
       const sid = sessionIdRef.current;
-      if (sid && isFinalizedRef.current) deleteSession(sid).catch(() => {});
+      const fStatus = finalStatusRef.current;
+      if (sid && isFinalizedRef.current && fStatus !== 'KEEPER_RESCAN') {
+        deleteSession(sid).catch(() => {});
+      }
     };
   }, [receivingId]); // eslint-disable-line
 
