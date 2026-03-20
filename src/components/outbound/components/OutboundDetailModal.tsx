@@ -492,21 +492,21 @@ function PickNoteUploadBlock({ soId }: { soId: number }) {
   const pickSignUrl = `${feBase}/sign-note/${soId}?type=pick`;
 
   const [pickNoteUrl, setPickNoteUrl] = React.useState<string | null>(null);
-  const [checking,   setChecking]     = React.useState(false);
 
-  // Lắng nghe BroadcastChannel khi nhân viên upload xong từ điện thoại
+  // Poll mỗi 2s để detect khi Keeper upload ảnh từ điện thoại.
+  // BroadcastChannel không hoạt động cross-device nên cần poll API.
   React.useEffect(() => {
-    let bc: BroadcastChannel | null = null;
-    try {
-      bc = new BroadcastChannel(`pick_signed_${soId}`);
-      bc.onmessage = (e) => {
-        if (e.data?.type === 'pick_signed_uploaded' && e.data?.url) {
-          setPickNoteUrl(e.data.url);
-        }
-      };
-    } catch { /* ignore */ }
-    return () => { bc?.close(); };
-  }, [soId]);
+    if (pickNoteUrl) return; // đã có ảnh → dừng poll
+    const interval = setInterval(async () => {
+      try {
+        const { data } = await (await import('@/config/axios')).default
+          .get(`/outbound/${soId}`, { params: { orderType: 'SALES_ORDER' } });
+        const url = data?.data?.pickSignedNoteUrl;
+        if (url) setPickNoteUrl(url);
+      } catch { /* silent */ }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [soId, pickNoteUrl]);
 
   return (
     <div className="p-4 bg-white rounded-xl border border-blue-200 space-y-3">
