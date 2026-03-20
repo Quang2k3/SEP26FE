@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import QRCode from 'react-qr-code';
+import PutawayPdfButton from '@/components/putaway/PutawayPdfButton';
 import {
   fetchPutawayTasks,
   fetchPutawayTask,
@@ -10,6 +12,7 @@ import {
   allocatePutaway,
   cancelAllocation,
   confirmPutawayTask,
+  fetchPutawaySignedNote,
   type PutawayTaskResponse,
   type PutawayTaskItemDto,
   type PutawaySuggestion,
@@ -324,6 +327,10 @@ export default function PutawayPage() {
   const [submitting, setSubmitting]     = useState(false);
   const [confirming, setConfirming]     = useState(false);
 
+  // ── Signed note (ảnh phiếu cất hàng đã ký) ──
+  const [signedNoteUrl, setSignedNoteUrl] = useState<string | null>(null);
+  const [signedNoteAt,  setSignedNoteAt]  = useState<string | null>(null);
+
   // ── Computed: suggested zones & bins from API ──
   // Filter: chỉ lấy suggestions có matchedZoneId hợp lệ (bỏ fallback entries)
   const validSuggestions = suggestions.filter(s => s.matchedZoneId != null && s.suggestedLocationId != null);
@@ -414,6 +421,41 @@ export default function PutawayPage() {
     return () => clearInterval(timer);
   }, [tasks, loadTasks]);
 
+  // ── Poll signed note khi ở REVIEW và chưa có ảnh ký ───────────────────────
+  useEffect(() => {
+    if (step !== 'REVIEW' || !task || signedNoteUrl) return;
+
+    // BroadcastChannel: nhận ngay khi mobile upload xong
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel(`putaway_signed_${task.putawayTaskId}`);
+      bc.onmessage = (e) => {
+        if (e.data?.type === 'putaway_signed_uploaded' && e.data?.url) {
+          setSignedNoteUrl(e.data.url);
+          setSignedNoteAt(new Date().toISOString());
+          toast.success('Ảnh phiếu ký đã được nhận!');
+        }
+      };
+    } catch { /* BroadcastChannel không được support */ }
+
+    // Fallback: poll API mỗi 2s
+    const interval = setInterval(async () => {
+      try {
+        const note = await fetchPutawaySignedNote(task.putawayTaskId);
+        if (note.hasSignedNote && note.signedNoteUrl) {
+          setSignedNoteUrl(note.signedNoteUrl);
+          setSignedNoteAt(note.uploadedAt);
+          toast.success('Ảnh phiếu ký đã được nhận!');
+        }
+      } catch { /* silent */ }
+    }, 2000);
+
+    return () => {
+      bc?.close();
+      clearInterval(interval);
+    };
+  }, [step, task?.putawayTaskId, signedNoteUrl]);
+
   // ── Open task ───────────────────────────────────────────────────────────────
   const openTask = async (t: PutawayTaskResponse) => {
     try {
@@ -432,6 +474,9 @@ export default function PutawayPage() {
       setSelectedAisle(null);
       setSelectedRack(null);
       setAllBins([]);
+      // Restore signed note if already uploaded for this task
+      setSignedNoteUrl(detail.signedNoteUrl ?? null);
+      setSignedNoteAt(detail.signedNoteUploadedAt ?? null);
       setStep('ZONE_SELECT');
     } catch { toast.error('Không tải được task'); }
   };
@@ -1138,13 +1183,104 @@ export default function PutawayPage() {
                 <span className="material-symbols-outlined text-[16px]">add_circle</span>
                 Tiếp tục phân bổ
               </button>
+
+              {/* ── In phiếu hướng dẫn cất hàng ── */}
               {reserved.length > 0 && (
-                <button onClick={doConfirm} disabled={confirming}
-                  className="w-full flex items-center justify-center gap-2 py-3 text-sm font-bold text-white rounded-xl disabled:opacity-60 active:scale-95 transition-all"
-                  style={{ background: 'linear-gradient(135deg,#059669,#10b981)', boxShadow: '0 4px 16px rgba(5,150,105,0.25)' }}>
+                <PutawayPdfButton
+                  task={task}
+                  reserved={reserved}
+                  warehouseName={`Kho #${task.warehouseId}`}
+                />
+              )}
+
+              {/* ── QR + Ảnh phiếu đã ký ── */}
+              {reserved.length > 0 && (() => {
+                const feBase = process.env.NEXT_PUBLIC_FE_BASE_URL ?? '';
+                const signUrl = `${feBase}/sign-note/${task.putawayTaskId}?type=putaway&taskId=${task.putawayTaskId}`;
+                return (
+                  <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                    <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[15px] text-blue-500">photo_camera</span>
+                      <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Xác nhận chữ ký</p>
+                      {signedNoteUrl && (
+                        <span className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+                          <span className="material-symbols-outlined text-[13px]">verified</span>
+                          Đã có ảnh ký
+                        </span>
+                      )}
+                    </div>
+
+                    {signedNoteUrl ? (
+                      /* ── Đã có ảnh ký ── */
+                      <div className="p-3 space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-emerald-500 text-[14px]">check_circle</span>
+                          <span className="text-[11px] text-emerald-700 font-semibold">Ảnh phiếu đã ký</span>
+                          {signedNoteAt && (
+                            <span className="text-[10px] text-gray-400 ml-auto">
+                              {new Date(signedNoteAt).toLocaleString('vi-VN')}
+                            </span>
+                          )}
+                        </div>
+                        <a href={signedNoteUrl} target="_blank" rel="noreferrer" className="block">
+                          <img
+                            src={signedNoteUrl}
+                            alt="Phiếu cất hàng đã ký"
+                            className="w-full rounded-lg border border-gray-200 object-contain max-h-48 bg-gray-50 hover:opacity-90 transition-opacity cursor-zoom-in"
+                          />
+                        </a>
+                        <p className="text-[10px] text-gray-400 text-center">Nhấn ảnh để xem full size</p>
+                        {/* Chụp lại */}
+                        <div className="pt-1 border-t border-gray-100">
+                          <p className="text-[10px] text-gray-400 mb-1.5">Cần cập nhật ảnh mới?</p>
+                          <div className="flex items-center gap-3 bg-gray-50 rounded-lg p-2.5 border border-dashed border-gray-200">
+                            <div className="bg-white p-1.5 rounded-lg border border-gray-100 flex-shrink-0">
+                              <QRCode value={signUrl} size={56} />
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-semibold text-gray-600">Scan để chụp lại</p>
+                              <p className="text-[10px] text-gray-400 mt-0.5">Ảnh mới sẽ ghi đè ảnh cũ</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* ── Chưa có ảnh ký ── */
+                      <div className="p-3 space-y-3">
+                        <p className="text-[11px] text-gray-500 leading-relaxed">
+                          Sau khi in phiếu và thu đủ chữ ký, dùng điện thoại scan QR bên dưới để chụp và lưu ảnh.
+                          Nút <strong>Confirm cất hàng</strong> sẽ mở khóa sau khi có ảnh.
+                        </p>
+                        <div className="flex flex-col items-center gap-3 bg-gradient-to-b from-blue-50 to-white rounded-xl p-4 border border-blue-100">
+                          <div className="bg-white p-2.5 rounded-xl shadow-sm border border-blue-100">
+                            <QRCode value={signUrl} size={100} />
+                          </div>
+                          <div className="text-center">
+                            <p className="text-xs font-semibold text-blue-700">Scan bằng camera điện thoại</p>
+                            <p className="text-[10px] text-gray-400 mt-1">Chụp ảnh phiếu → tự động lưu vào task này</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-blue-400">
+                          <span className="material-symbols-outlined text-[13px] animate-spin">progress_activity</span>
+                          Đang chờ ảnh từ điện thoại...
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {reserved.length > 0 && (
+                <button
+                  onClick={doConfirm}
+                  disabled={confirming || !signedNoteUrl}
+                  className="w-full flex items-center justify-center gap-2 py-3 text-sm font-bold text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-all"
+                  style={{ background: 'linear-gradient(135deg,#059669,#10b981)', boxShadow: signedNoteUrl ? '0 4px 16px rgba(5,150,105,0.25)' : 'none' }}>
                   {confirming
                     ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Đang xác nhận...</>
-                    : <><span className="material-symbols-outlined text-[18px]">check_circle</span>Confirm cất hàng ({reserved.length})</>
+                    : signedNoteUrl
+                      ? <><span className="material-symbols-outlined text-[18px]">check_circle</span>Confirm cất hàng ({reserved.length})</>
+                      : <><span className="material-symbols-outlined text-[18px]">lock</span>Cần ảnh ký trước khi confirm</>
                   }
                 </button>
               )}

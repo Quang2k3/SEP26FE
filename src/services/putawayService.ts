@@ -35,6 +35,10 @@ export interface PutawayTaskResponse {
   createdAt: string;
   completedAt: string | null;
   note: string | null;
+  /** URL ảnh phiếu cất hàng đã ký (Cloudinary) */
+  signedNoteUrl: string | null;
+  /** Thời điểm upload ảnh ký */
+  signedNoteUploadedAt: string | null;
   items: PutawayTaskItemDto[];
 }
 
@@ -185,5 +189,35 @@ export async function confirmPutawayTask(taskId: number): Promise<PutawayTaskRes
   const { data } = await api.post<ApiResponse<PutawayTaskResponse>>(
     `/putaway-tasks/${taskId}/confirm`
   );
+  return data.data;
+}
+/** POST /v1/putaway-tasks/{id}/signed-note — upload ảnh phiếu đã ký */
+export async function uploadPutawaySignedNote(
+  taskId: number,
+  photo: File,
+): Promise<{ taskId: string; url: string }> {
+  const form = new FormData();
+  form.append('photo', photo);
+  const { data } = await api.post<ApiResponse<{ taskId: string; url: string }>>(
+    `/putaway-tasks/${taskId}/signed-note`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
+  return data.data;
+}
+
+/** GET /v1/putaway-tasks/{id}/signed-note */
+export async function fetchPutawaySignedNote(taskId: number): Promise<{
+  taskId: string;
+  signedNoteUrl: string;
+  uploadedAt: string;
+  hasSignedNote: boolean;
+}> {
+  const { data } = await api.get<ApiResponse<{
+    taskId: string;
+    signedNoteUrl: string;
+    uploadedAt: string;
+    hasSignedNote: boolean;
+  }>>(`/putaway-tasks/${taskId}/signed-note`);
   return data.data;
 }
