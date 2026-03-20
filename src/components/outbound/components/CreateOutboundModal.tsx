@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Portal from '@/components/ui/Portal';
 import toast from 'react-hot-toast';
-import { createOutbound } from '@/services/outboundService';
+import { createOutbound, updateSalesOrder, updateTransfer } from '@/services/outboundService';
 import { fetchCustomers, createCustomer, type Customer } from '@/services/customerService';
 import { searchSkus, type SkuDetail } from '@/services/skuService';
 import { fetchWarehouses, type Warehouse } from '@/services/warehouseService';
@@ -13,6 +13,8 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
+  // Edit mode: truyền vào để sửa đơn DRAFT
+  editItem?: import('@/interfaces/outbound').OutboundOrder | null;
 }
 
 // ─── Shared Combobox ──────────────────────────────────────────────────────────
@@ -232,7 +234,8 @@ const EMPTY_ROW = (): ItemRow => ({
   skuId: '', skuCode: '', skuName: '', unit: null, brand: null, quantity: '', note: '',
 });
 
-export default function CreateOutboundModal({ open, onClose, onCreated }: Props) {
+export default function CreateOutboundModal({ open, onClose, onCreated, editItem }: Props) {
+  const isEdit = !!editItem;
   const [orderType, setOrderType] = useState<OutboundType>('SALES_ORDER');
   const [customerCode, setCustomerCode] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -252,15 +255,44 @@ export default function CreateOutboundModal({ open, onClose, onCreated }: Props)
 
   useEffect(() => {
     if (!open) return;
-    setOrderType('SALES_ORDER');
-    setCustomerCode(''); setCustomerName('');
-    setDeliveryDate(''); setDestWarehouseCode('');
-    setItems([EMPTY_ROW()]); setNote('');
+    if (editItem) {
+      // Edit mode: pre-fill đầy đủ từ đơn hiện tại
+      setOrderType(editItem.orderType);
+      // customerCode + customerName từ BE (đã thêm vào OutboundResponse)
+      setCustomerCode(editItem.customerCode ?? '');
+      setCustomerName(editItem.customerName ?? '');
+      // deliveryDate: LocalDate từ BE dạng 'YYYY-MM-DD'
+      setDeliveryDate(
+        editItem.deliveryDate
+          ? String(editItem.deliveryDate).split('T')[0]
+          : ''
+      );
+      // destinationWarehouseCode từ BE
+      setDestWarehouseCode(editItem.destinationWarehouseCode ?? '');
+      setNote(editItem.note ?? '');
+      setItems(
+        editItem.items?.length
+          ? editItem.items.map(i => ({
+              skuId: String(i.skuId),
+              skuCode: i.skuCode,
+              skuName: i.skuName,
+              unit: null, brand: null,
+              quantity: String(i.requestedQty),
+              note: i.note ?? '',
+            }))
+          : [EMPTY_ROW()]
+      );
+    } else {
+      setOrderType('SALES_ORDER');
+      setCustomerCode(''); setCustomerName('');
+      setDeliveryDate(''); setDestWarehouseCode('');
+      setItems([EMPTY_ROW()]); setNote('');
+    }
     setShowCreateCustomer(false);
     fetchCustomers().then(setCustomers).catch(() => {});
     fetchWarehouses().then(setWarehouses).catch(() => {});
     searchSkus('', 0, 200).then(r => setAllSkus(r.content)).catch(() => {});
-  }, [open]);
+  }, [open, editItem]);
 
   if (!open) return null;
 
@@ -297,22 +329,42 @@ export default function CreateOutboundModal({ open, onClose, onCreated }: Props)
 
     try {
       setLoading(true);
-      const result = await createOutbound({
-        orderType,
-        customerCode: orderType === 'SALES_ORDER' ? customerCode : undefined,
-        deliveryDate: orderType === 'SALES_ORDER' && deliveryDate ? deliveryDate : undefined,
-        destinationWarehouseCode: orderType === 'INTERNAL_TRANSFER' ? destWarehouseCode : undefined,
-        items: parsedItems,
-        note: note || undefined,
-      });
-      if (result?.stockWarnings?.length) {
-        const w = result.stockWarnings.map(w => `${w.skuCode}: còn ${w.availableQty}`).join(', ');
-        toast(`⚠️ Thiếu hàng: ${w}`, { icon: '⚠️', duration: 5000 });
+      if (isEdit && editItem) {
+        // Edit mode: gọi update API
+        const payload = {
+          customerCode: orderType === 'SALES_ORDER' ? customerCode || undefined : undefined,
+          deliveryDate: orderType === 'SALES_ORDER' && deliveryDate ? deliveryDate : undefined,
+          destinationWarehouseCode: orderType === 'INTERNAL_TRANSFER' ? destWarehouseCode || undefined : undefined,
+          items: parsedItems,
+          note: note || undefined,
+        };
+        if (orderType === 'SALES_ORDER') {
+          await updateSalesOrder(editItem.documentId, payload);
+        } else {
+          await updateTransfer(editItem.documentId, payload);
+        }
+        toast.success('Cập nhật lệnh xuất kho thành công!');
       } else {
-        toast.success('Tạo lệnh xuất kho thành công!');
+        const result = await createOutbound({
+          orderType,
+          customerCode: orderType === 'SALES_ORDER' ? customerCode : undefined,
+          deliveryDate: orderType === 'SALES_ORDER' && deliveryDate ? deliveryDate : undefined,
+          destinationWarehouseCode: orderType === 'INTERNAL_TRANSFER' ? destWarehouseCode : undefined,
+          items: parsedItems,
+          note: note || undefined,
+        });
+        if (result?.stockWarnings?.length) {
+          const w = result.stockWarnings.map(w => `${w.skuCode}: còn ${w.availableQty}`).join(', ');
+          toast(`⚠️ Thiếu hàng: ${w}`, { icon: '⚠️', duration: 5000 });
+        } else {
+          toast.success('Tạo lệnh xuất kho thành công!');
+        }
       }
       onCreated(); onClose();
-    } catch { } finally { setLoading(false); }
+    } catch (err: unknown) {
+      const msg = (err as any)?.response?.data?.message ?? (err as any)?.message ?? 'Thao tác thất bại.';
+      toast.error(msg, { duration: 6000 });
+    } finally { setLoading(false); }
   };
 
   const today = new Date().toISOString().split('T')[0];
@@ -329,8 +381,8 @@ export default function CreateOutboundModal({ open, onClose, onCreated }: Props)
                 <span className="material-symbols-outlined text-indigo-600 text-[20px]">outbound</span>
               </div>
               <div>
-                <h2 className="text-base font-bold text-gray-900">Tạo lệnh xuất kho</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Tạo Sales Order hoặc Internal Transfer</p>
+                <h2 className="text-base font-bold text-gray-900">{isEdit ? 'Sửa lệnh xuất kho' : 'Tạo lệnh xuất kho'}</h2>
+                <p className="text-xs text-gray-400 mt-0.5">{isEdit ? `Đang sửa: ${editItem?.documentCode}` : 'Tạo Sales Order hoặc Internal Transfer'}</p>
               </div>
             </div>
             <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-400">
@@ -344,10 +396,12 @@ export default function CreateOutboundModal({ open, onClose, onCreated }: Props)
             {/* Order type toggle */}
             <div className="flex gap-2 p-1 bg-gray-100 rounded-xl w-fit">
               {(['SALES_ORDER', 'INTERNAL_TRANSFER'] as OutboundType[]).map(t => (
-                <button key={t} type="button" onClick={() => setOrderType(t)}
+                <button key={t} type="button"
+                  onClick={() => !isEdit && setOrderType(t)}
+                  disabled={isEdit}
                   className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     orderType === t ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  }`}>
+                  } ${isEdit ? 'cursor-not-allowed opacity-60' : ''}`}>
                   {t === 'SALES_ORDER' ? '🛒 Sales Order' : '🔄 Chuyển kho'}
                 </button>
               ))}
@@ -488,7 +542,7 @@ export default function CreateOutboundModal({ open, onClose, onCreated }: Props)
                 ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                 : <span className="material-symbols-outlined text-[16px]">outbound</span>
               }
-              {loading ? 'Đang tạo...' : 'Tạo lệnh xuất'}
+              {loading ? (isEdit ? 'Đang cập nhật...' : 'Đang tạo...') : (isEdit ? 'Lưu thay đổi' : 'Tạo lệnh xuất')}
             </button>
           </div>
         </div>

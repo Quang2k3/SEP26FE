@@ -69,6 +69,14 @@ export async function updateTransfer(transferId: number, payload: UpdateOutbound
 }
 
 // ─── Submit ───────────────────────────────────────────────────────────────────
+// ─── Delete (DRAFT only) ─────────────────────────────────────────────────────
+export async function deleteSalesOrder(soId: number): Promise<void> {
+  await api.delete(`/outbound/sales-orders/${soId}`);
+}
+export async function deleteTransfer(transferId: number): Promise<void> {
+  await api.delete(`/outbound/transfers/${transferId}`);
+}
+
 export async function submitSalesOrder(soId: number, note?: string): Promise<OutboundOrder> {
   const { data } = await api.patch<ApiResponse<OutboundOrder>>(`/outbound/sales-orders/${soId}/submit`, note ? { note } : {});
   return data.data;
@@ -116,6 +124,8 @@ export async function reportShortage(
 }
 
 // ─── Pick List ────────────────────────────────────────────────────────────────
+// [FIX-BUG-1-FE] generatePickList chỉ được gọi khi status === 'ALLOCATED' (đã phân bổ đầy đủ).
+// Backend sẽ throw 400 nếu status là APPROVED hay PARTIALLY_ALLOCATED.
 export async function generatePickList(
   documentId: number,
   orderType: 'SALES_ORDER' | 'INTERNAL_TRANSFER',
@@ -165,6 +175,7 @@ export async function startQcSession(taskId: number): Promise<void> {
   await api.post(`/outbound/pick-list/${taskId}/start-qc`);
 }
 export async function qcScanItem(payload: QcScanRequest): Promise<void> {
+  // [FIX] payload dùng pickingTaskId / pickingTaskItemId — khớp với BE QcScanRequest
   await api.post('/outbound/qc-scan', payload);
 }
 export async function fetchQcSummary(taskId: number): Promise<QcSummaryResponse> {
@@ -179,4 +190,15 @@ export async function fetchDispatchNote(soId: number): Promise<DispatchNoteRespo
 }
 export async function confirmDispatch(soId: number): Promise<void> {
   await api.post(`/outbound/sales-orders/${soId}/dispatch`);
+}
+
+// ─── Pick Signed Note ─────────────────────────────────────────────────────────
+/** Upload ảnh phiếu lấy hàng đã ký của nhân viên kho */
+export async function uploadPickSignedNote(soId: number, photo: File): Promise<{ url: string }> {
+  const form = new FormData();
+  form.append('photo', photo);
+  const { data } = await api.post<any>(`/outbound/sales-orders/${soId}/pick-signed-note`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return { url: data.data?.url ?? '' };
 }
