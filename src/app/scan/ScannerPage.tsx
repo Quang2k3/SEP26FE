@@ -234,7 +234,20 @@ function KeeperInboundScanner({ token, receivingId }: { token: string; receiving
       if (d?.success) {
         const orderStatus = d.data?.status;
         const apiMsg = d.message ?? '';
-        if (orderStatus === 'PENDING_INCIDENT') {
+        if (apiMsg.includes('khớp QC') && apiMsg.includes('tự xử lý')) {
+          // Keeper rescan khớp QC → auto-processed (incident hoặc approved)
+          if (orderStatus === 'PENDING_INCIDENT') {
+            toast('✅ Khớp QC! Phát hiện sai lệch — đã tạo Incident');
+            lockUI('Khớp QC ✓ — Incident gửi Manager duyệt');
+          } else {
+            toast('✅ Khớp QC! Hàng đã duyệt');
+            lockUI('Khớp QC ✓ — QC Approved');
+          }
+        } else if (apiMsg.includes('vẫn lệch QC')) {
+          // Keeper rescan vẫn lệch → chờ QC rescan lại
+          toast('⚠️ Vẫn lệch với QC — chờ QC quét lại');
+          lockUI('⚠️ Lệch QC — chờ QC kiểm đếm lại');
+        } else if (orderStatus === 'PENDING_INCIDENT') {
           const hasUnexpected = apiMsg.includes('ngoài phiếu');
           const hasMismatch = apiMsg.includes('chênh lệch');
           let toastMsg = '⚠️ ';
@@ -500,7 +513,21 @@ function QCInboundScanner({ token, receivingId }: { token: string; receivingId: 
         { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
       );
       const d = await r.json();
-      if (d?.success) { toast('✅ QC hoàn tất!'); lockUI('QC đã xác nhận — phiếu chuyển duyệt'); }
+      if (d?.success) {
+        const resData = d.data;
+        if (resData?.matched === false && resData?.status === 'KEEPER_RESCAN') {
+          // QC ≠ Keeper → yêu cầu Keeper rescan
+          const mismatchCount = resData.mismatchCount ?? 0;
+          toast(`⚠️ Lệch ${mismatchCount} SKU với Keeper — yêu cầu Keeper quét lại`);
+          lockUI(`⚠️ Lệch ${mismatchCount} SKU — chờ Keeper quét lại`);
+        } else if (resData?.status === 'PENDING_INCIDENT') {
+          toast('⚠️ QC phát hiện sai lệch — Incident gửi Manager');
+          lockUI('⚠️ Đã tạo Incident — chờ Manager duyệt');
+        } else {
+          toast('✅ QC hoàn tất!');
+          lockUI('QC đã xác nhận — phiếu chuyển duyệt');
+        }
+      }
       else toast(d?.message ?? 'Lỗi', true);
     } catch { toast('Lỗi kết nối', true); }
     finally { setSubmitting(false); }
