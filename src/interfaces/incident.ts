@@ -8,7 +8,7 @@ export interface IncidentItem {
   expectedQty: number;
   actualQty: number;
   damagedQty: number;
-  reasonCode: string; // SHORTAGE | OVERAGE | UNEXPECTED_ITEM
+  reasonCode: string; // SHORTAGE | OVERAGE | UNEXPECTED_ITEM | DAMAGE
   note: string;
 }
 

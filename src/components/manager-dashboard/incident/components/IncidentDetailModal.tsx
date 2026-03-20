@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Modal, Spin } from "antd";
+import { Spin } from "antd";
+import Portal from "@/components/ui/Portal";
 import toast from "react-hot-toast";
 import { getIncidentDetail, resolveDiscrepancy } from "@/services/incidentService";
 import type { Incident, IncidentItem } from "@/interfaces/incident";
@@ -13,27 +14,47 @@ interface Props {
   onResolved: () => void;
 }
 
-const REASON_LABEL: Record<string, { label: string; color: string; bg: string }> = {
-  SHORTAGE:        { label: "Thiếu",       color: "text-red-700",    bg: "bg-red-50 border-red-200" },
-  OVERAGE:         { label: "Thừa",        color: "text-orange-700", bg: "bg-orange-50 border-orange-200" },
-  UNEXPECTED_ITEM: { label: "Ngoài phiếu", color: "text-amber-700",  bg: "bg-amber-50 border-amber-200" },
-};
-
-const ACTIONS_BY_REASON: Record<string, { value: string; label: string; icon: string }[]> = {
+/* ── Actions by reason ── */
+const ACTIONS_BY_REASON: Record<string, { value: string; label: string }[]> = {
   SHORTAGE: [
-    { value: "CLOSE_SHORT",   label: "Chốt thiếu",  icon: "check_circle" },
-    { value: "WAIT_BACKORDER", label: "Chờ giao bù", icon: "schedule" },
+    { value: "CLOSE_SHORT",    label: "Chốt thiếu" },
+    { value: "WAIT_BACKORDER", label: "Chờ giao bù" },
   ],
   OVERAGE: [
-    { value: "ACCEPT", label: "Nhập kho",  icon: "add_circle" },
-    { value: "RETURN", label: "Hoàn Hàng",   icon: "undo" },
+    { value: "ACCEPT", label: "Nhập kho" },
+    { value: "RETURN", label: "Hoàn hàng" },
   ],
   UNEXPECTED_ITEM: [
-    { value: "ACCEPT", label: "Nhập kho",  icon: "add_circle" },
-    { value: "RETURN", label: "Hoàn Hàng",   icon: "undo" },
+    { value: "ACCEPT", label: "Nhập kho" },
+    { value: "RETURN", label: "Hoàn hàng" },
+  ],
+  DAMAGE: [
+    { value: "RETURN", label: "Hoàn hàng" },
+    { value: "SCRAP",  label: "Huỷ bỏ" },
+    { value: "ACCEPT", label: "Chấp nhận" },
   ],
 };
 
+/* ── Helpers ── */
+function computeOverShort(item: IncidentItem) {
+  const diff = item.actualQty - item.expectedQty;
+  return { over: diff > 0 ? diff : 0, short: diff < 0 ? Math.abs(diff) : 0 };
+}
+
+function hasIssue(item: IncidentItem) {
+  const { over, short } = computeOverShort(item);
+  return over > 0 || short > 0 || item.damagedQty > 0;
+}
+
+function getRowBorderClass(item: IncidentItem) {
+  if (item.damagedQty > 0) return "border-l-[3px] border-red-400";
+  const { over, short } = computeOverShort(item);
+  if (short > 0) return "border-l-[3px] border-orange-400";
+  if (over > 0) return "border-l-[3px] border-blue-400";
+  return "";
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
 export default function IncidentDetailModal({ incident, isManager, onClose, onResolved }: Props) {
   const [detail, setDetail] = useState<Incident | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,7 +67,6 @@ export default function IncidentDetailModal({ incident, isManager, onClose, onRe
       try {
         const d = await getIncidentDetail(incident.incidentId);
         setDetail(d);
-        // Default action cho mỗi item
         const defaults: Record<number, string> = {};
         for (const item of d.items ?? []) {
           const available = ACTIONS_BY_REASON[item.reasonCode];
@@ -83,229 +103,297 @@ export default function IncidentDetailModal({ incident, isManager, onClose, onRe
     }
   };
 
-  const items = detail?.items ?? [];
+  const allItems = detail?.items ?? [];
+  const orderItems = allItems.filter((i) => i.reasonCode !== "UNEXPECTED_ITEM");
+  const unexpectedItems = allItems.filter((i) => i.reasonCode === "UNEXPECTED_ITEM");
   const isResolved = detail?.status === "RESOLVED";
-  const canResolve = isManager && detail?.status === "OPEN" && items.length > 0;
+  const canResolve = isManager && detail?.status === "OPEN" && allItems.length > 0;
 
   return (
-    <Modal
-      open
-      onCancel={onClose}
-      footer={null}
-      width={720}
-      title={null}
-      centered
-      styles={{ body: { padding: 0 } }}
-    >
-      {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <Spin size="large" />
-        </div>
-      ) : (
-        <div>
-          {/* ── Header ── */}
-          <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-white">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[20px] text-slate-500">report</span>
-                  {detail?.incidentCode}
-                </h2>
-                <p className="text-xs text-gray-500 mt-1">{detail?.description}</p>
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <StatusBadge status={detail?.status ?? "OPEN"} />
-                <TypeBadge type={detail?.incidentType ?? ""} />
-              </div>
-            </div>
-            <div className="flex gap-4 mt-3 text-xs text-gray-500">
-              <span>📋 Phiếu: <strong className="text-gray-700">{detail?.receivingCode ?? "—"}</strong></span>
-              <span>👤 Báo cáo: <strong className="text-gray-700">{detail?.reportedByName ?? "—"}</strong></span>
-              <span>🕐 {detail?.createdAt ? new Date(detail.createdAt).toLocaleString("vi-VN") : "—"}</span>
-            </div>
-          </div>
+    <Portal>
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col max-h-[90vh]">
 
-          {/* ── SKU Table ── */}
-          <div className="px-6 py-4">
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
-              Chi tiết sản phẩm — {items.length} SKU
-            </p>
-            {items.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-6">Không có dữ liệu chi tiết</p>
-            ) : (
-              <div className="border border-gray-200 rounded-xl overflow-hidden">
-                {/* Table header */}
-                <div
-                  className="grid bg-gray-50 px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wide border-b border-gray-100"
-                  style={{ gridTemplateColumns: "1fr 4.5rem 4.5rem 7rem" + (canResolve ? " 10rem" : "") }}
-                >
-                  <span>SKU</span>
-                  <span className="text-center">Dự kiến</span>
-                  <span className="text-center">Thực nhận</span>
-                  <span className="text-center">Loại</span>
-                  {canResolve && <span className="text-center">Hành động</span>}
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <Spin size="large" />
+            </div>
+          ) : (
+            <>
+              {/* ── Header ── */}
+              <div className="px-6 py-4 border-b border-gray-100 flex-shrink-0">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0">
+                      <span className="material-symbols-outlined text-red-500 text-[20px]">report</span>
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                        {detail?.incidentCode}
+                      </h2>
+                      <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{detail?.description}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <StatusBadge status={detail?.status ?? "OPEN"} />
+                    <TypeBadge type={detail?.incidentType ?? ""} />
+                    <button onClick={onClose} className="ml-2 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">
+                      <span className="material-symbols-outlined text-[20px]">close</span>
+                    </button>
+                  </div>
                 </div>
-
-                {/* Table body */}
-                <div className="divide-y divide-gray-50 max-h-72 overflow-y-auto">
-                  {items.map((item) => (
-                    <SkuRow
-                      key={item.incidentItemId}
-                      item={item}
-                      canResolve={canResolve}
-                      selectedAction={actions[item.incidentItemId] ?? ""}
-                      onActionChange={(action) =>
-                        setActions((prev) => ({ ...prev, [item.incidentItemId]: action }))
-                      }
-                    />
-                  ))}
+                <div className="flex gap-4 mt-3 text-xs text-gray-500">
+                  <span>📋 Phiếu: <strong className="text-gray-700">{detail?.receivingCode ?? "—"}</strong></span>
+                  <span>👤 Báo cáo: <strong className="text-gray-700">{detail?.reportedByName ?? "—"}</strong></span>
+                  <span>🕐 {detail?.createdAt ? new Date(detail.createdAt).toLocaleString("vi-VN") : "—"}</span>
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* ── Manager Resolution Footer ── */}
-          {canResolve && (
-            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 space-y-3">
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Ghi chú của Manager (tùy chọn)..."
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
-                rows={2}
-              />
-              <div className="flex gap-3">
-                <button
-                  onClick={onClose}
-                  className="flex-1 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
-                >
-                  Đóng
-                </button>
-                <button
-                  onClick={handleResolve}
-                  disabled={submitting}
-                  className="flex-1 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
-                >
-                  {submitting ? (
-                    <>
-                      <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                      Đang xử lý...
-                    </>
-                  ) : (
-                    <>
-                      <span className="material-symbols-outlined text-[16px]">task_alt</span>
-                      Xác nhận duyệt
-                    </>
-                  )}
-                </button>
+              {/* ── Body ── */}
+              <div className="flex-1 overflow-y-auto px-6 py-4">
+
+                {/* ── Main table ── */}
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-3">
+                  Chi tiết sản phẩm — {orderItems.length} SKU
+                </p>
+
+                {orderItems.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-6">Không có dữ liệu chi tiết</p>
+                ) : (
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-100">
+                          <th className="px-4 py-2.5 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wide">SKU</th>
+                          <th className="px-4 py-2.5 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wide">Tên sản phẩm</th>
+                          <th className="px-4 py-2.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">SL giấy tờ</th>
+                          <th className="px-4 py-2.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">SL thực tế</th>
+                          <th className="px-4 py-2.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">Thừa</th>
+                          <th className="px-4 py-2.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">Thiếu</th>
+                          <th className="px-4 py-2.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">Hàng hỏng</th>
+                          {canResolve && <th className="px-4 py-2.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">Hành động</th>}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {orderItems.map((item) => {
+                          const { over, short } = computeOverShort(item);
+                          const itemHasIssue = hasIssue(item);
+                          const availableActions = ACTIONS_BY_REASON[item.reasonCode] ?? [];
+
+                          return (
+                            <tr key={item.incidentItemId} className={`hover:bg-gray-50/50 transition-colors ${getRowBorderClass(item)}`}>
+                              {/* SKU */}
+                              <td className="px-4 py-3">
+                                <p className="font-mono font-bold text-gray-800 text-xs">{item.skuCode}</p>
+                              </td>
+                              {/* Tên SP */}
+                              <td className="px-4 py-3">
+                                <p className="text-xs text-gray-600 truncate max-w-[160px]">{item.skuName}</p>
+                              </td>
+                              {/* SL giấy tờ */}
+                              <td className="px-4 py-3 text-center text-xs text-gray-500 tabular-nums">
+                                {item.expectedQty}
+                              </td>
+                              {/* SL thực tế */}
+                              <td className={`px-4 py-3 text-center text-xs font-bold tabular-nums ${
+                                item.actualQty !== item.expectedQty ? 'text-orange-700' : 'text-gray-700'
+                              }`}>
+                                {item.actualQty}
+                              </td>
+                              {/* Thừa */}
+                              <td className="px-4 py-3 text-center text-xs tabular-nums">
+                                {over > 0
+                                  ? <span className="font-bold text-blue-600">+{over}</span>
+                                  : <span className="text-gray-300">—</span>
+                                }
+                              </td>
+                              {/* Thiếu */}
+                              <td className="px-4 py-3 text-center text-xs tabular-nums">
+                                {short > 0
+                                  ? <span className="font-bold text-orange-600">{short}</span>
+                                  : <span className="text-gray-300">—</span>
+                                }
+                              </td>
+                              {/* Hàng hỏng */}
+                              <td className="px-4 py-3 text-center text-xs tabular-nums">
+                                {item.damagedQty > 0
+                                  ? <span className="font-bold text-red-600">{item.damagedQty}</span>
+                                  : <span className="text-gray-300">—</span>
+                                }
+                              </td>
+                              {/* Hành động */}
+                              {canResolve && (
+                                <td className="px-4 py-3 text-center">
+                                  {itemHasIssue && availableActions.length > 0 ? (
+                                    <select
+                                      value={actions[item.incidentItemId] ?? ""}
+                                      onChange={(e) => setActions((prev) => ({ ...prev, [item.incidentItemId]: e.target.value }))}
+                                      className="text-[11px] font-medium px-2 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer"
+                                    >
+                                      {availableActions.map((a) => (
+                                        <option key={a.value} value={a.value}>{a.label}</option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <span className="text-[11px] font-semibold text-green-600 flex items-center justify-center gap-1">
+                                      <span className="material-symbols-outlined text-[13px]">check_circle</span>
+                                      Khớp
+                                    </span>
+                                  )}
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* ── Unexpected items section ── */}
+                {unexpectedItems.length > 0 && (
+                  <div className="mt-5">
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-3">
+                      <p className="text-xs font-semibold text-amber-700 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[14px]">warning</span>
+                        ⚠️ Hàng ngoài phiếu — {unexpectedItems.length} SKU
+                      </p>
+                    </div>
+
+                    <div className="border border-amber-100 rounded-xl overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-amber-50 border-b border-amber-100">
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-amber-600 uppercase tracking-wide">SKU</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-amber-600 uppercase tracking-wide">Tên sản phẩm</th>
+                            <th className="px-4 py-2.5 text-center text-[10px] font-bold text-amber-600 uppercase tracking-wide">SL giấy tờ</th>
+                            <th className="px-4 py-2.5 text-center text-[10px] font-bold text-amber-600 uppercase tracking-wide">SL thực tế</th>
+                            <th className="px-4 py-2.5 text-center text-[10px] font-bold text-amber-600 uppercase tracking-wide">Thừa</th>
+                            <th className="px-4 py-2.5 text-center text-[10px] font-bold text-amber-600 uppercase tracking-wide">Thiếu</th>
+                            <th className="px-4 py-2.5 text-center text-[10px] font-bold text-amber-600 uppercase tracking-wide">Hàng hỏng</th>
+                            {canResolve && <th className="px-4 py-2.5 text-center text-[10px] font-bold text-amber-600 uppercase tracking-wide">Hành động</th>}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-amber-50">
+                          {unexpectedItems.map((item) => (
+                            <tr key={item.incidentItemId} className="hover:bg-amber-50/30 transition-colors border-l-[3px] border-amber-400">
+                              <td className="px-4 py-3">
+                                <p className="font-mono font-bold text-amber-800 text-xs">{item.skuCode}</p>
+                              </td>
+                              <td className="px-4 py-3">
+                                <p className="text-xs text-amber-700 truncate max-w-[160px]">{item.skuName}</p>
+                              </td>
+                              <td className="px-4 py-3 text-center text-xs text-gray-300">—</td>
+                              <td className="px-4 py-3 text-center text-xs font-bold text-amber-700 tabular-nums">{item.actualQty}</td>
+                              <td className="px-4 py-3 text-center text-xs text-gray-300 tabular-nums">0</td>
+                              <td className="px-4 py-3 text-center text-xs text-gray-300 tabular-nums">0</td>
+                              <td className="px-4 py-3 text-center text-xs tabular-nums">
+                                {item.damagedQty > 0
+                                  ? <span className="font-bold text-red-600">{item.damagedQty}</span>
+                                  : <span className="text-gray-300">0</span>
+                                }
+                              </td>
+                              {canResolve && (
+                                <td className="px-4 py-3 text-center">
+                                  <select
+                                    value={actions[item.incidentItemId] ?? ""}
+                                    onChange={(e) => setActions((prev) => ({ ...prev, [item.incidentItemId]: e.target.value }))}
+                                    className="text-[11px] font-medium px-2 py-1.5 border border-amber-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-200 cursor-pointer"
+                                  >
+                                    {(ACTIONS_BY_REASON["UNEXPECTED_ITEM"] ?? []).map((a) => (
+                                      <option key={a.value} value={a.value}>{a.label}</option>
+                                    ))}
+                                  </select>
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
 
-          {/* ── Non-Manager or already resolved → simple close ── */}
-          {!canResolve && (
-            <div className="px-6 py-3 border-t border-gray-100 flex justify-end">
-              <button
-                onClick={onClose}
-                className="px-6 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Đóng
-              </button>
-            </div>
+              {/* ── Manager Resolution Footer ── */}
+              {canResolve && (
+                <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 space-y-3 flex-shrink-0">
+                  <textarea
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Ghi chú của Manager (tùy chọn)..."
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
+                    rows={2}
+                  />
+                  <div className="flex gap-3">
+                    <button
+                      onClick={onClose}
+                      className="flex-1 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                    >
+                      Đóng
+                    </button>
+                    <button
+                      onClick={handleResolve}
+                      disabled={submitting}
+                      className="flex-1 py-2.5 text-sm font-semibold text-white rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
+                      style={{ background: 'linear-gradient(135deg,#4f46e5,#6366f1)' }}
+                    >
+                      {submitting ? (
+                        <>
+                          <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                          Đang xử lý...
+                        </>
+                      ) : (
+                        <>
+                          <span className="material-symbols-outlined text-[16px]">task_alt</span>
+                          Xác nhận duyệt
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Non-Manager or Resolved → simple close ── */}
+              {!canResolve && (
+                <div className="px-6 py-3 border-t border-gray-100 flex justify-end flex-shrink-0">
+                  <button
+                    onClick={onClose}
+                    className="px-6 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
-      )}
-    </Modal>
+      </div>
+    </Portal>
   );
 }
 
 /* ── Sub-components ── */
 
-function SkuRow({
-  item,
-  canResolve,
-  selectedAction,
-  onActionChange,
-}: {
-  item: IncidentItem;
-  canResolve: boolean;
-  selectedAction: string;
-  onActionChange: (action: string) => void;
-}) {
-  const reason = REASON_LABEL[item.reasonCode] ?? { label: item.reasonCode, color: "text-gray-700", bg: "bg-gray-50 border-gray-200" };
-  const diff = item.actualQty - item.expectedQty;
-  const availableActions = ACTIONS_BY_REASON[item.reasonCode] ?? [];
-
-  return (
-    <div
-      className="grid items-center px-4 py-3 hover:bg-gray-50/50 transition-colors"
-      style={{ gridTemplateColumns: "1fr 4.5rem 4.5rem 7rem" + (canResolve ? " 10rem" : "") }}
-    >
-      {/* SKU info */}
-      <div className="min-w-0">
-        <p className="text-xs font-bold text-gray-800 font-mono truncate">{item.skuCode}</p>
-        <p className="text-[10px] text-gray-400 truncate mt-0.5">{item.skuName}</p>
-      </div>
-
-      {/* Expected */}
-      <span className="text-center text-xs text-gray-500 tabular-nums">{item.expectedQty}</span>
-
-      {/* Actual */}
-      <span className={`text-center text-xs font-bold tabular-nums ${reason.color}`}>
-        {item.actualQty}
-      </span>
-
-      {/* Reason badge */}
-      <div className="flex justify-center">
-        <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full border ${reason.bg} ${reason.color}`}>
-          {item.reasonCode === "SHORTAGE" && "🔴"}
-          {item.reasonCode === "OVERAGE" && "🟡"}
-          {item.reasonCode === "UNEXPECTED_ITEM" && "⚠️"}
-          {reason.label}
-          <span className="font-mono">
-            {diff > 0 ? `+${diff}` : diff < 0 ? `${diff}` : ""}
-          </span>
-        </span>
-      </div>
-
-      {/* Action selector (Manager only) */}
-      {canResolve && (
-        <div className="flex justify-center">
-          <select
-            value={selectedAction}
-            onChange={(e) => onActionChange(e.target.value)}
-            className="text-[11px] font-medium px-2 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer"
-          >
-            {availableActions.map((a) => (
-              <option key={a.value} value={a.value}>
-                {a.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
-    OPEN:     { label: "Đang chờ",   cls: "bg-amber-50 text-amber-700 border-amber-200" },
-    APPROVED: { label: "Đã xử lý",  cls: "bg-green-50 text-green-700 border-green-200" },
-    REJECTED: { label: "Từ chối",    cls: "bg-red-50 text-red-700 border-red-200" },
-    RESOLVED: { label: "Đã xử lý",  cls: "bg-blue-50 text-blue-700 border-blue-200" },
+    OPEN:     { label: "Đang chờ",  cls: "bg-amber-50 text-amber-700 ring-1 ring-amber-200" },
+    APPROVED: { label: "Đã duyệt", cls: "bg-green-50 text-green-700 ring-1 ring-green-200" },
+    REJECTED: { label: "Từ chối",   cls: "bg-red-50 text-red-700 ring-1 ring-red-200" },
+    RESOLVED: { label: "Đã xử lý", cls: "bg-blue-50 text-blue-700 ring-1 ring-blue-200" },
   };
-  const s = map[status] ?? { label: status, cls: "bg-gray-50 text-gray-600 border-gray-200" };
-  return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${s.cls}`}>{s.label}</span>;
+  const s = map[status] ?? { label: status, cls: "bg-gray-50 text-gray-600 ring-1 ring-gray-200" };
+  return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.cls}`}>{s.label}</span>;
 }
 
 function TypeBadge({ type }: { type: string }) {
   const map: Record<string, { label: string; cls: string }> = {
-    SHORTAGE:        { label: "Thiếu hàng",    cls: "bg-red-50 text-red-600 border-red-200" },
-    OVERAGE:         { label: "Thừa hàng",     cls: "bg-orange-50 text-orange-600 border-orange-200" },
-    UNEXPECTED_ITEM: { label: "Ngoài phiếu",   cls: "bg-amber-50 text-amber-600 border-amber-200" },
-    DAMAGE:          { label: "Hư hỏng",       cls: "bg-purple-50 text-purple-600 border-purple-200" },
+    SHORTAGE:        { label: "Thiếu hàng",  cls: "bg-red-50 text-red-600 ring-1 ring-red-200" },
+    OVERAGE:         { label: "Thừa hàng",   cls: "bg-orange-50 text-orange-600 ring-1 ring-orange-200" },
+    UNEXPECTED_ITEM: { label: "Ngoài phiếu", cls: "bg-amber-50 text-amber-600 ring-1 ring-amber-200" },
+    DAMAGE:          { label: "Hư hỏng",     cls: "bg-purple-50 text-purple-600 ring-1 ring-purple-200" },
+    DISCREPANCY:     { label: "Tổng hợp",    cls: "bg-indigo-50 text-indigo-600 ring-1 ring-indigo-200" },
   };
-  const t = map[type] ?? { label: type, cls: "bg-gray-50 text-gray-600 border-gray-200" };
-  return <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${t.cls}`}>{t.label}</span>;
+  const t = map[type] ?? { label: type, cls: "bg-gray-50 text-gray-600 ring-1 ring-gray-200" };
+  return <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${t.cls}`}>{t.label}</span>;
 }

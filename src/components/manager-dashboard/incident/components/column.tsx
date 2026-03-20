@@ -7,6 +7,7 @@ const TYPE_BADGE: Record<string, { label: string; cls: string }> = {
   OVERAGE:         { label: "Thừa",        cls: "bg-orange-50 text-orange-600 border-orange-200" },
   UNEXPECTED_ITEM: { label: "Ngoài phiếu", cls: "bg-amber-50 text-amber-600 border-amber-200" },
   DAMAGE:          { label: "Hư hỏng",     cls: "bg-purple-50 text-purple-600 border-purple-200" },
+  DISCREPANCY:     { label: "Tổng hợp",    cls: "bg-indigo-50 text-indigo-600 border-indigo-200" },
 };
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
