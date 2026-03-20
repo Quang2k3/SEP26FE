@@ -444,7 +444,9 @@ function QCInboundScanner({ token, receivingId }: { token: string; receivingId: 
       const body: Record<string, unknown> = {
         barcode, qty: 1,
         condition: toApiCondition(cond),
-        receivingId,
+        // QC scan: KHÔNG gửi receivingId → chỉ lưu vào Redis session
+        // Nếu gửi receivingId, ScanEventService sẽ cộng vào receivedQty trong DB
+        // → gây lệch số khi qcSubmitSession so sánh QC vs Keeper
       };
       if (cond === 'HOLD') body.reasonCode = 'HOLD';
       const r = await fetch(`${API_BASE}/v1/scan-events`, {
@@ -480,7 +482,7 @@ function QCInboundScanner({ token, receivingId }: { token: string; receivingId: 
     inflightRef.current = true;
     try {
       const apiCond = toApiCondition(cond);
-      const params  = new URLSearchParams({ sessionId, skuId: String(skuId), condition: apiCond, qty: '1', receivingId: String(receivingId) });
+      const params  = new URLSearchParams({ sessionId, skuId: String(skuId), condition: apiCond, qty: '1' });
       const r = await fetch(`${API_BASE}/v1/scan-events?${params}`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
       });
