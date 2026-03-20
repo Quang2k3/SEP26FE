@@ -291,7 +291,7 @@ function SkuRow({
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
     OPEN:     { label: "Đang chờ",   cls: "bg-amber-50 text-amber-700 border-amber-200" },
-    APPROVED: { label: "Đã duyệt",  cls: "bg-green-50 text-green-700 border-green-200" },
+    APPROVED: { label: "Đã xử lý",  cls: "bg-green-50 text-green-700 border-green-200" },
     REJECTED: { label: "Từ chối",    cls: "bg-red-50 text-red-700 border-red-200" },
     RESOLVED: { label: "Đã xử lý",  cls: "bg-blue-50 text-blue-700 border-blue-200" },
   };

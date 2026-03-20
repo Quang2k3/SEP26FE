@@ -28,7 +28,6 @@ export default function IncidentFilter({
           { value: "ALL",      label: "Tất cả" },
           { value: "OPEN",     label: "Đang chờ" },
           { value: "RESOLVED", label: "Đã xử lý" },
-          { value: "APPROVED", label: "Đã duyệt" },
           { value: "REJECTED", label: "Từ chối" },
         ]}
       />
