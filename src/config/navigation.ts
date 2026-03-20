@@ -32,7 +32,6 @@ export const BIN_ACTIONS: NavAction[] = [
 
 export const INBOUND_ACTIONS: NavAction[] = [
   { label: 'Gate-Check / Nhập kho', path: '/inbound/gate-check' },
-  { label: 'Đối soát QC',           path: '/qc-reconciliation' },
 ];
 
 export const OUTBOUND_ACTIONS: NavAction[] = [
@@ -43,7 +42,6 @@ export const OUTBOUND_ACTIONS: NavAction[] = [
 // QC chỉ xem nhập kho để scan QC inbound + xem xuất kho để scan QC outbound
 export const QC_INBOUND_ACTIONS: NavAction[] = [
   { label: 'Gate-Check / Nhập kho', path: '/inbound/gate-check' },
-  { label: 'Đối soát QC',           path: '/qc-reconciliation' },
 ];
 
 export const QC_OUTBOUND_ACTIONS: NavAction[] = [

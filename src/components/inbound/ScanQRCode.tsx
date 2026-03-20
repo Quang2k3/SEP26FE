@@ -33,14 +33,15 @@ interface Props {
 //   Keeper: SUBMITTED → scan QR → xác nhận trên phone → BE chuyển SUBMITTED → PENDING_COUNT
 //   QC:     PENDING_COUNT → scan QC → xác nhận → QC_APPROVED hoặc PENDING_INCIDENT
 const FINALIZED_STATUS: Record<string, string[]> = {
-  // Keeper scan ở trạng thái SUBMITTED → sau finalize BE chuyển sang PENDING_COUNT
-  KEEPER: ['PENDING_COUNT', 'PENDING_INCIDENT', 'QC_APPROVED', 'GRN_CREATED', 'PENDING_APPROVAL', 'GRN_APPROVED', 'POSTED'],
-  // QC scan từ PENDING_COUNT → kết quả QC_APPROVED hoặc PENDING_INCIDENT
-  QC:     ['QC_APPROVED', 'PENDING_INCIDENT', 'GRN_CREATED', 'PENDING_APPROVAL', 'GRN_APPROVED', 'POSTED'],
+  // Keeper scan ở trạng thái SUBMITTED hoặc KEEPER_RESCAN
+  KEEPER: ['PENDING_COUNT', 'PENDING_INCIDENT', 'QC_APPROVED', 'GRN_CREATED', 'PENDING_APPROVAL', 'GRN_APPROVED', 'POSTED', 'KEEPER_RESCAN'],
+  // QC scan từ PENDING_COUNT → kết quả QC_APPROVED hoặc PENDING_INCIDENT hoặc KEEPER_RESCAN
+  QC:     ['QC_APPROVED', 'PENDING_INCIDENT', 'GRN_CREATED', 'PENDING_APPROVAL', 'GRN_APPROVED', 'POSTED', 'KEEPER_RESCAN'],
 };
 
 const FINALIZED_MSG: Record<string, string> = {
   PENDING_COUNT:    ' Đã gửi cho QC — chờ kiểm đếm',
+  KEEPER_RESCAN:    ' Lệch số lượng QC/Keeper — chờ Keeper quét lại',
   PENDING_INCIDENT: ' Kiểm đếm xong — phát hiện sự cố, chờ xử lý',
   QC_APPROVED:      ' QC xác nhận đạt — có thể tạo GRN',
   GRN_CREATED:      ' Kiểm đếm xong — GRN đã được tạo',
