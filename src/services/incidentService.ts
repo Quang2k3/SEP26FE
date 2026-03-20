@@ -50,3 +50,16 @@ export const approveIncident = async (id: number): Promise<Incident> => {
 
   return res.data.data;
 };
+
+export const resolveDiscrepancy = async (
+  id: number,
+  items: { incidentItemId: number; action: string }[],
+  note?: string,
+): Promise<Incident> => {
+  const res = await api.post<ApiResponse<Incident>>(
+    `/incidents/${id}/resolve-discrepancy`,
+    { items, note },
+  );
+
+  return res.data.data;
+};

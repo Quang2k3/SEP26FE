@@ -3,7 +3,7 @@
 import React from "react";
 import { Select } from "antd";
 
-type IncidentStatus = "OPEN" | "APPROVED" | "REJECTED" | "ALL";
+type IncidentStatus = "OPEN" | "APPROVED" | "REJECTED" | "RESOLVED" | "ALL";
 
 interface Props {
   statusFilter: IncidentStatus;
@@ -17,7 +17,7 @@ export default function IncidentFilter({
   return (
     <div className="flex items-center gap-3">
       <span className="text-sm font-medium text-gray-700">
-        Status
+        Trạng thái
       </span>
 
       <Select
@@ -25,8 +25,9 @@ export default function IncidentFilter({
         style={{ width: 200 }}
         onChange={(value) => setStatusFilter(value)}
         options={[
-          { value: "ALL", label: "Tất cả" },
-          { value: "OPEN", label: "Đang mở" },
+          { value: "ALL",      label: "Tất cả" },
+          { value: "OPEN",     label: "Đang chờ" },
+          { value: "RESOLVED", label: "Đã xử lý" },
           { value: "APPROVED", label: "Đã duyệt" },
           { value: "REJECTED", label: "Từ chối" },
         ]}
