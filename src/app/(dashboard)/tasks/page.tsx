@@ -459,16 +459,28 @@ export default function PutawayPage() {
   // ── Open task ───────────────────────────────────────────────────────────────
   const openTask = async (t: PutawayTaskResponse) => {
     try {
+      const isDone = t.status === 'DONE';
+
       const [detail, allocs, suggs] = await Promise.all([
         fetchPutawayTask(t.putawayTaskId),
         fetchAllocations(t.putawayTaskId).catch(() => []),
-        fetchPutawaySuggestions(t.putawayTaskId).catch(() => []),
+        // DONE task không cần suggestions
+        isDone ? Promise.resolve([]) : fetchPutawaySuggestions(t.putawayTaskId).catch(() => []),
       ]);
-      const zList = await fetchZones({ warehouseId: detail.warehouseId, activeOnly: true }).catch(() => []);
+
+      // DONE task không cần zones — bỏ qua để tránh delay
+      const zList = isDone
+        ? []
+        : await fetchZones({ warehouseId: detail.warehouseId, activeOnly: true }).catch(() => []);
+
       setTask(detail);
       setZones(zList);
       setSuggestions(suggs);
-      setReserved(allocs.filter(a => a.status === 'RESERVED'));
+
+      const relevantAllocs = isDone
+        ? allocs.filter(a => a.status === 'CONFIRMED')
+        : allocs.filter(a => a.status === 'RESERVED');
+      setReserved(relevantAllocs);
       setPending([]);
       setSelectedZone(null);
       setSelectedAisle(null);
@@ -477,7 +489,8 @@ export default function PutawayPage() {
       // Restore signed note if already uploaded for this task
       setSignedNoteUrl(detail.signedNoteUrl ?? null);
       setSignedNoteAt(detail.signedNoteUploadedAt ?? null);
-      setStep('ZONE_SELECT');
+      // DONE task → đi thẳng vào REVIEW để xem chi tiết
+      setStep(isDone ? 'REVIEW' : 'ZONE_SELECT');
     } catch { toast.error('Không tải được task'); }
   };
 
@@ -601,7 +614,10 @@ export default function PutawayPage() {
     else if (step === 'RACK_SELECT') setStep('AISLE_SELECT');
     else if (step === 'AISLE_SELECT') setStep('ZONE_SELECT');
     else if (step === 'ZONE_SELECT') { setStep('TASK_LIST'); setTask(null); }
-    else if (step === 'REVIEW')  setStep('AISLE_SELECT');
+    else if (step === 'REVIEW') {
+      if (task?.status === 'DONE') { setStep('TASK_LIST'); setTask(null); }
+      else setStep('AISLE_SELECT');
+    }
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -772,9 +788,8 @@ export default function PutawayPage() {
                   <div className="divide-y divide-gray-50">
                     {pageTasks.map(t => (
                       <div key={t.putawayTaskId}
-                        className={`flex items-center justify-between px-5 py-4 transition-colors group
-                          ${t.status !== 'DONE' ? 'hover:bg-indigo-50/30 cursor-pointer' : 'opacity-60'}`}
-                        onClick={() => t.status !== 'DONE' && openTask(t)}>
+                        className={`flex items-center justify-between px-5 py-4 transition-colors group hover:bg-indigo-50/30 cursor-pointer`}
+                        onClick={() => openTask(t)}>
                         <div className="flex items-center gap-4">
                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0
                             ${t.status === 'DONE' ? 'bg-emerald-50' : t.status === 'IN_PROGRESS' ? 'bg-amber-50' : t.status === 'PENDING' ? 'bg-orange-50' : 'bg-indigo-50'}`}>
@@ -1134,8 +1149,26 @@ export default function PutawayPage() {
       {/* ══════════════════════════════════════════════════════
           STEP 6 — REVIEW & CONFIRM
       ══════════════════════════════════════════════════════ */}
-      {step === 'REVIEW' && task && (
+      {step === 'REVIEW' && task && (() => {
+        const isDoneView = task.status === 'DONE';
+        return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+          {/* Done banner */}
+          {isDoneView && (
+            <div className="col-span-full flex items-center gap-3 px-5 py-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
+              <span className="material-symbols-outlined text-emerald-500 text-[22px]">check_circle</span>
+              <div>
+                <p className="text-sm font-bold text-emerald-800">Task đã hoàn thành</p>
+                <p className="text-xs text-emerald-600">Đang xem lại thông tin phân bổ và ảnh xác nhận chữ ký.</p>
+              </div>
+              <button onClick={() => { setStep('TASK_LIST'); setTask(null); }}
+                className="ml-auto text-xs text-emerald-600 hover:text-emerald-800 font-semibold flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px]">arrow_back</span>
+                Quay lại danh sách
+              </button>
+            </div>
+          )}
 
           {/* Summary */}
           <div className="space-y-4">
@@ -1165,7 +1198,7 @@ export default function PutawayPage() {
               <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-gray-100">
                 <div className="bg-indigo-50 rounded-xl p-3 text-center">
                   <p className="text-lg font-extrabold text-indigo-700">{reserved.length}</p>
-                  <p className="text-[11px] text-indigo-500">Phân bổ RESERVED</p>
+                  <p className="text-[11px] text-indigo-500">{isDoneView ? 'Đã cất vào bin' : 'Phân bổ RESERVED'}</p>
                 </div>
                 <div className={`rounded-xl p-3 text-center ${allItemsDone ? 'bg-emerald-50' : 'bg-amber-50'}`}>
                   <p className={`text-lg font-extrabold ${allItemsDone ? 'text-emerald-700' : 'text-amber-700'}`}>
@@ -1178,11 +1211,14 @@ export default function PutawayPage() {
 
             {/* Actions */}
             <div className="space-y-2">
-              <button onClick={() => setStep('ZONE_SELECT')}
-                className="w-full flex items-center justify-center gap-2 py-2.5 text-sm text-gray-600 border border-gray-200 bg-white rounded-xl hover:bg-gray-50 transition-colors">
-                <span className="material-symbols-outlined text-[16px]">add_circle</span>
-                Tiếp tục phân bổ
-              </button>
+              {/* Nút tiếp tục phân bổ — ẩn khi task DONE */}
+              {!isDoneView && (
+                <button onClick={() => setStep('ZONE_SELECT')}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 text-sm text-gray-600 border border-gray-200 bg-white rounded-xl hover:bg-gray-50 transition-colors">
+                  <span className="material-symbols-outlined text-[16px]">add_circle</span>
+                  Tiếp tục phân bổ
+                </button>
+              )}
 
               {/* ── In phiếu hướng dẫn cất hàng ── */}
               {reserved.length > 0 && (
@@ -1194,7 +1230,7 @@ export default function PutawayPage() {
               )}
 
               {/* ── QR + Ảnh phiếu đã ký ── */}
-              {reserved.length > 0 && (() => {
+              {(reserved.length > 0 || signedNoteUrl) && (() => {
                 const feBase = process.env.NEXT_PUBLIC_FE_BASE_URL ?? '';
                 const signUrl = `${feBase}/sign-putaway/${task.putawayTaskId}`;
                 return (
@@ -1230,22 +1266,24 @@ export default function PutawayPage() {
                           />
                         </a>
                         <p className="text-[10px] text-gray-400 text-center">Nhấn ảnh để xem full size</p>
-                        {/* Chụp lại */}
-                        <div className="pt-1 border-t border-gray-100">
-                          <p className="text-[10px] text-gray-400 mb-1.5">Cần cập nhật ảnh mới?</p>
-                          <div className="flex items-center gap-3 bg-gray-50 rounded-lg p-2.5 border border-dashed border-gray-200">
-                            <div className="bg-white p-1.5 rounded-lg border border-gray-100 flex-shrink-0">
-                              <QRCode value={signUrl} size={56} />
-                            </div>
-                            <div>
-                              <p className="text-[11px] font-semibold text-gray-600">Scan để chụp lại</p>
-                              <p className="text-[10px] text-gray-400 mt-0.5">Ảnh mới sẽ ghi đè ảnh cũ</p>
+                        {/* Chụp lại — chỉ cho phép khi task chưa DONE */}
+                        {!isDoneView && (
+                          <div className="pt-1 border-t border-gray-100">
+                            <p className="text-[10px] text-gray-400 mb-1.5">Cần cập nhật ảnh mới?</p>
+                            <div className="flex items-center gap-3 bg-gray-50 rounded-lg p-2.5 border border-dashed border-gray-200">
+                              <div className="bg-white p-1.5 rounded-lg border border-gray-100 flex-shrink-0">
+                                <QRCode value={signUrl} size={56} />
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-semibold text-gray-600">Scan để chụp lại</p>
+                                <p className="text-[10px] text-gray-400 mt-0.5">Ảnh mới sẽ ghi đè ảnh cũ</p>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        )}
                       </div>
-                    ) : (
-                      /* ── Chưa có ảnh ký ── */
+                    ) : !isDoneView ? (
+                      /* ── Chưa có ảnh ký (chỉ hiển thị khi chưa DONE) ── */
                       <div className="p-3 space-y-3">
                         <p className="text-[11px] text-gray-500 leading-relaxed">
                           Sau khi in phiếu và thu đủ chữ ký, dùng điện thoại scan QR bên dưới để chụp và lưu ảnh.
@@ -1265,12 +1303,13 @@ export default function PutawayPage() {
                           Đang chờ ảnh từ điện thoại...
                         </div>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 );
               })()}
 
-              {reserved.length > 0 && (
+              {/* Confirm button — chỉ hiện khi task chưa DONE */}
+              {!isDoneView && reserved.length > 0 && (
                 <button
                   onClick={doConfirm}
                   disabled={confirming || !signedNoteUrl}
@@ -1284,7 +1323,7 @@ export default function PutawayPage() {
                   }
                 </button>
               )}
-              {!allItemsDone && (
+              {!isDoneView && !allItemsDone && (
                 <p className="text-[11px] text-amber-600 text-center flex items-center justify-center gap-1">
                   <span className="material-symbols-outlined text-[13px]">warning</span>
                   Còn {task.items.filter(i => remainingUnallocated(i) > 0).length} SKU chưa phân bổ hết
@@ -1293,28 +1332,36 @@ export default function PutawayPage() {
             </div>
           </div>
 
-          {/* Reserved allocations list */}
+          {/* Allocations list — RESERVED khi đang làm, CONFIRMED khi DONE */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-2xl border border-indigo-100/60 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100">
-                <h3 className="text-sm font-bold text-gray-900">Phân bổ đã RESERVED ({reserved.length})</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Nhấn Confirm để di chuyển hàng vào bin thực tế và hoàn thành task</p>
+                <h3 className="text-sm font-bold text-gray-900">
+                  {isDoneView ? `Hàng đã cất (${reserved.length} mục)` : `Phân bổ đã RESERVED (${reserved.length})`}
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {isDoneView
+                    ? 'Danh sách hàng đã được cất vào bin thực tế.'
+                    : 'Nhấn Confirm để di chuyển hàng vào bin thực tế và hoàn thành task'}
+                </p>
               </div>
               {reserved.length === 0 ? (
                 <div className="flex flex-col items-center py-16 gap-2">
                   <span className="material-symbols-outlined text-gray-200 text-[40px]">inbox</span>
                   <p className="text-sm text-gray-400">Chưa có phân bổ nào</p>
-                  <button onClick={() => setStep('ZONE_SELECT')} className="text-sm text-indigo-600 font-semibold hover:text-indigo-800 mt-1">
-                    Bắt đầu phân bổ →
-                  </button>
+                  {!isDoneView && (
+                    <button onClick={() => setStep('ZONE_SELECT')} className="text-sm text-indigo-600 font-semibold hover:text-indigo-800 mt-1">
+                      Bắt đầu phân bổ →
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="divide-y divide-gray-50">
                   {reserved.map(alloc => (
                     <div key={alloc.allocationId} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50/50 transition-colors">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
-                          <span className="material-symbols-outlined text-[18px] text-indigo-400">inventory_2</span>
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isDoneView ? 'bg-emerald-50' : 'bg-indigo-50'}`}>
+                          <span className={`material-symbols-outlined text-[18px] ${isDoneView ? 'text-emerald-400' : 'text-indigo-400'}`}>inventory_2</span>
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-gray-900">
@@ -1326,14 +1373,19 @@ export default function PutawayPage() {
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="text-right">
-                          <p className="text-sm font-bold text-indigo-700">{alloc.allocatedQty}</p>
+                          <p className={`text-sm font-bold ${isDoneView ? 'text-emerald-700' : 'text-indigo-700'}`}>{alloc.allocatedQty}</p>
                           <p className="text-[10px] text-gray-400">thùng</p>
                         </div>
-                        <span className="text-[11px] font-semibold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full border border-amber-100">RESERVED</span>
-                        <button onClick={() => doCancel(alloc)}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
-                          <span className="material-symbols-outlined text-[16px]">delete</span>
-                        </button>
+                        {isDoneView
+                          ? <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-100">CONFIRMED</span>
+                          : <>
+                              <span className="text-[11px] font-semibold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full border border-amber-100">RESERVED</span>
+                              <button onClick={() => doCancel(alloc)}
+                                className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                                <span className="material-symbols-outlined text-[16px]">delete</span>
+                              </button>
+                            </>
+                        }
                       </div>
                     </div>
                   ))}
@@ -1342,7 +1394,8 @@ export default function PutawayPage() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* ── Bin Detail Modal ── */}
       {modalBin && task && (

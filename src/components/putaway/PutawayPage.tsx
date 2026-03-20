@@ -305,6 +305,7 @@ export default function PutawayPage() {
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [taskPage, setTaskPage] = useState(0);
   const TASKS_PER_PAGE = 10;
+  const [openingTaskId, setOpeningTaskId] = useState<number | null>(null);
 
   // ── Current task context ──
   const [task, setTask]                 = useState<PutawayTaskResponse | null>(null);
@@ -458,27 +459,45 @@ export default function PutawayPage() {
 
   // ── Open task ───────────────────────────────────────────────────────────────
   const openTask = async (t: PutawayTaskResponse) => {
+    if (openingTaskId !== null) return; // chặn double-click
+    setOpeningTaskId(t.putawayTaskId);
     try {
+      const isDone = t.status === 'DONE';
+
       const [detail, allocs, suggs] = await Promise.all([
         fetchPutawayTask(t.putawayTaskId),
         fetchAllocations(t.putawayTaskId).catch(() => []),
-        fetchPutawaySuggestions(t.putawayTaskId).catch(() => []),
+        // DONE task không cần suggestions
+        isDone ? Promise.resolve([]) : fetchPutawaySuggestions(t.putawayTaskId).catch(() => []),
       ]);
-      const zList = await fetchZones({ warehouseId: detail.warehouseId, activeOnly: true }).catch(() => []);
+
+      // DONE task không cần zones — bỏ qua để tránh delay
+      const zList = isDone
+        ? []
+        : await fetchZones({ warehouseId: detail.warehouseId, activeOnly: true }).catch(() => []);
+
       setTask(detail);
       setZones(zList);
       setSuggestions(suggs);
-      setReserved(allocs.filter(a => a.status === 'RESERVED'));
+
+      const relevantAllocs = isDone
+        ? allocs.filter(a => a.status === 'CONFIRMED')
+        : allocs.filter(a => a.status === 'RESERVED');
+      setReserved(relevantAllocs);
       setPending([]);
       setSelectedZone(null);
       setSelectedAisle(null);
       setSelectedRack(null);
       setAllBins([]);
-      // Restore signed note if already uploaded for this task
       setSignedNoteUrl(detail.signedNoteUrl ?? null);
       setSignedNoteAt(detail.signedNoteUploadedAt ?? null);
-      setStep('ZONE_SELECT');
-    } catch { toast.error('Không tải được task'); }
+      setStep(isDone ? 'REVIEW' : 'ZONE_SELECT');
+    } catch (e) {
+      console.error('openTask error:', e);
+      toast.error('Không tải được task');
+    } finally {
+      setOpeningTaskId(null);
+    }
   };
 
   // ── Select zone → load ALL bins of that zone ────────────────────────────────
@@ -709,6 +728,8 @@ export default function PutawayPage() {
   // ─────────────────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────────
+  const isDoneView = task?.status === 'DONE';
+
   return (
     <div className="w-full font-sans space-y-4 page-enter">
 
@@ -772,9 +793,9 @@ export default function PutawayPage() {
                   <div className="divide-y divide-gray-50">
                     {pageTasks.map(t => (
                       <div key={t.putawayTaskId}
-                        className={`flex items-center justify-between px-5 py-4 transition-colors group
-                          ${t.status !== 'DONE' ? 'hover:bg-indigo-50/30 cursor-pointer' : 'opacity-60'}`}
-                        onClick={() => t.status !== 'DONE' && openTask(t)}>
+                        className={`flex items-center justify-between px-5 py-4 transition-colors group hover:bg-indigo-50/30
+                          ${openingTaskId === t.putawayTaskId ? 'opacity-60 pointer-events-none bg-indigo-50/20' : 'cursor-pointer'}`}
+                        onClick={() => openTask(t)}>
                         <div className="flex items-center gap-4">
                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0
                             ${t.status === 'DONE' ? 'bg-emerald-50' : t.status === 'IN_PROGRESS' ? 'bg-amber-50' : t.status === 'PENDING' ? 'bg-orange-50' : 'bg-indigo-50'}`}>
@@ -817,9 +838,12 @@ export default function PutawayPage() {
                         </div>
                         <div className="flex items-center gap-3 flex-shrink-0">
                           <StatusBadge status={t.status} />
-                          {t.status !== 'DONE' && (
-                            <span className="material-symbols-outlined text-[16px] text-gray-200 group-hover:text-indigo-400 transition-colors">chevron_right</span>
-                          )}
+                          {openingTaskId === t.putawayTaskId
+                            ? <span className="material-symbols-outlined text-[16px] text-indigo-400 animate-spin">progress_activity</span>
+                            : t.status !== 'DONE'
+                              ? <span className="material-symbols-outlined text-[16px] text-gray-200 group-hover:text-indigo-400 transition-colors">chevron_right</span>
+                              : <span className="material-symbols-outlined text-[16px] text-gray-300 group-hover:text-emerald-500 transition-colors">visibility</span>
+                          }
                         </div>
                       </div>
                     ))}
@@ -1137,6 +1161,22 @@ export default function PutawayPage() {
       {step === 'REVIEW' && task && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
+          {/* Done banner */}
+          {isDoneView && (
+            <div className="col-span-full flex items-center gap-3 px-5 py-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
+              <span className="material-symbols-outlined text-emerald-500 text-[22px]">check_circle</span>
+              <div>
+                <p className="text-sm font-bold text-emerald-800">Task đã hoàn thành</p>
+                <p className="text-xs text-emerald-600">Đang xem lại thông tin phân bổ và ảnh xác nhận chữ ký.</p>
+              </div>
+              <button onClick={() => { setStep('TASK_LIST'); setTask(null); }}
+                className="ml-auto text-xs text-emerald-600 hover:text-emerald-800 font-semibold flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px]">arrow_back</span>
+                Quay lại danh sách
+              </button>
+            </div>
+          )}
+
           {/* Summary */}
           <div className="space-y-4">
             <div className="bg-white rounded-2xl border border-indigo-100/60 shadow-sm p-5">
@@ -1178,11 +1218,14 @@ export default function PutawayPage() {
 
             {/* Actions */}
             <div className="space-y-2">
-              <button onClick={() => setStep('ZONE_SELECT')}
-                className="w-full flex items-center justify-center gap-2 py-2.5 text-sm text-gray-600 border border-gray-200 bg-white rounded-xl hover:bg-gray-50 transition-colors">
-                <span className="material-symbols-outlined text-[16px]">add_circle</span>
-                Tiếp tục phân bổ
-              </button>
+              {/* Nút tiếp tục phân bổ — ẩn khi task DONE */}
+              {!isDoneView && (
+                <button onClick={() => setStep('ZONE_SELECT')}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 text-sm text-gray-600 border border-gray-200 bg-white rounded-xl hover:bg-gray-50 transition-colors">
+                  <span className="material-symbols-outlined text-[16px]">add_circle</span>
+                  Tiếp tục phân bổ
+                </button>
+              )}
 
               {/* ── In phiếu hướng dẫn cất hàng ── */}
               {reserved.length > 0 && (
@@ -1194,7 +1237,7 @@ export default function PutawayPage() {
               )}
 
               {/* ── QR + Ảnh phiếu đã ký ── */}
-              {reserved.length > 0 && (() => {
+              {(reserved.length > 0 || signedNoteUrl) && (() => {
                 const feBase = process.env.NEXT_PUBLIC_FE_BASE_URL ?? '';
                 const signUrl = `${feBase}/sign-note/${task.putawayTaskId}?type=putaway&taskId=${task.putawayTaskId}`;
                 return (
@@ -1270,7 +1313,8 @@ export default function PutawayPage() {
                 );
               })()}
 
-              {reserved.length > 0 && (
+              {/* Confirm button — chỉ hiện khi task chưa DONE */}
+              {!isDoneView && reserved.length > 0 && (
                 <button
                   onClick={doConfirm}
                   disabled={confirming || !signedNoteUrl}
@@ -1284,7 +1328,7 @@ export default function PutawayPage() {
                   }
                 </button>
               )}
-              {!allItemsDone && (
+              {!isDoneView && !allItemsDone && (
                 <p className="text-[11px] text-amber-600 text-center flex items-center justify-center gap-1">
                   <span className="material-symbols-outlined text-[13px]">warning</span>
                   Còn {task.items.filter(i => remainingUnallocated(i) > 0).length} SKU chưa phân bổ hết
@@ -1293,28 +1337,36 @@ export default function PutawayPage() {
             </div>
           </div>
 
-          {/* Reserved allocations list */}
+          {/* Allocations list — RESERVED khi đang làm, CONFIRMED khi DONE */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-2xl border border-indigo-100/60 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100">
-                <h3 className="text-sm font-bold text-gray-900">Phân bổ đã RESERVED ({reserved.length})</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Nhấn Confirm để di chuyển hàng vào bin thực tế và hoàn thành task</p>
+                <h3 className="text-sm font-bold text-gray-900">
+                  {isDoneView ? `Hàng đã cất (${reserved.length} mục)` : `Phân bổ đã RESERVED (${reserved.length})`}
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {isDoneView
+                    ? 'Danh sách hàng đã được cất vào bin thực tế.'
+                    : 'Nhấn Confirm để di chuyển hàng vào bin thực tế và hoàn thành task'}
+                </p>
               </div>
               {reserved.length === 0 ? (
                 <div className="flex flex-col items-center py-16 gap-2">
                   <span className="material-symbols-outlined text-gray-200 text-[40px]">inbox</span>
                   <p className="text-sm text-gray-400">Chưa có phân bổ nào</p>
-                  <button onClick={() => setStep('ZONE_SELECT')} className="text-sm text-indigo-600 font-semibold hover:text-indigo-800 mt-1">
-                    Bắt đầu phân bổ →
-                  </button>
+                  {!isDoneView && (
+                    <button onClick={() => setStep('ZONE_SELECT')} className="text-sm text-indigo-600 font-semibold hover:text-indigo-800 mt-1">
+                      Bắt đầu phân bổ →
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="divide-y divide-gray-50">
                   {reserved.map(alloc => (
                     <div key={alloc.allocationId} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50/50 transition-colors">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
-                          <span className="material-symbols-outlined text-[18px] text-indigo-400">inventory_2</span>
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isDoneView ? 'bg-emerald-50' : 'bg-indigo-50'}`}>
+                          <span className={`material-symbols-outlined text-[18px] ${isDoneView ? 'text-emerald-400' : 'text-indigo-400'}`}>inventory_2</span>
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-gray-900">
@@ -1326,14 +1378,19 @@ export default function PutawayPage() {
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="text-right">
-                          <p className="text-sm font-bold text-indigo-700">{alloc.allocatedQty}</p>
+                          <p className={`text-sm font-bold ${isDoneView ? 'text-emerald-700' : 'text-indigo-700'}`}>{alloc.allocatedQty}</p>
                           <p className="text-[10px] text-gray-400">thùng</p>
                         </div>
-                        <span className="text-[11px] font-semibold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full border border-amber-100">RESERVED</span>
-                        <button onClick={() => doCancel(alloc)}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
-                          <span className="material-symbols-outlined text-[16px]">delete</span>
-                        </button>
+                        {isDoneView
+                          ? <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-100">CONFIRMED</span>
+                          : <>
+                              <span className="text-[11px] font-semibold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full border border-amber-100">RESERVED</span>
+                              <button onClick={() => doCancel(alloc)}
+                                className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                                <span className="material-symbols-outlined text-[16px]">delete</span>
+                              </button>
+                            </>
+                        }
                       </div>
                     </div>
                   ))}
