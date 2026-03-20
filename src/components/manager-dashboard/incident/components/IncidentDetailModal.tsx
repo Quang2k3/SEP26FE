@@ -26,11 +26,11 @@ const ACTIONS_BY_REASON: Record<string, { value: string; label: string; icon: st
   ],
   OVERAGE: [
     { value: "ACCEPT", label: "Nhập kho",  icon: "add_circle" },
-    { value: "RETURN", label: "Trả NCC",   icon: "undo" },
+    { value: "RETURN", label: "Hoàn Hàng",   icon: "undo" },
   ],
   UNEXPECTED_ITEM: [
     { value: "ACCEPT", label: "Nhập kho",  icon: "add_circle" },
-    { value: "RETURN", label: "Trả NCC",   icon: "undo" },
+    { value: "RETURN", label: "Hoàn Hàng",   icon: "undo" },
   ],
 };
 
