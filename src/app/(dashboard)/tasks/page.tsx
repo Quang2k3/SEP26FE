@@ -1231,7 +1231,7 @@ export default function PutawayPage() {
 
               {/* ── QR + Ảnh phiếu đã ký ── */}
               {(reserved.length > 0 || signedNoteUrl) && (() => {
-                const feBase = process.env.NEXT_PUBLIC_FE_BASE_URL ?? '';
+                const feBase = process.env.NEXT_PUBLIC_FE_BASE_URL ?? 'https://cleanhousewms.id.vn';
                 const signUrl = `${feBase}/sign-putaway/${task.putawayTaskId}`;
                 return (
                   <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
