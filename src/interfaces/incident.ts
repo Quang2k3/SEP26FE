@@ -1,10 +1,23 @@
-export type IncidentStatus = "OPEN" | "APPROVED" | "REJECTED";
+export type IncidentStatus = "OPEN" | "APPROVED" | "REJECTED" | "RESOLVED";
+
+export interface IncidentItem {
+  incidentItemId: number;
+  skuId: number;
+  skuCode: string;
+  skuName: string;
+  expectedQty: number;
+  actualQty: number;
+  damagedQty: number;
+  reasonCode: string; // SHORTAGE | OVERAGE | UNEXPECTED_ITEM
+  note: string;
+}
 
 export interface Incident {
   incidentId: number;
   warehouseId: number;
   incidentCode: string;
   incidentType: string;
+  category?: string;
   severity: string;
   occurredAt: string;
   description: string;
@@ -15,6 +28,7 @@ export interface Incident {
   receivingId: number;
   receivingCode: string;
   createdAt: string;
+  items?: IncidentItem[];
 }
 
 export interface IncidentPagePayload {
