@@ -645,9 +645,15 @@ export default function ReceivingDetailModal({ open, receiving, onClose, onRefre
               {isEditMode ? (
                 <input type="text" placeholder="VD: Xe tải 29C-12345 giao lúc 10h"
                   value={note} onChange={e => setNote(e.target.value)} className={inputCls} />
-              ) : (
-                <p className={readonlyCls}>{receiving.note || '—'}</p>
-              )}
+              ) : (() => {
+                // Lọc bỏ các dòng log hệ thống nội bộ (bắt đầu bằng [Keeper, [QC, etc.)
+                const userNote = (receiving.note || '')
+                  .split('\n')
+                  .filter(line => !/^\[(?:Keeper|QC|QC vs)/.test(line.trim()))
+                  .join('\n')
+                  .trim();
+                return <p className={readonlyCls}>{userNote || '—'}</p>;
+              })()}
             </Field>
 
             {/* Thông tin bổ sung (view mode only) */}
