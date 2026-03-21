@@ -70,11 +70,24 @@ export function getReceivingColumns({
     },
     {
       key: "qty",
-      title: "Qty",
+      title: "SL Dự kiến",
       align: "center",
       render: (r) => (
         <span className="text-xs font-semibold text-gray-900">{r.totalExpectedQty ?? 0}</span>
       ),
+    },
+    {
+      key: "actualQty",
+      title: "SL Thực tế",
+      align: "center",
+      render: (r) => {
+        const expected = r.totalExpectedQty ?? 0;
+        const actual = r.totalQty ?? 0;
+        const color = actual === 0 ? 'text-gray-400' : actual !== expected ? 'text-red-600' : 'text-emerald-600';
+        return (
+          <span className={`text-xs font-semibold ${color}`}>{actual}</span>
+        );
+      },
     },
     {
       key: "status",
