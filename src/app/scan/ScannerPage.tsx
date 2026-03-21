@@ -113,20 +113,16 @@ function useCamera(onCode: (code: string) => void, setStatus: (s: string) => voi
           (text: string) => {
             const raw = text.trim();
             if (!raw) return;
-            // Nếu là URL chứa /v1/scan?token= → đây là link mở trang scanner, KHÔNG phải barcode sản phẩm
             if (raw.includes('/v1/scan') && raw.includes('token=')) return;
-            // Nếu là URL khác → thử lấy SKU từ path hoặc query param
             let code = raw;
             if (raw.toLowerCase().startsWith('http://') || raw.toLowerCase().startsWith('https://')) {
               try {
                 const url = new URL(raw);
-                // Ưu tiên query param chứa SKU
                 const skuParam = url.searchParams.get('sku') ?? url.searchParams.get('skuCode')
                   ?? url.searchParams.get('code') ?? url.searchParams.get('barcode');
                 if (skuParam && skuParam.trim().length >= 2) {
                   code = skuParam.trim();
                 } else {
-                  // Fallback: path segment cuối
                   const segments = url.pathname.split('/').filter(Boolean);
                   const last = segments[segments.length - 1] ?? '';
                   if (!last || last.length < 2) return;
@@ -151,8 +147,7 @@ function useCamera(onCode: (code: string) => void, setStatus: (s: string) => voi
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. KEEPER INBOUND — nhận hàng từ nhà cung cấp
-//    Status flow: SUBMITTED → scan → finalize-count → PENDING_COUNT
+// 1. KEEPER INBOUND
 // ─────────────────────────────────────────────────────────────────────────────
 function KeeperInboundScanner({ token, receivingId }: { token: string; receivingId: number }) {
   const { toasts, show: toast } = useToast();
@@ -163,7 +158,6 @@ function KeeperInboundScanner({ token, receivingId }: { token: string; receiving
   const [submitting, setSubmitting] = useState(false);
   const [expectedItems, setExpectedItems] = useState<InboundExpectedItem[]>([]);
   const [scannedMap, setScannedMap] = useState<Record<string, number>>({});
-  // skuIdMap: skuCode → skuId (lưu từ scan response để dùng cho DELETE)
   const [skuIdMap, setSkuIdMap]   = useState<Record<string, number>>({});
 
   const inflightRef = useRef(false);
@@ -205,7 +199,7 @@ function KeeperInboundScanner({ token, receivingId }: { token: string; receiving
     if ((scannedRef.current[skuCode] ?? 0) <= 0) { toast('Số lượng đã về 0', true); return; }
     if (!sessionId) { toast('Không tìm thấy session', true); return; }
     const skuId = skuIdMap[skuCode] ?? 0;
-    if (!skuId)    { toast('Không tìm thấy SKU ID', true); return; }
+    if (!skuId) { toast('Không tìm thấy SKU ID', true); return; }
     inflightRef.current = true;
     try {
       const params = new URLSearchParams({ sessionId, skuId: String(skuId), condition: 'PASS', qty: '1', receivingId: String(receivingId) });
@@ -265,8 +259,6 @@ function KeeperInboundScanner({ token, receivingId }: { token: string; receiving
   const totalScan = expectedItems.reduce((s, i) => s + (scannedMap[i.skuCode] ?? i.receivedQty), 0);
   const allDone   = expectedItems.length > 0 && expectedItems.every(i => (scannedMap[i.skuCode] ?? i.receivedQty) >= i.expectedQty);
   const hasOver   = expectedItems.some(i => (scannedMap[i.skuCode] ?? 0) > i.expectedQty);
-
-  // SKUs scanned but NOT on the receiving order
   const expectedSkuSet = new Set(expectedItems.map(i => i.skuCode));
   const extraSkus = Object.entries(scannedMap).filter(([sku, qty]) => !expectedSkuSet.has(sku) && qty > 0);
 
@@ -337,7 +329,6 @@ function KeeperInboundScanner({ token, receivingId }: { token: string; receiving
           </div>
         )}
 
-        {/* ── HÀNG NGOÀI PHIẾU — SKUs scanned but not on the order ── */}
         {extraSkus.length > 0 && (
           <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8, border: '1px solid rgba(249,115,22,.3)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -388,10 +379,7 @@ function KeeperInboundScanner({ token, receivingId }: { token: string; receiving
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. QC INBOUND — kiểm định chất lượng hàng nhận
-//    Status flow: PENDING_COUNT → scan PASS/FAIL → qc-submit-session → QC_APPROVED
-//    Backend chỉ nhận PASS hoặc FAIL (không có HOLD)
-//    HOLD trên UI → gửi FAIL + reasonCode="HOLD" lên API
+// 2. QC INBOUND
 // ─────────────────────────────────────────────────────────────────────────────
 function QCInboundScanner({ token, receivingId }: { token: string; receivingId: number }) {
   const { toasts, show: toast } = useToast();
@@ -402,12 +390,10 @@ function QCInboundScanner({ token, receivingId }: { token: string; receivingId: 
   const [submitting, setSubmitting] = useState(false);
   const [qcCondition, setQcCondition] = useState<QcCondition>('PASS');
   const [expectedItems, setExpectedItems] = useState<InboundExpectedItem[]>([]);
-  // qcMap: skuCode → { pass, fail, hold, skuId }
   const [qcMap, setQcMap] = useState<Record<string, { pass: number; fail: number; hold: number; skuId: number }>>({});
 
   const inflightRef  = useRef(false);
   const conditionRef = useRef<QcCondition>('PASS');
-  // sessionId lấy từ JWT token (server embed vào scan token)
   const sessionId    = getSessionId(token);
   useEffect(() => { conditionRef.current = qcCondition; }, [qcCondition]);
 
@@ -417,10 +403,7 @@ function QCInboundScanner({ token, receivingId }: { token: string; receivingId: 
   }, [receivingId, token]);
 
   const lockUI = useCallback((msg: string) => { setLocked(true); setLockedMsg(msg); }, []);
-
-  // Map UI condition → API condition (backend chỉ nhận PASS/FAIL)
   const toApiCondition = (c: QcCondition) => c === 'HOLD' ? 'FAIL' : c;
-  const toApiReasonCode = (c: QcCondition) => c === 'HOLD' ? 'HOLD' : undefined;
 
   const scanBarcode = useCallback(async (barcode: string) => {
     if (locked || inflightRef.current) return;
@@ -428,11 +411,7 @@ function QCInboundScanner({ token, receivingId }: { token: string; receivingId: 
     const cond = conditionRef.current;
     setStatus(`Gửi: ${barcode} [${cond}]`);
     try {
-      const body: Record<string, unknown> = {
-        barcode, qty: 1,
-        condition: toApiCondition(cond),
-        receivingId,
-      };
+      const body: Record<string, unknown> = { barcode, qty: 1, condition: toApiCondition(cond), receivingId };
       if (cond === 'HOLD') body.reasonCode = 'HOLD';
       const r = await fetch(`${API_BASE}/v1/scan-events`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -454,7 +433,6 @@ function QCInboundScanner({ token, receivingId }: { token: string; receivingId: 
     finally { inflightRef.current = false; setStatus('Camera sẵn sàng'); setTimeout(() => { inflightRef.current = false; }, 600); }
   }, [locked, token, receivingId, toast]);
 
-  // Trừ -1: gọi DELETE /v1/scan-events với đúng sessionId + skuId + condition
   const decrementSku = useCallback(async (skuCode: string) => {
     if (locked || inflightRef.current) return;
     const cond    = conditionRef.current;
@@ -494,7 +472,6 @@ function QCInboundScanner({ token, receivingId }: { token: string; receivingId: 
     if (!window.confirm(msg)) return;
     setSubmitting(true);
     try {
-      // sessionId là @RequestParam — truyền qua query string
       const r = await fetch(
         `${API_BASE}/v1/receiving-orders/${receivingId}/qc-submit-session?sessionId=${encodeURIComponent(sessionId)}`,
         { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
@@ -619,6 +596,7 @@ function QCInboundScanner({ token, receivingId }: { token: string; receivingId: 
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. OUTBOUND — Picking + QC xuất kho
+// [V20] Thêm photo upload khi FAIL
 // ─────────────────────────────────────────────────────────────────────────────
 function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbound_picking' | 'outbound_qc'; taskId: number | null }) {
   const { toasts, show: toast } = useToast();
@@ -632,10 +610,14 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
   const [pickItemsLoading, setPickItemsLoading] = useState(false);
   const [scannedQty, setScannedQty]       = useState<Record<string, number>>({});
   const [scanLines, setScanLines]   = useState<Record<string, ScanLine>>({});
-  // QC mode: track số lần quét vật lý per item (key = taskItemId hoặc skuCode_idx)
   const [qcScannedQty, setQcScannedQty] = useState<Record<string, number>>({});
-  // QC mode: track condition đã chọn per item (key = taskItemId hoặc skuCode_idx)
   const [qcItemCondition, setQcItemCondition] = useState<Record<string, QcCondition>>({});
+
+  // [V20] Photo upload state
+  const [pendingFailBarcode, setPendingFailBarcode] = useState<string | null>(null);
+  const [pendingFailTarget, setPendingFailTarget] = useState<{ item: PickItem; key: string; req: number; curVal: number } | null>(null);
+  const [showPhotoPrompt, setShowPhotoPrompt] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const inflightRef  = useRef(false);
   const pickItemsRef = useRef<PickItem[]>([]);
@@ -650,7 +632,6 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
   useEffect(() => { qcItemCondRef.current = qcItemCondition; }, [qcItemCondition]);
   useEffect(() => { conditionRef.current = qcCondition; }, [qcCondition]);
 
-  // Load pick list cho cả picking và outbound_qc
   useEffect(() => {
     if (!taskId) return;
     if (mode !== 'outbound_picking' && mode !== 'outbound_qc') return;
@@ -659,8 +640,6 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
       .then(r => r.json()).then(d => {
         if (d?.success) {
           const raw: any[] = d.data?.items ?? [];
-          // Normalize field names: API trả pickingTaskItemId nhưng FE dùng taskItemId
-          // API trả requiredQty (BigDecimal) — parse về number
           const items: PickItem[] = raw.map((it: any) => ({
             taskItemId:   it.pickingTaskItemId ?? it.taskItemId ?? undefined,
             skuCode:      it.skuCode ?? '',
@@ -672,8 +651,6 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
           }));
           pickItemsRef.current = items;
           setPickItems(items);
-        } else {
-          console.warn('[ScannerPage] pick-list fetch failed:', d?.message);
         }
       }).catch(err => console.warn('[ScannerPage] pick-list fetch error:', err))
       .finally(() => setPickItemsLoading(false));
@@ -681,10 +658,74 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
 
   const lockUI = useCallback((msg: string) => { setLocked(true); setLockedMsg(msg); }, []);
 
+  // [V20] Upload ảnh hàng hỏng lên server
+  const uploadDamagePhoto = async (file: File): Promise<string | null> => {
+    try {
+      const form = new FormData();
+      form.append('photo', file);
+      const r = await fetch(`${API_BASE}/v1/attachments/upload`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      const d = await r.json();
+      return d?.data?.url ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  // [V20] Tách hàm gửi QC API để tái dùng sau khi upload ảnh
+  const sendQcApiCall = useCallback(async (
+    barcode: string,
+    target: { item: PickItem; key: string; req: number; curVal: number },
+    attachmentUrl: string | null,
+  ) => {
+    inflightRef.current = true;
+    setStatus(`Gửi QC: ${target.item.skuCode} ×${target.req}`);
+    try {
+      const body: any = {
+        barcode,
+        qty: target.req,
+        condition: conditionRef.current,
+        mode: 'outbound_qc',
+        taskId,
+        ...(attachmentUrl ? { attachmentUrl } : {}),
+      };
+      const r = await fetch(`${API_BASE}/v1/scan-events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (d?.success) {
+        setScanLines(prev => {
+          const lineKey = `${d.data.skuCode}_${conditionRef.current}`;
+          const ex = prev[lineKey];
+          return { ...prev, [lineKey]: { ...d.data, qty: (ex?.qty ?? 0) + target.req, condition: conditionRef.current } };
+        });
+        toast(`✓ ${d.data?.skuCode} ×${target.req} [${conditionRef.current}] — Ghi nhận!`);
+        if (d.data?.allScanned) { lockUI('✅ QC hoàn tất — tất cả đã kiểm tra!'); toast('✅ QC hoàn tất!'); }
+      } else {
+        qcScannedRef.current = { ...qcScannedRef.current, [target.key]: target.curVal };
+        setQcScannedQty({ ...qcScannedRef.current });
+        toast(d?.message ?? 'Lỗi ghi nhận QC', true);
+      }
+    } catch {
+      qcScannedRef.current = { ...qcScannedRef.current, [target.key]: target.curVal };
+      setQcScannedQty({ ...qcScannedRef.current });
+      toast('Mất kết nối', true);
+    } finally {
+      inflightRef.current = false;
+      setStatus('Camera sẵn sàng');
+      setTimeout(() => { inflightRef.current = false; }, 600);
+    }
+  }, [taskId, token, toast, lockUI]);
+
   const sendBarcode = useCallback(async (barcode: string) => {
     if (locked || inflightRef.current) return;
 
-    // ── PICKING mode: track locally, không gọi API ──────────────────────────
+    // ── PICKING mode ──────────────────────────────────────────────────────────
     if (mode === 'outbound_picking') {
       const cur = scannedRef.current;
       const matched = pickItemsRef.current.map((it, idx) => ({ it, idx })).filter(({ it }) => it.skuCode.toUpperCase() === barcode || (it.barcode ?? '').toUpperCase() === barcode);
@@ -703,15 +744,13 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
       return;
     }
 
-    // ── QC mode: track qty per item, gửi API khi đủ qty ────────────────────
+    // ── QC mode ───────────────────────────────────────────────────────────────
     if (mode === 'outbound_qc') {
-      // Bỏ qua link scanner nội bộ
       if (barcode.includes('/v1/scan') && barcode.includes('token=')) { setStatus('⚠️ Đây là link mở trang scan, không phải barcode sản phẩm'); return; }
       if (barcode.toLowerCase().startsWith('http://') || barcode.toLowerCase().startsWith('https://')) { setStatus('⚠️ Phát hiện URL — vui lòng quét barcode sản phẩm'); return; }
 
       const items = pickItemsRef.current;
       if (!items.length) {
-        // Pick list chưa load xong → gửi thẳng API (fallback)
         inflightRef.current = true; setStatus(`Gửi QC: ${barcode}`);
         try {
           const body: any = { barcode, qty: 1, condition: conditionRef.current, mode: 'outbound_qc', taskId };
@@ -727,7 +766,6 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
         return;
       }
 
-      // Tìm item khớp barcode/skuCode và chưa đủ qty
       const matched = items.map((it, idx) => ({ it, idx })).filter(({ it }) =>
         it.skuCode.toUpperCase() === barcode || (it.barcode ?? '').toUpperCase() === barcode
       );
@@ -742,20 +780,14 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
         if (curVal < req) { target = { item: it, key, req, curVal }; break; }
       }
 
-      if (!target) {
-        // Tất cả qty của SKU này đã quét đủ
-        toast(`✓ Đã quét đủ ${matched[0].it.skuCode}`, false);
-        return;
-      }
+      if (!target) { toast(`✓ Đã quét đủ ${matched[0].it.skuCode}`, false); return; }
 
       const newVal = target.curVal + 1;
       const rem = target.req - newVal;
 
-      // Cập nhật local tracking trước (optimistic)
       const newQcQty = { ...curQcQty, [target.key]: newVal };
       qcScannedRef.current = newQcQty;
       setQcScannedQty({ ...newQcQty });
-      // Ghi nhớ condition cho item này (dùng condition lần đầu quét, hoặc cập nhật nếu chưa đủ)
       if (!qcItemCondRef.current[target.key]) {
         const newCond = { ...qcItemCondRef.current, [target.key]: conditionRef.current };
         qcItemCondRef.current = newCond;
@@ -763,50 +795,30 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
       }
 
       if (rem > 0) {
-        // Chưa đủ qty — chỉ toast, chưa gửi API
         toast(`${target.item.skuCode} [${conditionRef.current}] ${newVal}/${target.req} — còn ${rem} cái`);
         if (navigator.vibrate) navigator.vibrate(80);
         setStatus(`${target.item.skuCode}: ${newVal}/${target.req}`);
         return;
       }
 
-      // Đủ qty → gửi API
-      toast(`✅ Đủ! ${target.item.skuCode} [${conditionRef.current}] — đang gửi...`);
-      if (navigator.vibrate) navigator.vibrate([80, 30, 80]);
-      inflightRef.current = true;
-      setStatus(`Gửi QC: ${target.item.skuCode} ×${target.req}`);
-      try {
-        const body: any = { barcode, qty: target.req, condition: conditionRef.current, mode: 'outbound_qc', taskId };
-        const r = await fetch(`${API_BASE}/v1/scan-events`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
-        const d = await r.json();
-        if (d?.success) {
-          setScanLines(prev => {
-            const lineKey = `${d.data.skuCode}_${conditionRef.current}`;
-            const ex = prev[lineKey];
-            return { ...prev, [lineKey]: { ...d.data, qty: (ex?.qty ?? 0) + target!.req, condition: conditionRef.current } };
-          });
-          toast(`✓ ${d.data?.skuCode} ×${target.req} [${conditionRef.current}] — Ghi nhận!`);
-          if (d.data?.allScanned) { lockUI('✅ QC hoàn tất — tất cả đã kiểm tra!'); toast('✅ QC hoàn tất!'); }
-        } else {
-          // Rollback local tracking nếu API lỗi
-          qcScannedRef.current = { ...qcScannedRef.current, [target.key]: target.curVal };
-          setQcScannedQty({ ...qcScannedRef.current });
-          toast(d?.message ?? 'Lỗi ghi nhận QC', true);
-        }
-      } catch {
-        // Rollback
-        qcScannedRef.current = { ...qcScannedRef.current, [target.key]: target.curVal };
-        setQcScannedQty({ ...qcScannedRef.current });
-        toast('Mất kết nối', true);
+      // [V20] Đủ qty + FAIL → hiện photo prompt trước khi gửi API
+      if (conditionRef.current === 'FAIL') {
+        setPendingFailBarcode(barcode);
+        setPendingFailTarget(target);
+        setShowPhotoPrompt(true);
+        toast(`📷 ${target.item.skuCode} FAIL — chụp ảnh hàng hỏng (bỏ qua được)`);
+        if (navigator.vibrate) navigator.vibrate([80, 30, 80]);
+        return;
       }
-      finally { inflightRef.current = false; setStatus('Camera sẵn sàng'); setTimeout(() => { inflightRef.current = false; }, 600); }
+
+      // PASS/HOLD → gửi thẳng API
+      await sendQcApiCall(barcode, target, null);
       return;
     }
 
-    // Fallback cho mode không xác định
     if (barcode.includes('/v1/scan') && barcode.includes('token=')) { setStatus('⚠️ Đây là link mở trang scan, không phải barcode sản phẩm'); return; }
     if (barcode.toLowerCase().startsWith('http://') || barcode.toLowerCase().startsWith('https://')) { setStatus('⚠️ Phát hiện URL — vui lòng quét barcode sản phẩm'); return; }
-  }, [locked, mode, token, taskId, toast, lockUI]);
+  }, [locked, mode, token, taskId, toast, lockUI, sendQcApiCall]);
 
   const { stopQr } = useCamera(sendBarcode, setStatus);
 
@@ -818,7 +830,6 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
   const pickAllDone   = pickItems.length > 0 && pickItems.every((it, i) => { const key = it.taskItemId ? String(it.taskItemId) : `${it.skuCode}_${i}`; return (scannedQty[key] ?? 0) >= it.requiredQty; });
   const totalScanned  = Object.values(scannedQty).reduce((s, v) => s + v, 0);
   const totalRequired = pickItems.reduce((s, it) => s + it.requiredQty, 0);
-  // QC: tính tổng qty đã quét và tổng qty yêu cầu
   const qcTotalScanned  = Object.values(qcScannedQty).reduce((s, v) => s + v, 0);
   const qcTotalRequired = pickItems.reduce((s, it) => s + it.requiredQty, 0);
   const condClr       = qcCondition === 'PASS' ? '#10b981' : qcCondition === 'FAIL' ? '#ef4444' : '#f59e0b';
@@ -843,8 +854,16 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
     try {
       const r = await fetch(`${API_BASE}/v1/outbound/pick-list/${taskId}/finalize-qc`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } });
       const d = await r.json();
-      if (d?.success) { toast(d.data?.failCount > 0 ? `⚠️ ${d.data.failCount} FAIL` : '✅ QC PASS!'); lockUI('QC hoàn tất — Keeper có thể xuất kho!'); }
-      else toast(d?.message ?? 'Lỗi', true);
+      if (d?.success) {
+        const failCount = d.data?.failCount ?? 0;
+        if (failCount > 0) {
+          toast(`⚠️ ${failCount} FAIL — SO chuyển ON_HOLD, chờ Manager xử lý`);
+          lockUI(`⚠️ ${failCount} hàng FAIL — Manager sẽ xử lý Incident`);
+        } else {
+          toast('✅ QC PASS!');
+          lockUI('QC hoàn tất — Keeper có thể xuất kho!');
+        }
+      } else toast(d?.message ?? 'Lỗi', true);
     } catch { toast('Lỗi kết nối', true); }
     finally { setSubmitting(false); }
   };
@@ -870,6 +889,59 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
           onManualScan={() => { manualCode.trim() && sendBarcode(manualCode.trim().toUpperCase()); setManualCode(''); }}
           accentColor={mode === 'outbound_qc' ? condClr : '#3b82f6'} />
 
+        {/* [V20] Photo prompt khi FAIL */}
+        {showPhotoPrompt && mode === 'outbound_qc' && (
+          <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8, border: '1px solid #ef4444' }}>
+            <p style={{ fontSize: 12, color: '#fca5a5', fontWeight: 700, margin: '0 0 10px' }}>
+              📷 Chụp ảnh hàng hỏng (tùy chọn — làm bằng chứng cho Incident)
+            </p>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                let url: string | null = null;
+                if (file) {
+                  toast('Đang upload ảnh...');
+                  url = await uploadDamagePhoto(file);
+                  if (url) toast('✅ Đã upload ảnh hàng hỏng');
+                  else toast('Upload ảnh thất bại — gửi không kèm ảnh', true);
+                }
+                setShowPhotoPrompt(false);
+                if (pendingFailBarcode && pendingFailTarget) {
+                  await sendQcApiCall(pendingFailBarcode, pendingFailTarget, url);
+                  setPendingFailBarcode(null);
+                  setPendingFailTarget(null);
+                }
+                // reset input để có thể chọn lại
+                if (photoInputRef.current) photoInputRef.current.value = '';
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                style={{ flex: 1, padding: '12px', border: 'none', borderRadius: 8, background: '#ef4444', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                📷 Chụp ảnh
+              </button>
+              <button
+                onClick={async () => {
+                  setShowPhotoPrompt(false);
+                  if (pendingFailBarcode && pendingFailTarget) {
+                    await sendQcApiCall(pendingFailBarcode, pendingFailTarget, null);
+                    setPendingFailBarcode(null);
+                    setPendingFailTarget(null);
+                  }
+                }}
+                style={{ flex: 1, padding: '12px', border: '1px solid #475569', borderRadius: 8, background: 'transparent', color: '#94a3b8', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                Bỏ qua
+              </button>
+            </div>
+          </div>
+        )}
+
         {mode === 'outbound_picking' && pickItems.length > 0 && (
           <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8 }}>
             <p style={{ fontSize: 11, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 700, margin: '0 0 10px' }}>📋 Picking — Xác nhận lấy hàng</p>
@@ -888,14 +960,12 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
           </div>
         )}
 
-        {/* QC mode: loading indicator */}
         {mode === 'outbound_qc' && pickItemsLoading && (
           <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8, textAlign: 'center' }}>
             <p style={{ fontSize: 12, color: '#a78bfa', margin: 0 }}>⏳ Đang tải danh sách kiểm tra...</p>
           </div>
         )}
 
-        {/* QC mode: hiển thị danh sách items với qty tracking */}
         {mode === 'outbound_qc' && pickItems.length > 0 && !pickItemsLoading && (
           <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -932,7 +1002,6 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
                       )}
                     </div>
                   </div>
-                  {/* Progress bar mini */}
                   {req > 1 && (
                     <div style={{ marginTop: 6, height: 3, background: '#1e3a5f', borderRadius: 2, overflow: 'hidden' }}>
                       <div style={{ height: '100%', width: `${Math.min(100, (cur / req) * 100)}%`, background: done ? condClrItem : '#f59e0b', borderRadius: 2, transition: 'width .3s' }} />
@@ -948,7 +1017,6 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
           </div>
         )}
 
-        {/* QC mode: bảng đã gửi API (confirmed) */}
         {mode === 'outbound_qc' && scanLineList.length > 0 && (
           <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8 }}>
             <p style={{ fontSize: 11, color: '#a78bfa', textTransform: 'uppercase', fontWeight: 700, margin: '0 0 10px' }}>✅ Đã ghi nhận</p>

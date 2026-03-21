@@ -15,7 +15,10 @@ import type {
   CreateOutboundPayload,
   UpdateOutboundPayload,
   OutboundListQuery,
+  ResolveOutboundDamageRequest,
+  ResolveOutboundShortageRequest,
 } from '@/interfaces/outbound';
+import type { Incident } from '@/interfaces/incident';
 
 // ─── List ─────────────────────────────────────────────────────────────────────
 export async function fetchOutboundOrders(params?: OutboundListQuery): Promise<OutboundPagePayload> {
@@ -174,6 +177,12 @@ function normalizePickList(res: any): PickListResponse {
 export async function startQcSession(taskId: number): Promise<void> {
   await api.post(`/outbound/pick-list/${taskId}/start-qc`);
 }
+/** Finalize QC — auto-PASS pending items, tạo DAMAGE incident nếu có FAIL, set SO → ON_HOLD.
+ *  PHẢI gọi trước khi show DispatchPanel để BE tạo incident và block dispatch nếu cần. */
+export async function finalizeQc(taskId: number): Promise<QcSummaryResponse> {
+  const { data } = await api.post<ApiResponse<QcSummaryResponse>>(`/outbound/pick-list/${taskId}/finalize-qc`);
+  return data.data;
+}
 export async function qcScanItem(payload: QcScanRequest): Promise<void> {
   // [FIX] payload dùng pickingTaskId / pickingTaskItemId — khớp với BE QcScanRequest
   await api.post('/outbound/qc-scan', payload);
@@ -201,4 +210,38 @@ export async function uploadPickSignedNote(soId: number, photo: File): Promise<{
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return { url: data.data?.url ?? '' };
+}
+// ─── [V20] Outbound Incident helpers ─────────────────────────────────────────
+
+/** Lấy incidents theo soId — dùng cho banner ON_HOLD / WAITING_STOCK */
+export async function fetchIncidentsBySoId(soId: number): Promise<Incident[]> {
+  try {
+    const { data } = await api.get<ApiResponse<any>>('/incidents', { params: { soId, size: 50 } });
+    const raw = (data.data as any)?.content ?? data.data;
+    return Array.isArray(raw) ? raw : [];
+  } catch { return []; }
+}
+
+/** Manager xử lý hàng hỏng QC — RETURN_SCRAP | ACCEPT */
+export async function resolveOutboundDamage(
+  incidentId: number,
+  payload: ResolveOutboundDamageRequest,
+): Promise<Incident> {
+  const { data } = await api.post<ApiResponse<Incident>>(
+    `/outbound/incidents/${incidentId}/resolve-damage`,
+    payload,
+  );
+  return data.data;
+}
+
+/** Manager xử lý thiếu hàng — WAIT_BACKORDER | CLOSE_SHORT */
+export async function resolveOutboundShortage(
+  incidentId: number,
+  payload: ResolveOutboundShortageRequest,
+): Promise<Incident> {
+  const { data } = await api.post<ApiResponse<Incident>>(
+    `/outbound/incidents/${incidentId}/resolve-shortage`,
+    payload,
+  );
+  return data.data;
 }
