@@ -19,6 +19,7 @@ interface ItemRow {
   skuCode: string;
   skuName: string;
   expectedQty: string;
+  receivedQty: string;
   lotNumber: string;
   manufactureDate: string;
   expiryDate: string;
@@ -50,6 +51,7 @@ function makeItemFromReceivingItem(item: ReceivingItem): ItemRow {
     skuCode: item.skuCode,
     skuName: item.skuName,
     expectedQty: String(item.expectedQty ?? ''),
+    receivedQty: String(item.receivedQty ?? '0'),
     lotNumber: item.lotNumber ?? '',
     manufactureDate: item.manufactureDate ?? '',
     expiryDate: item.expiryDate ?? '',
@@ -63,6 +65,7 @@ function makeEmptyItem(): ItemRow {
     skuCode: '',
     skuName: '',
     expectedQty: '',
+    receivedQty: '0',
     lotNumber: '',
     manufactureDate: '',
     expiryDate: '',
@@ -222,13 +225,18 @@ function ViewItemRow({ item }: { item: ItemRow }) {
         </div>
       )}
       <div className="grid gap-2 items-center px-3 py-3"
-        style={{ gridTemplateColumns: '2.8fr 0.8fr 1fr 1.1fr 1.2fr' }}>
+        style={{ gridTemplateColumns: '2.8fr 0.8fr 0.8fr 1fr 1.1fr 1.2fr' }}>
         <div className="min-w-0">
           <p className="text-xs font-bold text-indigo-700 font-mono truncate">{item.skuCode}</p>
           <p className="text-[11px] text-gray-500 truncate">{item.skuName}</p>
         </div>
         <div className="text-center">
           <span className="text-sm font-bold text-gray-800">{item.expectedQty}</span>
+        </div>
+        <div className="text-center">
+          <span className={`text-sm font-bold ${Number(item.receivedQty) !== Number(item.expectedQty) ? 'text-red-600' : 'text-emerald-600'}`}>
+            {item.receivedQty || '0'}
+          </span>
         </div>
         <div className="text-xs text-gray-600">{item.lotNumber || <span className="text-gray-300">—</span>}</div>
         <div className="text-xs text-gray-600">{item.manufactureDate || <span className="text-gray-300">—</span>}</div>
@@ -658,7 +666,7 @@ export default function ReceivingDetailModal({ open, receiving, onClose, onRefre
 
             {/* Thông tin bổ sung (view mode only) */}
             {!isEditMode && (
-              <div className="grid grid-cols-3 gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100">
+              <div className="grid grid-cols-4 gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100">
                 <div>
                   <p className="text-[11px] text-gray-400 uppercase tracking-wide">Người tạo</p>
                   <p className="text-xs font-medium text-gray-700 mt-0.5">{receiving.createdByName || '—'}</p>
@@ -670,12 +678,15 @@ export default function ReceivingDetailModal({ open, receiving, onClose, onRefre
                   </p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-gray-400 uppercase tracking-wide">Số lượng</p>
+                  <p className="text-[11px] text-gray-400 uppercase tracking-wide">SL dự kiến</p>
                   <p className="text-xs font-bold text-gray-800 mt-0.5">
-                    {receiving.totalExpectedQty ?? 0} dự kiến
-                    {(receiving.totalQty ?? 0) !== (receiving.totalExpectedQty ?? 0) && (
-                      <span className="ml-1 text-indigo-600">/ {receiving.totalQty ?? 0} thực nhận</span>
-                    )}
+                    {receiving.totalExpectedQty ?? 0}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-gray-400 uppercase tracking-wide">SL thực nhận</p>
+                  <p className={`text-xs font-bold mt-0.5 ${(receiving.totalQty ?? 0) !== (receiving.totalExpectedQty ?? 0) ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {receiving.totalQty ?? 0}
                   </p>
                 </div>
               </div>
@@ -709,9 +720,10 @@ export default function ReceivingDetailModal({ open, receiving, onClose, onRefre
 
               {/* Column headers */}
               <div className="grid gap-2 px-3 mb-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest"
-                style={{ gridTemplateColumns: isEditMode ? '2.8fr 0.8fr 1fr 1.1fr 1.2fr 28px' : '2.8fr 0.8fr 1fr 1.1fr 1.2fr' }}>
+                style={{ gridTemplateColumns: isEditMode ? '2.8fr 0.8fr 1fr 1.1fr 1.2fr 28px' : '2.8fr 0.8fr 0.8fr 1fr 1.1fr 1.2fr' }}>
                 <div>SKU</div>
-                <div className="text-center">SL{isEditMode ? ' *' : ''}</div>
+                <div className="text-center">{isEditMode ? 'SL *' : 'SL dự kiến'}</div>
+                {!isEditMode && <div className="text-center">SL thực tế</div>}
                 <div>Số lô</div>
                 <div>Ngày SX</div>
                 <div>Hạn dùng</div>
