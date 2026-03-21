@@ -12,6 +12,7 @@ export const STATUS_BADGE: Record<string, { label: string; className: string }> 
   GRN_APPROVED:     { label: "Đã duyệt",        className: "bg-green-50 text-green-700" },
   GRN_REJECTED:     { label: "Bị từ chối",      className: "bg-red-50 text-red-600" },
   POSTED:           { label: "Đã nhập kho",     className: "bg-blue-50 text-blue-700" },
+  KEEPER_RESCAN:    { label: "Yêu cầu quét lại", className: "bg-orange-50 text-orange-700 ring-1 ring-orange-200" },
 };
 
 const BTN = "inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded border transition-colors whitespace-nowrap disabled:opacity-50";
@@ -69,11 +70,24 @@ export function getReceivingColumns({
     },
     {
       key: "qty",
-      title: "Qty",
+      title: "SL Dự kiến",
       align: "center",
       render: (r) => (
         <span className="text-xs font-semibold text-gray-900">{r.totalExpectedQty ?? 0}</span>
       ),
+    },
+    {
+      key: "actualQty",
+      title: "SL Thực tế",
+      align: "center",
+      render: (r) => {
+        const expected = r.totalExpectedQty ?? 0;
+        const actual = r.totalQty ?? 0;
+        const color = actual === 0 ? 'text-gray-400' : actual !== expected ? 'text-red-600' : 'text-emerald-600';
+        return (
+          <span className={`text-xs font-semibold ${color}`}>{actual}</span>
+        );
+      },
     },
     {
       key: "status",
@@ -167,12 +181,14 @@ export function getReceivingColumns({
             );
           }
 
-          // SUBMITTED: Keeper được phép quét QR
-          if (r.status === "SUBMITTED") {
+          // SUBMITTED hoặc KEEPER_RESCAN: Keeper được phép quét QR
+          if (r.status === "SUBMITTED" || r.status === "KEEPER_RESCAN") {
             return (
-              <button onClick={() => onScan(r)} className={BTN_INDIGO}>
-                <span className={ICO}>qr_code_scanner</span>
-                Quét QR
+              <button onClick={() => onScan(r)} className={r.status === "KEEPER_RESCAN"
+                ? `${BTN} bg-orange-600 border-orange-600 text-white hover:bg-orange-700 font-semibold`
+                : BTN_INDIGO}>
+                <span className={ICO}>{r.status === "KEEPER_RESCAN" ? "refresh" : "qr_code_scanner"}</span>
+                {r.status === "KEEPER_RESCAN" ? "Quét lại" : "Quét QR"}
               </button>
             );
           }

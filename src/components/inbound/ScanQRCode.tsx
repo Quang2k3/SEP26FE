@@ -33,14 +33,15 @@ interface Props {
 //   Keeper: SUBMITTED → scan QR → xác nhận trên phone → BE chuyển SUBMITTED → PENDING_COUNT
 //   QC:     PENDING_COUNT → scan QC → xác nhận → QC_APPROVED hoặc PENDING_INCIDENT
 const FINALIZED_STATUS: Record<string, string[]> = {
-  // Keeper scan ở trạng thái SUBMITTED → sau finalize BE chuyển sang PENDING_COUNT
-  KEEPER: ['PENDING_COUNT', 'PENDING_INCIDENT', 'QC_APPROVED', 'GRN_CREATED', 'PENDING_APPROVAL', 'GRN_APPROVED', 'POSTED'],
-  // QC scan từ PENDING_COUNT → kết quả QC_APPROVED hoặc PENDING_INCIDENT
-  QC:     ['QC_APPROVED', 'PENDING_INCIDENT', 'GRN_CREATED', 'PENDING_APPROVAL', 'GRN_APPROVED', 'POSTED'],
+  // Keeper scan ở trạng thái SUBMITTED hoặc KEEPER_RESCAN
+  KEEPER: ['PENDING_COUNT', 'PENDING_INCIDENT', 'QC_APPROVED', 'GRN_CREATED', 'PENDING_APPROVAL', 'GRN_APPROVED', 'POSTED', 'KEEPER_RESCAN'],
+  // QC scan từ PENDING_COUNT → kết quả QC_APPROVED hoặc PENDING_INCIDENT hoặc KEEPER_RESCAN
+  QC:     ['QC_APPROVED', 'PENDING_INCIDENT', 'GRN_CREATED', 'PENDING_APPROVAL', 'GRN_APPROVED', 'POSTED', 'KEEPER_RESCAN'],
 };
 
 const FINALIZED_MSG: Record<string, string> = {
   PENDING_COUNT:    ' Đã gửi cho QC — chờ kiểm đếm',
+  KEEPER_RESCAN:    ' Lệch số lượng QC/Keeper — chờ Keeper quét lại',
   PENDING_INCIDENT: ' Kiểm đếm xong — phát hiện sự cố, chờ xử lý',
   QC_APPROVED:      ' QC xác nhận đạt — có thể tạo GRN',
   GRN_CREATED:      ' Kiểm đếm xong — GRN đã được tạo',
@@ -58,6 +59,7 @@ export default function ScanQRCode({ receivingId, userRole = 'KEEPER', onDone, o
   const [isFinalized,  setIsFinalized]  = useState(false);
   const [finalStatus,  setFinalStatus]  = useState<string | null>(null);
   const isFinalizedRef = useRef(false); // ref để cleanup effect đọc được giá trị mới nhất
+  const finalStatusRef  = useRef<string | null>(null); // ref để cleanup biết status cuối
 
   const pollingRef       = useRef<ReturnType<typeof setInterval> | null>(null);
   const statusPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -107,6 +109,7 @@ export default function ScanQRCode({ receivingId, userRole = 'KEEPER', onDone, o
         clearInterval(statusPollingRef.current!);
         clearInterval(pollingRef.current!);
         isFinalizedRef.current = true;
+        finalStatusRef.current = order.status;
         setIsFinalized(true);
         setFinalStatus(order.status);
         const msg = FINALIZED_MSG[order.status] ?? `Hoàn tất — trạng thái: ${order.status}`;
@@ -131,6 +134,7 @@ export default function ScanQRCode({ receivingId, userRole = 'KEEPER', onDone, o
     setQrValue(null);
     setScannedLines([]);
     isFinalizedRef.current = false;
+    finalStatusRef.current = null;
     setIsFinalized(false);
     setFinalStatus(null);
     stopPolling();
@@ -170,9 +174,13 @@ export default function ScanQRCode({ receivingId, userRole = 'KEEPER', onDone, o
     return () => {
       mountedRef.current = false;
       stopPolling();
-      // Chỉ xóa session khi đã finalized — giữ session sống để finalizeCount vẫn sync được
+      // Xóa session khi đã finalized, NGOẠI TRỪ KEEPER_RESCAN
+      // vì Keeper vẫn cần QC session trong Redis để đối chiếu khi rescan
       const sid = sessionIdRef.current;
-      if (sid && isFinalizedRef.current) deleteSession(sid).catch(() => {});
+      const fStatus = finalStatusRef.current;
+      if (sid && isFinalizedRef.current && fStatus !== 'KEEPER_RESCAN') {
+        deleteSession(sid).catch(() => {});
+      }
     };
   }, [receivingId]); // eslint-disable-line
 

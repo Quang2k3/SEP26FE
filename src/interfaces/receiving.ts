@@ -3,6 +3,10 @@ export type ReceivingStatus =
   | "DRAFT"
   | "PENDING_COUNT"     // Keeper đã submit → QC bắt đầu kiểm đếm (scan) ở bước này
   | "SUBMITTED"         // Keeper finalizeCount (ít dùng) — cũng chấp nhận QC scan
+  | "PENDING_QC"        // Keeper đã kiểm đếm xong → chờ QC
+  | "RECONCILIATION_REQUIRED" // QC vs Keeper lệch → cần đối soát (legacy)
+  | "QC_CONFIRMED"      // QC & Keeper đã thống nhất số lượng
+  | "KEEPER_RESCAN"     // QC lệch Keeper → yêu cầu Keeper quét lại
   | "PENDING_INCIDENT"
   | "QC_APPROVED"
   | "GRN_CREATED"       // GRN đã tạo, chờ Keeper gửi Manager
