@@ -106,6 +106,7 @@ api.interceptors.response.use(
 
     if (status === 403) {
       dedupToast('error', serverMessage || 'Bạn không có quyền thực hiện thao tác này.');
+      (error as any)._toastedByInterceptor = true;
     } else if (status === 404) {
       // 404 cho session đã bị xóa — silent
       if (url.includes('/receiving-sessions/')) return Promise.reject(error);
@@ -121,6 +122,9 @@ api.interceptors.response.use(
       dedupToast('error', serverMessage || 'Lỗi hệ thống. Vui lòng thử lại sau.');
     } else if (status && status >= 400 && message) {
       dedupToast('error', message);
+      // [BUG-FIX] Đánh dấu error đã được toast bởi interceptor.
+      // Để catch block ở component KHÔNG toast lại → tránh double toast.
+      (error as any)._toastedByInterceptor = true;
     }
 
     return Promise.reject(error);

@@ -28,6 +28,7 @@ export interface Incident {
   receivingId: number;
   receivingCode: string;
   createdAt: string;
+  soId?: number | null;    // [V20] outbound incidents
   items?: IncidentItem[];
 }
 

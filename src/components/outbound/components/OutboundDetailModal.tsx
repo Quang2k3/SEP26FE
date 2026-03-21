@@ -28,12 +28,14 @@ import {
   confirmPickedTask,
   startQcSession,
   qcScanItem,
+  finalizeQc,
   fetchQcSummary,
   fetchDispatchNote,
   confirmDispatch,
   uploadPickSignedNote,
   buildOrderFromListItem,
   fetchOutboundDetail,
+  fetchIncidentsBySoId,  // [V20]
 } from '@/services/outboundService';
 import type {
   OutboundListItem,
@@ -44,9 +46,10 @@ import type {
   QcResult,
 } from '@/interfaces/outbound';
 import { OUTBOUND_STATUS_BADGE } from '@/interfaces/outbound';
-// [NEW] Import nút tải Phiếu Xuất Kho PDF
 import DispatchPdfButton from '@/components/outbound/DispatchPdfButton';
 import PickListPdfButton from '@/components/outbound/PickListPdfButton';
+// [V20] import IncidentDetailModal để mở từ banner ON_HOLD / WAITING_STOCK
+import IncidentDetailModal from '@/components/manager-dashboard/incident/components/IncidentDetailModal';
 
 function getUserRole(): string {
   if (typeof window === 'undefined') return 'KEEPER';
@@ -88,8 +91,10 @@ function ConfirmModal({
   if (!open) return null;
   return (
     <Portal>
-      <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
+      <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden"
+          onClick={(e) => e.stopPropagation()}>
           <div className="px-6 pt-6 pb-4 flex flex-col items-center text-center gap-3">
             <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center">
               <span className={`material-symbols-outlined text-3xl ${iconColor}`}>{icon}</span>
@@ -104,7 +109,7 @@ function ConfirmModal({
               className="flex-1 py-2.5 text-sm font-semibold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-50">
               Huỷ
             </button>
-            <button onClick={onConfirm} disabled={loading}
+            <button onClick={(e) => { e.stopPropagation(); onConfirm(); }} disabled={loading}
               className={`flex-1 py-2.5 text-sm font-semibold text-white rounded-xl flex items-center justify-center gap-2 disabled:opacity-60 ${confirmColor}`}>
               {loading && <Spin />}
               {loading ? 'Đang xử lý...' : confirmLabel}
@@ -160,27 +165,94 @@ function RejectModal({ code, onConfirm, onCancel, loading }: {
   );
 }
 
+// ─── [V20] OutboundStatusBanner — banner ON_HOLD / WAITING_STOCK ───────────────
+function OutboundStatusBanner({
+  status,
+  soId,
+  onIncidentClick,
+}: {
+  status: string;
+  soId: number;
+  onIncidentClick: (incident: any) => void;
+}) {
+  const [incidents, setIncidents] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    if (status !== 'ON_HOLD' && status !== 'WAITING_STOCK') return;
+    fetchIncidentsBySoId(soId).then(setIncidents).catch(() => {});
+  }, [soId, status]);
+
+  if (status === 'ON_HOLD') {
+    return (
+      <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-red-500 text-[18px]">warning</span>
+          <p className="text-sm font-bold text-red-700">Tạm giữ — QC phát hiện hàng hỏng</p>
+        </div>
+        <p className="text-xs text-red-600">Manager cần xử lý Incident DAMAGE để tiếp tục.</p>
+        {/* [BUG-FIX] Chỉ hiển thị DAMAGE incidents trong banner ON_HOLD (QC lỗi).
+             Trước đây filter chỉ theo status=OPEN → hiển thị cả SHORTAGE/DISCREPANCY
+             không liên quan đến QC fail, gây confuse cho Keeper. */}
+        {incidents.filter((i: any) => i.status === 'OPEN' && i.incidentType === 'DAMAGE').map((inc: any) => (
+          <button key={inc.incidentId} onClick={() => onIncidentClick(inc)}
+            className="w-full py-2 px-3 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg flex items-center justify-between">
+            <span>📋 {inc.incidentCode} — Hàng hỏng (DAMAGE)</span>
+            <span className="text-red-200">Xử lý →</span>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  if (status === 'WAITING_STOCK') {
+    return (
+      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-amber-500 text-[18px]">hourglass_empty</span>
+          <p className="text-sm font-bold text-amber-700">Đang chờ hàng bù nhập kho</p>
+        </div>
+        <p className="text-xs text-amber-600">
+          Khi hàng đã nhập đủ, Keeper quay lại đây bấm <strong>Phân bổ tồn kho</strong> để tiếp tục.
+        </p>
+        {/* [BUG-FIX] Chỉ hiển thị SHORTAGE incidents trong banner WAITING_STOCK. */}
+        {incidents.filter((i: any) => i.status === 'OPEN' && i.incidentType === 'SHORTAGE').map((inc: any) => (
+          <button key={inc.incidentId} onClick={() => onIncidentClick(inc)}
+            className="w-full py-2 px-3 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg flex items-center justify-between">
+            <span>📋 {inc.incidentCode} — Thiếu hàng</span>
+            <span className="text-amber-200">Xử lý →</span>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  return null;
+}
+
 // ─── Step 1: Allocate Panel ─────────────────────────────────────────────────────
-function AllocatePanel({ item, onDone }: { item: OutboundListItem; onDone: () => void }) {
+function AllocatePanel({ item, onDone, onReportShortageSuccess }: { item: OutboundListItem; onDone: () => void; onReportShortageSuccess?: () => void }) {
   const [loading, setLoading] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showShortageConfirm, setShowShortageConfirm] = useState(false);
 
+  const allocatingRef = React.useRef(false);
   const handle = async () => {
+    // [BUG-FIX] Guard ref chặn concurrent calls (double-click, event bubble)
+    if (allocatingRef.current) return;
+    allocatingRef.current = true;
     setShowConfirm(false);
+    setLoading(true);
     try {
-      setLoading(true);
       const res = await allocateStock(item.documentId, item.orderType);
       setResult(res);
 
-      // Kiểm tra HSD < 60 ngày trong các lot được allocate
       const allocations: any[] = res.allocations ?? [];
       const nearExpiryLots = allocations.filter(line => {
         if (!line.expiryDate) return false;
         const info = getExpiryInfo(line.expiryDate);
-        return info?.level === 'expired'; // expired = dưới 60 ngày
+        return info?.level === 'expired';
       });
 
       if (nearExpiryLots.length > 0) {
@@ -189,7 +261,6 @@ function AllocatePanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
           return `${l.skuCode} (${info?.label}, HSD: ${new Date(l.expiryDate).toLocaleDateString('vi-VN')})`;
         }).join(', ');
         toast.error(`Không thể xuất — ${nearExpiryLots.length} lot có HSD dưới 60 ngày: ${details}`, { duration: 8000 });
-        // Reset result để block tiến tiếp
         setResult({ ...res, _blockedByExpiry: true, nearExpiryLots });
         return;
       }
@@ -197,26 +268,49 @@ function AllocatePanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
       if ((res as any).fullyAllocated) {
         toast.success('Phân bổ thành công! Bạn có thể tạo Pick List.');
       } else {
-        // [FIX-BUG-1-FE] PARTIALLY_ALLOCATED: KHÔNG advance localStatus → ALLOCATED.
-        // Backend đã fix để chỉ cho tạo Pick List khi ALLOCATED, nhưng FE cũng phải
-        // giữ đúng localStatus để không hiện nút Tạo Pick List khi chưa đủ tồn.
         toast('⚠️ Phân bổ một phần — một số SKU thiếu hàng. Không thể tạo Pick List cho đến khi đủ tồn kho.', { icon: '⚠️', duration: 6000 });
-        return; // KHÔNG gọi onDone() — giữ nguyên UI ở trạng thái AllocatePanel
+        return;
       }
     } catch (err: unknown) {
-      // [FIX] Hiển thị lỗi allocate từ BE
-      const msg = (err as any)?.response?.data?.message ?? (err as any)?.message ?? 'Phân bổ tồn kho thất bại.';
-      toast.error(msg, { duration: 6000 });
-    } finally { setLoading(false); }
+      // [BUG-FIX] Interceptor trong axios.ts đã toast lỗi 4xx/5xx.
+      // Chỉ toast ở đây nếu interceptor chưa toast (network error, unknown error).
+      if (!(err as any)._toastedByInterceptor) {
+        const msg = (err as any)?.response?.data?.message ?? (err as any)?.message ?? 'Phân bổ tồn kho thất bại.';
+        toast.error(msg, { duration: 6000 });
+      }
+    } finally {
+      setLoading(false);
+      allocatingRef.current = false;
+    }
   };
 
   const handleReportShortage = async () => {
+    // [BUG-FIX] Đóng confirm modal TRƯỚC khi set reporting=true để tránh
+    // double-render làm component unmount giữa chừng rồi stale closure catch
+    // vẫn chạy → toast "thất bại" xuất hiện cùng lúc với toast "thành công".
     setShowShortageConfirm(false);
+    setReporting(true);
+    let succeeded = false;
     try {
-      setReporting(true);
       await reportShortage(item.documentId, item.orderType);
+      succeeded = true;
+    } catch (e: any) {
+      // [BUG-FIX] Chỉ toast nếu interceptor chưa toast
+      if (!e?._toastedByInterceptor) {
+        const msg = e?.response?.data?.message;
+        toast.error(msg || 'Gửi báo cáo thất bại');
+      }
+    } finally {
+      setReporting(false);
+    }
+    // Chỉ cập nhật state nếu thành công — tách khỏi try/catch để tránh
+    // onRefresh() trigger re-render làm catch của lần gọi khác fire nhầm.
+    if (succeeded) {
       toast.success('✅ Đã gửi báo cáo thiếu hàng lên Manager!');
-    } catch { } finally { setReporting(false); }
+      // [BUG-FIX] setLocalStatus thuộc scope của OutboundDetailModal (component cha),
+      // không tồn tại trong AllocatePanel → ReferenceError. Dùng callback prop thay thế.
+      onReportShortageSuccess?.();
+    }
   };
 
   if (!result) {
@@ -266,7 +360,6 @@ function AllocatePanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
 
   return (
     <div className="space-y-3">
-      {/* ── Expiry block banner ── */}
       {blockedByExpiry && (
         <div className="rounded-xl border border-red-300 overflow-hidden">
           <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border-b border-red-200">
@@ -381,6 +474,8 @@ function AllocatePanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
             {reporting && <Spin />}
             {reporting ? 'Đang gửi báo cáo...' : 'Báo thiếu hàng lên Manager'}
           </button>
+          {/* [BUG-FIX] Note: nút này sẽ bị ẩn khi SO chuyển sang ON_HOLD sau khi báo thiếu thành công.
+              Guard BE cũng chặn duplicate nếu FE vẫn hiển thị nút (ví dụ tab cũ chưa reload). */}
           <ConfirmModal open={showShortageConfirm} icon="report" iconColor="text-red-500"
             title="Xác nhận báo thiếu hàng?" confirmLabel="Báo thiếu hàng" confirmColor="bg-red-600 hover:bg-red-700"
             description="Hệ thống sẽ tạo Incident báo cáo danh sách SKU thiếu. Manager sẽ nhận thông báo và xử lý."
@@ -410,9 +505,10 @@ function PickListGeneratePanel({ item, onDone, onCreated }: {
       toast.success('Tạo Pick List thành công!');
       onDone();
     } catch (err: unknown) {
-      // [FIX] Hiển thị lỗi từ BE — ví dụ: "Đơn hàng phải ALLOCATED trước khi tạo Pick List"
-      const msg = (err as any)?.response?.data?.message ?? (err as any)?.message ?? 'Tạo Pick List thất bại.';
-      toast.error(msg, { duration: 8000 });
+      if (!(err as any)._toastedByInterceptor) {
+        const msg = (err as any)?.response?.data?.message ?? (err as any)?.message ?? 'Tạo Pick List thất bại.';
+        toast.error(msg, { duration: 8000 });
+      }
     } finally { setLoading(false); }
   };
 
@@ -485,18 +581,13 @@ function PickListTable({ pickList }: { pickList: PickListResponse }) {
 }
 
 // ─── Pick Note Upload Block ────────────────────────────────────────────────────
-// Hiện sau khi nhân viên xác nhận lấy đủ hàng (isFinalized).
-// Cho phép nhân viên chụp ảnh phiếu lấy hàng đã ký qua QR → upload lên hệ thống.
 function PickNoteUploadBlock({ soId }: { soId: number }) {
   const feBase = process.env.NEXT_PUBLIC_FE_BASE_URL ?? 'https://cleanhousewms.id.vn';
   const pickSignUrl = `${feBase}/sign-note/${soId}?type=pick`;
-
   const [pickNoteUrl, setPickNoteUrl] = React.useState<string | null>(null);
 
-  // Poll mỗi 2s để detect khi Keeper upload ảnh từ điện thoại.
-  // BroadcastChannel không hoạt động cross-device nên cần poll API.
   React.useEffect(() => {
-    if (pickNoteUrl) return; // đã có ảnh → dừng poll
+    if (pickNoteUrl) return;
     const interval = setInterval(async () => {
       try {
         const { data } = await (await import('@/config/axios')).default
@@ -662,14 +753,11 @@ function PickingPanel({ item, taskId: initTaskId, onDone }: {
             </p>
           </div>
         </div>
-        {/* Nút in phiếu lấy hàng */}
         <PickListPdfButton soId={item.documentId} soCode={item.documentCode} />
       </div>
 
-      {/* QR ký — luôn hiện để Keeper chụp ảnh phiếu đã ký (trước hoặc sau khi quét barcode) */}
       <PickNoteUploadBlock soId={item.documentId} />
 
-      {/* Banner hoàn tất khi Keeper đã quét xong barcode */}
       {isFinalized && (
         <div className="p-4 bg-emerald-50 border-2 border-emerald-200 rounded-xl flex items-center gap-3">
           <span className="material-symbols-outlined text-emerald-600 text-2xl">check_circle</span>
@@ -680,7 +768,6 @@ function PickingPanel({ item, taskId: initTaskId, onDone }: {
         </div>
       )}
 
-      {/* QR quét barcode — chỉ hiện khi chưa hoàn tất */}
       {!isFinalized && (
         <div className="border border-blue-100 rounded-xl overflow-hidden">
           <div className="px-4 py-2.5 bg-blue-50 border-b flex items-center justify-between">
@@ -1048,6 +1135,97 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
   );
 }
 
+// ─── [BUG-FIX GAP 4] QcFinalizeOrDispatch ────────────────────────────────────────
+// Gọi finalizeQc khi QC xong. Nếu có FAIL → SO chuyển ON_HOLD → không show Dispatch.
+// Nếu pass sạch → show DispatchPanel bình thường.
+function QcFinalizeOrDispatch({
+  taskId, item, onDispatched, onOnHold,
+}: {
+  taskId: number;
+  item: OutboundListItem;
+  onDispatched: () => void;
+  onOnHold: () => void;
+}) {
+  const [state, setState] = React.useState<'finalizing' | 'dispatch' | 'on_hold' | 'error'>('finalizing');
+  const [failCount, setFailCount] = React.useState(0);
+  const finalizedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (finalizedRef.current) return;
+    finalizedRef.current = true;
+    (async () => {
+      try {
+        const summary = await finalizeQc(taskId);
+        const fails = summary.failCount ?? 0;
+        setFailCount(fails);
+        if (fails > 0) {
+          // BE đã set SO → ON_HOLD và tạo DAMAGE incident
+          setState('on_hold');
+          toast.error(
+            `⚠️ Có ${fails} item FAIL — Đơn bị tạm giữ. Manager cần xử lý trước khi xuất kho.`,
+            { duration: 8000 }
+          );
+          onOnHold();
+        } else {
+          setState('dispatch');
+        }
+      } catch (err: any) {
+        // Nếu lỗi (vd đã finalize rồi) → thử lấy summary để biết trạng thái thực
+        try {
+          const { fetchQcSummary: getSum } = await import('@/services/outboundService');
+          const s = await getSum(taskId);
+          if ((s.failCount ?? 0) > 0) {
+            setState('on_hold');
+            onOnHold();
+          } else {
+            setState('dispatch');
+          }
+        } catch {
+          setState('error');
+        }
+      }
+    })();
+  }, [taskId]);
+
+  if (state === 'finalizing') {
+    return (
+      <div className="p-4 bg-purple-50 rounded-xl border border-purple-100 flex items-center gap-3">
+        <Spin />
+        <p className="text-sm text-purple-700 font-medium">Đang xử lý kết quả QC...</p>
+      </div>
+    );
+  }
+
+  if (state === 'on_hold') {
+    return (
+      <div className="p-4 bg-red-50 rounded-xl border-2 border-red-200 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-red-500 text-xl">warning</span>
+          <p className="text-sm font-bold text-red-800">
+            ⚠️ Có {failCount} item FAIL — Không thể xuất kho
+          </p>
+        </div>
+        <p className="text-xs text-red-600 ml-7">
+          Manager đã nhận báo cáo hàng lỗi. Chờ Manager xem xét và xử lý trước khi tiếp tục.
+        </p>
+      </div>
+    );
+  }
+
+  if (state === 'error') {
+    return (
+      <div className="p-3 bg-amber-50 rounded-xl border border-amber-200">
+        <p className="text-xs text-amber-700 font-semibold">
+          Không thể xác nhận kết quả QC. Vui lòng tải lại trang.
+        </p>
+      </div>
+    );
+  }
+
+  // state === 'dispatch': tất cả PASS
+  return <DispatchPanel item={item} onDone={onDispatched} />;
+}
+
 // ─── Step 5: Dispatch Panel ─────────────────────────────────────────────────────
 function DispatchPanel({ item, onDone }: { item: OutboundListItem; onDone: () => void }) {
   const [note, setNote] = useState<DispatchNoteResponse | null>(null);
@@ -1063,8 +1241,6 @@ function DispatchPanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
       toast.success('Xuất kho thành công!');
       onDone();
     } catch (err: unknown) {
-      // [FIX] Hiển thị lỗi từ BE thay vì nuốt im lặng
-      // BE có thể throw 400: chưa allocate, còn incident OPEN, chưa QC scan đủ
       const msg = (err as any)?.response?.data?.message
         ?? (err as any)?.message
         ?? 'Xuất kho thất bại. Vui lòng kiểm tra lại.';
@@ -1127,7 +1303,8 @@ function DispatchPanel({ item, onDone }: { item: OutboundListItem; onDone: () =>
 // ─── Constants ──────────────────────────────────────────────────────────────────
 const STATUS_ORDER: Record<string, number> = {
   DRAFT: 0, PENDING_APPROVAL: 1, APPROVED: 2, ALLOCATED: 3,
-  PICKING: 4, QC_SCAN: 5, DISPATCHED: 6, REJECTED: 7, CANCELLED: 8,
+  PICKING: 4, QC_SCAN: 5, ON_HOLD: 5, WAITING_STOCK: 2,
+  DISPATCHED: 6, REJECTED: 7, CANCELLED: 8,
 };
 
 const STEPS = [
@@ -1141,7 +1318,8 @@ const STEPS = [
 ];
 
 function FlowProgress({ current }: { current: string }) {
-  const idx = STEPS.findIndex(s => s.status === current);
+  const displayStatus = current === 'ON_HOLD' ? 'QC_SCAN' : current === 'WAITING_STOCK' ? 'APPROVED' : current;
+  const idx = STEPS.findIndex(s => s.status === displayStatus);
   if (idx < 0 || current === 'REJECTED' || current === 'CANCELLED') return null;
   return (
     <div className="flex items-center overflow-x-auto pb-0.5 mt-2">
@@ -1194,8 +1372,10 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
   const [orderDetail, setOrderDetail] = useState<any>(null);
   const role = getUserRole();
 
-  // [FIX] Khi modal mở fresh ở QC_SCAN + taskId load xong → init qcDone từ BE
-  // Tránh: qcDone=false dù QC đã xong → Dispatch button ẩn sai
+  // [V20] state cho IncidentDetailModal từ banner
+  const [selectedIncident, setSelectedIncident] = useState<any>(null);
+  const [showIncidentModal, setShowIncidentModal] = useState(false);
+
   useEffect(() => {
     if (!taskId || localStatus !== 'QC_SCAN' || qcDone) return;
     fetchQcSummary(taskId)
@@ -1233,21 +1413,15 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
       .catch(() => {});
   }, [item?.documentId]);
 
-  // Poll 1.5s khi DISPATCHED + chưa có ảnh ký.
-  // Khi phát hiện signedNoteUrl → chỉ update orderDetail state (modal vẫn mở).
   useEffect(() => {
     if (localStatus !== 'DISPATCHED' || !item) return;
     if (orderDetail?.signedNoteUrl) return;
-
     const interval = setInterval(async () => {
       try {
         const d = await fetchOutboundDetail(item.documentId, item.orderType);
-        if (d?.signedNoteUrl) {
-          setOrderDetail(d); // chỉ update state, modal không đóng
-        }
+        if (d?.signedNoteUrl) setOrderDetail(d);
       } catch { /* silent */ }
     }, 1500);
-
     return () => clearInterval(interval);
   }, [localStatus, item?.documentId, orderDetail?.signedNoteUrl]);
 
@@ -1256,8 +1430,6 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
   const isSO = item.orderType === 'SALES_ORDER';
   const badge = OUTBOUND_STATUS_BADGE[localStatus as keyof typeof OUTBOUND_STATUS_BADGE]
     ?? { label: localStatus, className: 'bg-gray-100 text-gray-500' };
-
-  // [NEW] Lấy dispatchPdfUrl từ orderDetail (BE trả về sau khi DISPATCHED)
   const dispatchPdfUrl: string | null = orderDetail?.dispatchPdfUrl ?? null;
 
   const handleSubmit = async () => {
@@ -1295,19 +1467,62 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
   };
 
   const renderContent = () => {
-  const handleDelete = async () => {
-    try {
-      setDeleting(true);
-      setShowDeleteConfirm(false);
-      if (item.orderType === 'SALES_ORDER') await deleteSalesOrder(item.documentId);
-      else await deleteTransfer(item.documentId);
-      toast.success('Đã xoá lệnh xuất kho!');
-      onClose(); onRefresh();
-    } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.message ?? 'Xoá thất bại.';
-      toast.error(msg, { duration: 6000 });
-    } finally { setDeleting(false); }
-  };
+    const handleDelete = async () => {
+      try {
+        setDeleting(true);
+        setShowDeleteConfirm(false);
+        if (item.orderType === 'SALES_ORDER') await deleteSalesOrder(item.documentId);
+        else await deleteTransfer(item.documentId);
+        toast.success('Đã xoá lệnh xuất kho!');
+        onClose(); onRefresh();
+      } catch (err: unknown) {
+        if (!(err as any)._toastedByInterceptor) {
+          const msg = (err as any)?.response?.data?.message ?? 'Xoá thất bại.';
+          toast.error(msg, { duration: 6000 });
+        }
+      } finally { setDeleting(false); }
+    };
+
+    // [V20] Trạng thái ON_HOLD — chờ Manager xử lý DAMAGE
+    if (localStatus === 'ON_HOLD') {
+      return (
+        <div className="space-y-3">
+          <OutboundStatusBanner
+            status="ON_HOLD"
+            soId={item.documentId}
+            onIncidentClick={(inc) => { setSelectedIncident(inc); setShowIncidentModal(true); }}
+          />
+          <div className="p-4 bg-red-50 rounded-xl border border-red-100">
+            <p className="text-sm text-red-700 font-medium">
+              {role === 'MANAGER'
+                ? 'Bấm vào Incident bên trên để xử lý hàng hỏng.'
+                : 'Đơn đang tạm giữ — chờ Manager xử lý Incident QC FAIL.'}
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // [V20] Trạng thái WAITING_STOCK — chờ hàng bù nhập kho
+    if (localStatus === 'WAITING_STOCK') {
+      return (
+        <div className="space-y-3">
+          <OutboundStatusBanner
+            status="WAITING_STOCK"
+            soId={item.documentId}
+            onIncidentClick={(inc) => { setSelectedIncident(inc); setShowIncidentModal(true); }}
+          />
+          {role === 'KEEPER' && (
+            <AllocatePanel item={item} onDone={() => { setLocalStatus('ALLOCATED'); onRefresh(); }} onReportShortageSuccess={() => { setLocalStatus('ON_HOLD'); onRefresh(); }} />
+          )}
+          {role === 'MANAGER' && (
+            <div className="p-4 bg-amber-50 rounded-xl border border-amber-100">
+              <p className="text-sm text-amber-700 font-medium">Chờ Keeper Allocate lại sau khi hàng bù đã nhập kho.</p>
+            </div>
+          )}
+        </div>
+      );
+    }
 
     if (localStatus === 'DRAFT') {
       if (role === 'KEEPER') return (
@@ -1331,16 +1546,10 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
               {deleting ? 'Đang xoá...' : 'Xoá'}
             </button>
             <ConfirmModal
-              open={showDeleteConfirm}
-              icon="delete_forever"
-              iconColor="text-red-500"
-              title="Xoá lệnh xuất kho?"
-              confirmLabel="Xoá"
-              confirmColor="bg-red-600 hover:bg-red-700"
+              open={showDeleteConfirm} icon="delete_forever" iconColor="text-red-500"
+              title="Xoá lệnh xuất kho?" confirmLabel="Xoá" confirmColor="bg-red-600 hover:bg-red-700"
               description={`Bạn chắc chắn muốn xoá lệnh "${item.documentCode}"? Thao tác này không thể hoàn tác.`}
-              loading={deleting}
-              onConfirm={handleDelete}
-              onCancel={() => setShowDeleteConfirm(false)}
+              loading={deleting} onConfirm={handleDelete} onCancel={() => setShowDeleteConfirm(false)}
             />
           </div>
         </div>
@@ -1388,7 +1597,7 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
     }
 
     if (localStatus === 'APPROVED') {
-      if (role === 'KEEPER') return <AllocatePanel item={item} onDone={() => { setLocalStatus('ALLOCATED'); onRefresh(); }} />;
+      if (role === 'KEEPER') return <AllocatePanel item={item} onDone={() => { setLocalStatus('ALLOCATED'); onRefresh(); }} onReportShortageSuccess={() => { setLocalStatus('ON_HOLD'); onRefresh(); }} />;
       if (role === 'MANAGER') return (
         <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
           <p className="text-sm text-emerald-800 font-medium">✅ Đã duyệt. Chờ Keeper phân bổ tồn kho.</p>
@@ -1442,11 +1651,18 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
                 onRefresh();
               }}
             />
-            {/* [FIX] Chỉ hiện Dispatch khi QC đã xong (qcDone=true).
-                 Trước đây: (qcDone || localStatus==='QC_SCAN') → luôn hiện ngay,
-                 user bấm Dispatch khi chưa scan xong → BE throw 400 → FE nuốt lỗi im lặng */}
+            {/* [BUG-FIX GAP 4] Khi QC xong (qcDone), phải gọi finalizeQc trước.
+                 finalizeQc: auto-PASS items còn pending, tạo DAMAGE incident nếu có FAIL,
+                 set SO → ON_HOLD. Sau đó reload localStatus từ server.
+                 - Nếu fail=0 → show DispatchPanel
+                 - Nếu fail>0 → SO đã ON_HOLD, onRefresh() sẽ cập nhật localStatus → ON_HOLD banner hiện */}
             {qcDone && role === 'KEEPER' && isSO && (
-              <DispatchPanel item={item} onDone={() => { setLocalStatus('DISPATCHED'); onRefresh(); }} />
+              <QcFinalizeOrDispatch
+                taskId={taskId}
+                item={item}
+                onDispatched={() => { setLocalStatus('DISPATCHED'); onRefresh(); }}
+                onOnHold={() => { setLocalStatus('ON_HOLD'); onRefresh(); }}
+              />
             )}
             {!qcDone && role === 'KEEPER' && isSO && (
               <div className="p-3 bg-purple-50 rounded-xl border border-purple-100 text-center">
@@ -1470,7 +1686,6 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
       );
     }
 
-    // DISPATCHED — Phiếu xuất kho + QR chụp ảnh ký
     if (localStatus === 'DISPATCHED') {
       const feBase = process.env.NEXT_PUBLIC_FE_BASE_URL ?? 'https://cleanhousewms.id.vn';
       const signUrl = `${feBase}/sign-note/${item.documentId}`;
@@ -1479,30 +1694,19 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
 
       return (
         <div className="space-y-3">
-          {/* Status */}
           <div className="p-4 bg-teal-50 rounded-xl border border-teal-100">
             <p className="text-sm font-bold text-teal-800">Đã xuất kho thành công</p>
             <p className="text-xs text-teal-600 mt-1">Tồn kho đã được trừ khỏi Z-OUT. Lệnh xuất hoàn tất.</p>
           </div>
-
-          {/* Phiếu xuất kho PDF */}
           {isSO && (
             <div className="p-4 bg-white rounded-xl border border-gray-200">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Phiếu xuất kho</p>
-              <DispatchPdfButton
-                soId={item.documentId}
-                soCode={item.documentCode}
-                existingPdfUrl={dispatchPdfUrl}
-              />
+              <DispatchPdfButton soId={item.documentId} soCode={item.documentCode} existingPdfUrl={dispatchPdfUrl} />
             </div>
           )}
-
-          {/* Ảnh phiếu lấy hàng đã ký (nhân viên kho) */}
           {isSO && (
             <div className="p-4 bg-white rounded-xl border border-gray-200 space-y-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Ảnh phiếu lấy hàng đã ký
-              </p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Ảnh phiếu lấy hàng đã ký</p>
               {orderDetail?.pickSignedNoteUrl ? (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
@@ -1528,16 +1732,10 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
               )}
             </div>
           )}
-
-          {/* QR + ảnh ký phiếu xuất kho */}
           {isSO && (
             <div className="p-4 bg-white rounded-xl border border-gray-200 space-y-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Phiếu xuất kho đã ký
-              </p>
-
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Phiếu xuất kho đã ký</p>
               {signedNoteUrl ? (
-                /* Đã có ảnh ký — hiện ảnh */
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-emerald-500 text-[16px]">verified</span>
@@ -1549,16 +1747,10 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
                     )}
                   </div>
                   <a href={signedNoteUrl} target="_blank" rel="noreferrer" className="block">
-                    <img
-                      src={signedNoteUrl}
-                      alt="Phiếu xuất kho đã ký"
-                      className="w-full rounded-xl border border-gray-200 object-contain max-h-64 bg-gray-50 hover:opacity-90 transition-opacity cursor-zoom-in"
-                    />
+                    <img src={signedNoteUrl} alt="Phiếu xuất kho đã ký"
+                      className="w-full rounded-xl border border-gray-200 object-contain max-h-64 bg-gray-50 hover:opacity-90 transition-opacity cursor-zoom-in" />
                   </a>
-                  <p className="text-[11px] text-gray-400 text-center">
-                    Nhấn vào ảnh để xem full size
-                  </p>
-                  {/* Nút chụp lại */}
+                  <p className="text-[11px] text-gray-400 text-center">Nhấn vào ảnh để xem full size</p>
                   <div className="pt-1 border-t border-gray-100">
                     <p className="text-[11px] text-gray-400 mb-2">Cần cập nhật ảnh mới?</p>
                     <div className="flex items-center justify-center bg-gray-50 rounded-xl p-3 border border-dashed border-gray-200">
@@ -1571,7 +1763,6 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
                   </div>
                 </div>
               ) : (
-                /* Chưa có ảnh — hiện QR để scan */
                 <div className="space-y-3">
                   <p className="text-xs text-gray-500 leading-relaxed">
                     Sau khi in phiếu và thu đầy đủ chữ ký, dùng điện thoại scan QR bên dưới để chụp và lưu ảnh phiếu.
@@ -1582,9 +1773,7 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
                     </div>
                     <div className="text-center">
                       <p className="text-xs font-semibold text-indigo-700">Scan bằng camera điện thoại</p>
-                      <p className="text-[11px] text-gray-400 mt-1">
-                        Chụp ảnh phiếu → tự động lưu vào đơn này
-                      </p>
+                      <p className="text-[11px] text-gray-400 mt-1">Chụp ảnh phiếu → tự động lưu vào đơn này</p>
                     </div>
                   </div>
                   <div className="flex items-center justify-center gap-2 py-2 text-xs text-indigo-400">
@@ -1674,7 +1863,7 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
                       <th className="px-4 py-2 text-center">
                         {localStatus === 'DISPATCHED'
                           ? 'SL cần kiểm tra'
-                          : ['PICKING','QC_SCAN'].includes(localStatus)
+                          : ['PICKING','QC_SCAN','ON_HOLD'].includes(localStatus)
                           ? 'SL cần kiểm tra'
                           : 'Tồn khả dụng'}
                       </th>
@@ -1685,14 +1874,10 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
                       <tr key={it.itemId} className="hover:bg-white/60 transition-colors">
                         <td className="px-4 py-2.5 font-mono font-bold text-gray-800">{it.skuCode}</td>
                         <td className="px-4 py-2.5 text-gray-600">{it.skuName}</td>
-                        <td className="px-4 py-2.5 text-center font-bold text-gray-900">
-                          {it.requestedQty}
-                        </td>
+                        <td className="px-4 py-2.5 text-center font-bold text-gray-900">{it.requestedQty}</td>
                         <td className="px-4 py-2.5 text-center">
-                          {['PICKING','QC_SCAN','DISPATCHED'].includes(localStatus) ? (
-                            <span className="font-semibold text-indigo-600">
-                              {it.requestedQty}
-                            </span>
+                          {['PICKING','QC_SCAN','DISPATCHED','ON_HOLD'].includes(localStatus) ? (
+                            <span className="font-semibold text-indigo-600">{it.requestedQty}</span>
                           ) : (
                             <>
                               <span className={`font-semibold ${it.insufficientStock ? 'text-red-600' : 'text-emerald-600'}`}>
@@ -1738,6 +1923,23 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
       {showReject && (
         <RejectModal code={item.documentCode} onConfirm={handleReject}
           onCancel={() => setShowReject(false)} loading={actionLoading} />
+      )}
+
+      {/* [V20] IncidentDetailModal từ banner ON_HOLD / WAITING_STOCK */}
+      {showIncidentModal && selectedIncident && (
+        <IncidentDetailModal
+          incident={selectedIncident}
+          isManager={role === 'MANAGER'}
+          onClose={() => setShowIncidentModal(false)}
+          onResolved={() => {
+            setShowIncidentModal(false);
+            onRefresh();
+            // Reload local status từ server
+            fetchOutboundDetail(item.documentId, item.orderType)
+              .then(d => { if (d?.status) setLocalStatus(d.status); })
+              .catch(() => {});
+          }}
+        />
       )}
     </Portal>
   );
