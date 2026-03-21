@@ -10,6 +10,8 @@ export interface IncidentItem {
   damagedQty: number;
   reasonCode: string; // SHORTAGE | OVERAGE | UNEXPECTED_ITEM | DAMAGE
   note: string;
+  // [FIX QC] URL ảnh bằng chứng hàng hỏng từ QC scan FAIL
+  attachmentUrl?: string | null;
 }
 
 export interface Incident {
@@ -28,6 +30,7 @@ export interface Incident {
   receivingId: number;
   receivingCode: string;
   createdAt: string;
+  soId?: number | null;    // [V20] outbound incidents
   items?: IncidentItem[];
 }
 

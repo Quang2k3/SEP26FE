@@ -18,6 +18,13 @@ interface Location {
   parentLocationId: number | null;
   parentLocationCode: string | null;
   maxWeightKg: number | null;
+  maxVolumeM3: number | null;
+  /** Tầng BIN trong rack: 1=dưới (150kg), 2=giữa (150kg), 3=trên (120kg). Null nếu AISLE/RACK. */
+  binFloor: number | null;
+  /** Số thùng tối đa ước tính (max_weight_kg ÷ 16kg chuẩn). */
+  maxBoxCount: number | null;
+  /** Khu hàng lỗi — FEFO allocation sẽ bỏ qua BIN này. */
+  isDefect: boolean;
   active: boolean;
   zoneId: number;
   zoneCode: string;
@@ -44,6 +51,8 @@ async function apiCreateLocation(payload: {
   parentLocationId?: number;
   maxWeightKg?: number;
   maxVolumeM3?: number;
+  binFloor?: number;
+  isDefect?: boolean;
 }): Promise<void> {
   await api.post('/locations', payload);
 }
@@ -84,11 +93,21 @@ function CreateLocationModal({
   const [code, setCode] = useState('');
   const [maxWeight, setMaxWeight] = useState('');
   const [maxVolume, setMaxVolume] = useState('');
+  const [binFloor,  setBinFloor]  = useState<1|2|3|null>(null);
+  const [binColumn, setBinColumn] = useState<1|2|3|null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) { setCode(''); setMaxWeight(''); setMaxVolume(''); }
+    if (open) { setCode(''); setMaxWeight(''); setMaxVolume(''); setBinFloor(null); setBinColumn(null); }
   }, [open]);
+
+  // Config cố định theo tầng — không cho phép override
+  const FLOOR_CONFIG = {
+    1: { weight: 512, volume: 1.050, label: 'Tầng 1 — Dưới', boxes16: 32 },
+    2: { weight: 448, volume: 0.920, label: 'Tầng 2 — Giữa', boxes16: 28 },
+    3: { weight: 400, volume: 0.820, label: 'Tầng 3 — Trên',  boxes16: 25 },
+  } as const;
+  const floorCfg = binFloor ? FLOOR_CONFIG[binFloor] : null;
 
   if (!open) return null;
 
@@ -109,6 +128,10 @@ function CreateLocationModal({
   const handleCreate = async () => {
     const trimmed = code.trim();
     if (!trimmed) { toast.error('Nhập mã location'); return; }
+    if (locationType === 'BIN') {
+      if (!binFloor)  { toast.error('BIN phải chọn tầng (1, 2 hoặc 3)'); return; }
+      if (!binColumn) { toast.error('BIN phải chọn cột (1, 2 hoặc 3)'); return; }
+    }
     setSaving(true);
     try {
       await apiCreateLocation({
@@ -116,8 +139,11 @@ function CreateLocationModal({
         locationCode: trimmed,
         locationType,
         parentLocationId: parentLocation?.locationId ?? undefined,
-        maxWeightKg: maxWeight ? Number(maxWeight) : undefined,
-        maxVolumeM3: maxVolume ? Number(maxVolume) : undefined,
+        // BIN: weight/volume cố định theo tầng — không cho nhập tay
+        maxWeightKg: undefined,
+        maxVolumeM3: undefined,
+        binFloor:  locationType === 'BIN' ? (binFloor  ?? undefined) : undefined,
+        binColumn: locationType === 'BIN' ? (binColumn ?? undefined) : undefined,
       });
       toast.success(`Đã tạo ${typeLabel}: ${trimmed}`);
       onCreated();
@@ -171,33 +197,87 @@ function CreateLocationModal({
               />
             </div>
 
-            {/* Tải trọng & thể tích — chỉ hiện với RACK và BIN */}
-            {(locationType === 'RACK' || locationType === 'BIN') && (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
-                    Tải trọng (kg)
-                  </label>
-                  <input
-                    type="number" min="0" step="0.1"
-                    value={maxWeight}
-                    onChange={e => setMaxWeight(e.target.value)}
-                    placeholder="0"
-                    className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 text-center"
-                  />
+            {/* BIN: chọn vị trí ô trong rack (tầng × cột) */}
+            {locationType === 'BIN' && (
+              <div>
+                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">
+                  Vị trí ô trong rack <span className="text-red-400 normal-case font-normal">*</span>
+                </label>
+                {/* Sơ đồ rack 3 tầng × 3 cột — chọn ô bằng cách bấm */}
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  {/* Header cột */}
+                  <div className="grid grid-cols-4 bg-gray-50 border-b border-gray-100">
+                    <div className="py-1.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide border-r border-gray-100"></div>
+                    {['Trái', 'Giữa', 'Phải'].map((col, i) => (
+                      <div key={i} className="py-1.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                        C{i+1} · {col}
+                      </div>
+                    ))}
+                  </div>
+                  {/* 3 hàng tầng — hiển thị từ trên xuống: T3, T2, T1 */}
+                  {([
+                    { floor: 3 as 3, label: 'T3 Trên',  weight: 400, vol: '0.820', color: 'text-purple-600' },
+                    { floor: 2 as 2, label: 'T2 Giữa', weight: 448, vol: '0.920', color: 'text-indigo-600' },
+                    { floor: 1 as 1, label: 'T1 Dưới',  weight: 512, vol: '1.050', color: 'text-blue-600' },
+                  ]).map(({ floor, label, weight, vol, color }) => (
+                    <div key={floor} className="grid grid-cols-4 border-b border-gray-100 last:border-0">
+                      {/* Label tầng */}
+                      <div className="py-2 px-2 border-r border-gray-100 flex flex-col justify-center">
+                        <p className={`text-[11px] font-bold ${color}`}>{label}</p>
+                        <p className="text-[9px] text-gray-400">{weight}kg</p>
+                      </div>
+                      {/* 3 ô cột */}
+                      {([1,2,3] as (1|2|3)[]).map(col => {
+                        const selected = binFloor === floor && binColumn === col;
+                        return (
+                          <button key={col} type="button"
+                            onClick={() => { setBinFloor(floor); setBinColumn(col); }}
+                            className={`m-1 rounded-lg py-2 text-center transition-all border-2 ${
+                              selected
+                                ? 'border-emerald-500 bg-emerald-50'
+                                : 'border-gray-100 bg-gray-50 hover:border-indigo-300 hover:bg-indigo-50/40'
+                            }`}>
+                            {selected
+                              ? <span className="material-symbols-outlined text-emerald-600 text-[16px]">check</span>
+                              : <span className="text-[10px] text-gray-300 font-mono">—</span>
+                            }
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
-                    Thể tích (m³)
-                  </label>
-                  <input
-                    type="number" min="0" step="0.01"
-                    value={maxVolume}
-                    onChange={e => setMaxVolume(e.target.value)}
-                    placeholder="0"
-                    className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 text-center"
-                  />
+                {/* Hiển thị ô đã chọn + config tự động */}
+                {floorCfg && binColumn && (
+                  <div className="mt-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+                    <p className="text-[11px] font-bold text-emerald-700">
+                      ✓ Tầng {binFloor} · Cột {binColumn} — {floorCfg.label}
+                    </p>
+                    <p className="text-[10px] text-emerald-600 mt-0.5">
+                      Tự động: {floorCfg.weight} kg · {floorCfg.volume} m³ · ≈{floorCfg.boxes16} thùng 16kg
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* RACK: capacity cố định tự động — chỉ hiển thị thông tin, không cho nhập */}
+            {locationType === 'RACK' && (
+              <div className="px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-xl">
+                <p className="text-[11px] font-bold text-blue-700 mb-1">Sức chứa tự động (= tổng 9 BIN)</p>
+                <div className="grid grid-cols-2 gap-3 text-center">
+                  <div>
+                    <p className="text-xs font-bold text-blue-900">4.080 kg</p>
+                    <p className="text-[10px] text-blue-500">Tải trọng tối đa</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-blue-900">8.370 m³</p>
+                    <p className="text-[10px] text-blue-500">Thể tích tối đa</p>
+                  </div>
                 </div>
+                <p className="text-[10px] text-blue-400 mt-1.5">
+                  T1×3: 1.536kg · T2×3: 1.344kg · T3×3: 1.200kg
+                </p>
               </div>
             )}
           </div>
@@ -259,8 +339,18 @@ function LocationRow({ loc, onDrillDown, onToggle, isManager, isSelected }: {
         {typeLabel[loc.locationType]}
       </span>
       <span className="font-mono text-sm font-semibold text-gray-900 flex-1 truncate">{loc.locationCode}</span>
+      {loc.binFloor != null && loc.binColumn != null && (
+        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+          loc.binFloor === 1 ? 'bg-blue-50 text-blue-700' :
+          loc.binFloor === 2 ? 'bg-indigo-50 text-indigo-700' :
+          'bg-purple-50 text-purple-700'
+        }`}>T{loc.binFloor}·C{loc.binColumn}</span>
+      )}
       {loc.maxWeightKg != null && loc.maxWeightKg > 0 && (
-        <span className="text-[11px] text-gray-400 shrink-0">{loc.maxWeightKg} kg</span>
+        <span className="text-[11px] text-gray-400 shrink-0">{loc.maxWeightKg}kg{loc.maxBoxCount ? ` · ${loc.maxBoxCount}thùng` : ''}</span>
+      )}
+      {loc.isDefect && (
+        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-500 shrink-0">Lỗi</span>
       )}
       <ActiveBadge active={loc.active} />
       {/* Chevron for drill-down types */}

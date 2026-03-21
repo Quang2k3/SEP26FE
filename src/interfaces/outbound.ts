@@ -1,6 +1,7 @@
 // ─── Outbound status lifecycle ────────────────────────────────────────────────
 // DRAFT → PENDING_APPROVAL → APPROVED → ALLOCATED → PICKING → QC_SCAN → DISPATCHED
-// Internal Transfer: DRAFT → APPROVED (auto) → ALLOCATED → PICKING → QC_SCAN → DISPATCHED
+// APPROVED → (PARTIALLY_ALLOCATED) → WAITING_STOCK (chờ hàng bù) → APPROVED → re-Allocate
+// QC_SCAN → ON_HOLD (có FAIL QC) → PICKING (re-pick) | QC_SCAN (ACCEPT) → DISPATCHED
 export type OutboundStatus =
   | 'DRAFT'
   | 'PENDING_APPROVAL'
@@ -9,12 +10,14 @@ export type OutboundStatus =
   | 'ALLOCATED'
   | 'PICKING'
   | 'QC_SCAN'
+  | 'ON_HOLD'           // [V20] QC có FAIL, chờ Manager xử lý Incident DAMAGE
+  | 'WAITING_STOCK'     // [V20] Thiếu hàng, chờ nhập bù (Manager chọn WAIT_BACKORDER)
   | 'DISPATCHED'
   | 'CANCELLED';
 
 export type OutboundType = 'SALES_ORDER' | 'INTERNAL_TRANSFER';
 
-// ─── Response types (khớp BE OutboundResponse) ────────────────────────────────
+// ─── Response types ────────────────────────────────────────────────────────────
 export interface OutboundStockWarning {
   skuId: number;
   skuCode: string;
@@ -40,16 +43,13 @@ export interface OutboundOrder {
   orderType: OutboundType;
   status: OutboundStatus;
   warehouseId: number;
-  // Sales Order fields
   customerId?: number | null;
   customerCode?: string | null;
   customerName?: string | null;
   deliveryDate?: string | null;
-  // Internal Transfer fields
   destinationWarehouseId?: number | null;
   destinationWarehouseCode?: string | null;
   destinationWarehouseName?: string | null;
-  // Common
   items: OutboundItemResponse[];
   note?: string | null;
   createdBy: number;
@@ -61,37 +61,33 @@ export interface OutboundOrder {
   dispatchPdfUrl?: string | null;
   signedNoteUrl?: string | null;
   signedNoteUploadedAt?: string | null;
-  /** Ảnh phiếu lấy hàng đã ký của nhân viên kho */
   pickSignedNoteUrl?: string | null;
   pickSignedNoteUploadedAt?: string | null;
 }
 
-// ─── List response (GET /v1/outbound) — khớp BE OutboundListResponse ──────────
 export interface OutboundListItem {
   documentId: number;
   documentCode: string;
   orderType: OutboundType;
-  // BE trả "destination" — tên KH hoặc tên kho đích
   destination?: string | null;
-  // FE alias (giữ để không break code cũ)
   customerName?: string | null;
   destinationWarehouseName?: string | null;
-  // BE trả "shipmentDate" (LocalDate), FE cũng nhận "deliveryDate"
   shipmentDate?: string | null;
   deliveryDate?: string | null;
-  status: string;          // BE trả string, không phải enum
+  status: string;
   warehouseId?: number;
   totalItems: number;
   totalQty?: number | null;
   createdBy: number;
   createdByName?: string | null;
   createdAt: string;
-  // action flags từ BE
   canEdit?: boolean;
   canDelete?: boolean;
   canSubmit?: boolean;
   canApprove?: boolean;
   canConfirm?: boolean;
+  // [FIX TC-1A] BE tính sẵn khi build list — FE đọc ngay không cần chờ GET detail
+  hasStockShortage?: boolean;
 }
 
 export interface OutboundPagePayload {
@@ -100,12 +96,10 @@ export interface OutboundPagePayload {
   totalPages: number;
   page?: number;
   size?: number;
-  // BE PageResponse có thể dùng field khác
-  number?: number;        // Spring Page: page number
+  number?: number;
   numberOfElements?: number;
 }
 
-// ─── Summary (GET /v1/outbound/summary) ───────────────────────────────────────
 export interface OutboundSummary {
   total?: number;
   draft: number;
@@ -114,11 +108,13 @@ export interface OutboundSummary {
   allocated: number;
   picking: number;
   qcScan: number;
+  onHold: number;          // [V20]
+  waitingStock: number;    // [V20]
   dispatched: number;
   rejected: number;
 }
 
-// ─── Allocate Stock (POST /v1/outbound/allocate) ──────────────────────────────
+// ─── Allocate Stock ────────────────────────────────────────────────────────────
 export interface AllocationLine {
   skuId: number;
   skuCode: string;
@@ -139,25 +135,22 @@ export interface ShortageItem {
 export interface AllocateStockResponse {
   documentId: number;
   documentCode: string;
-  // BE trả status: "ALLOCATED" | "PARTIALLY_ALLOCATED"
   status: string;
   totalSkus: number;
   allocatedSkus: number;
   allocations: AllocationLine[];
   shortages?: ShortageItem[] | null;
-  // BE không trả fullyAllocated — derive từ status
   fullyAllocated?: boolean;
 }
 
-// ─── Pick List (POST /v1/outbound/pick-list) ──────────────────────────────────
+// ─── Pick List ─────────────────────────────────────────────────────────────────
 export interface PickListItem {
-  // BE trả pickingTaskItemId
   taskItemId: number;
   pickingTaskItemId?: number;
   skuId: number;
   skuCode: string;
   skuName: string;
-  barcode?: string | null;  // barcode vật lý trên hộp — dùng để match khi Keeper quét
+  barcode?: string | null;
   locationCode: string;
   zoneCode?: string | null;
   rackCode?: string | null;
@@ -166,33 +159,32 @@ export interface PickListItem {
   pickedQty?: number;
   lotNumber?: string | null;
   expiryDate?: string | null;
-  status?: string | null; // PENDING | PICKED
-  qcResult?: string | null; // PASS | FAIL | HOLD | null
+  status?: string | null;
+  qcResult?: string | null;
 }
 
 export interface PickListResponse {
-  // BE trả pickingTaskId
   taskId: number;
   pickingTaskId?: number;
   pickingTaskCode?: string;
   documentId: number;
   documentCode: string;
-  status: string; // OPEN | IN_PROGRESS | PICKED | QC_IN_PROGRESS | COMPLETED
+  status: string;
   assignedTo?: number | null;
   items: PickListItem[];
   createdAt?: string;
   generatedAt?: string;
 }
 
-// ─── QC Scan ──────────────────────────────────────────────────────────────────
+// ─── QC Scan ───────────────────────────────────────────────────────────────────
 export type QcResult = 'PASS' | 'FAIL' | 'HOLD';
 
 export interface QcScanRequest {
-  // [FIX] BE expects pickingTaskId / pickingTaskItemId, không phải taskId / taskItemId
   pickingTaskId: number;
   pickingTaskItemId: number;
   result: QcResult;
   reason?: string | null;
+  attachmentUrl?: string | null;  // [V20] URL ảnh hàng hỏng khi FAIL
 }
 
 export interface QcSummaryResponse {
@@ -205,7 +197,7 @@ export interface QcSummaryResponse {
   allScanned: boolean;
 }
 
-// ─── Dispatch Note (GET /v1/outbound/sales-orders/{soId}/dispatch-note) ───────
+// ─── Dispatch Note ─────────────────────────────────────────────────────────────
 export interface DispatchNoteItem {
   skuCode: string;
   skuName: string;
@@ -225,7 +217,7 @@ export interface DispatchNoteResponse {
   createdByName?: string | null;
 }
 
-// ─── Request payloads ─────────────────────────────────────────────────────────
+// ─── Request payloads ──────────────────────────────────────────────────────────
 export interface OutboundItemRequest {
   skuId: number;
   quantity: number;
@@ -234,10 +226,8 @@ export interface OutboundItemRequest {
 
 export interface CreateOutboundPayload {
   orderType: OutboundType;
-  // SALES_ORDER
   customerCode?: string;
   deliveryDate?: string;
-  // INTERNAL_TRANSFER
   destinationWarehouseCode?: string;
   items: OutboundItemRequest[];
   note?: string;
@@ -262,15 +252,28 @@ export interface OutboundListQuery {
   size?: number;
 }
 
-// ─── UI helpers ───────────────────────────────────────────────────────────────
+// ─── [V20] Resolve requests ────────────────────────────────────────────────────
+export interface ResolveOutboundDamageRequest {
+  action: 'RETURN_SCRAP' | 'ACCEPT';
+  note?: string;
+}
+
+export interface ResolveOutboundShortageRequest {
+  action: 'WAIT_BACKORDER' | 'CLOSE_SHORT';
+  note?: string;
+}
+
+// ─── UI helpers ────────────────────────────────────────────────────────────────
 export const OUTBOUND_STATUS_BADGE: Record<OutboundStatus, { label: string; className: string }> = {
-  DRAFT:            { label: 'Nháp',        className: 'bg-gray-100 text-gray-600 ring-1 ring-gray-200' },
-  PENDING_APPROVAL: { label: 'Chờ duyệt',   className: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200' },
-  APPROVED:         { label: 'Đã duyệt',    className: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' },
-  REJECTED:         { label: 'Từ chối',     className: 'bg-red-50 text-red-700 ring-1 ring-red-200' },
-  ALLOCATED:        { label: 'Đã phân bổ',  className: 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' },
-  PICKING:          { label: 'Đang lấy hàng', className: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200' },
-  QC_SCAN:          { label: 'QC Scan',     className: 'bg-purple-50 text-purple-700 ring-1 ring-purple-200' },
-  DISPATCHED:       { label: 'Đã xuất kho', className: 'bg-teal-50 text-teal-700 ring-1 ring-teal-200' },
-  CANCELLED:        { label: 'Đã huỷ',      className: 'bg-gray-100 text-gray-500 ring-1 ring-gray-200' },
+  DRAFT:            { label: 'Nháp',           className: 'bg-gray-100 text-gray-600 ring-1 ring-gray-200' },
+  PENDING_APPROVAL: { label: 'Chờ duyệt',      className: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200' },
+  APPROVED:         { label: 'Đã duyệt',       className: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' },
+  REJECTED:         { label: 'Từ chối',        className: 'bg-red-50 text-red-700 ring-1 ring-red-200' },
+  ALLOCATED:        { label: 'Đã phân bổ',     className: 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' },
+  PICKING:          { label: 'Đang lấy hàng',  className: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200' },
+  QC_SCAN:          { label: 'QC Scan',         className: 'bg-purple-50 text-purple-700 ring-1 ring-purple-200' },
+  ON_HOLD:          { label: 'Tạm giữ (QC lỗi)', className: 'bg-red-50 text-red-700 ring-1 ring-red-300' },       // [V20]
+  WAITING_STOCK:    { label: 'Chờ hàng bù',    className: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' }, // [V20]
+  DISPATCHED:       { label: 'Đã xuất kho',    className: 'bg-teal-50 text-teal-700 ring-1 ring-teal-200' },
+  CANCELLED:        { label: 'Đã huỷ',         className: 'bg-gray-100 text-gray-500 ring-1 ring-gray-200' },
 };
