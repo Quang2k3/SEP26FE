@@ -36,6 +36,7 @@ import {
   buildOrderFromListItem,
   fetchOutboundDetail,
   fetchIncidentsBySoId,  // [V20]
+  resolveOutboundShortage, // [FIX TC-1A] inline shortage resolution
 } from '@/services/outboundService';
 import type {
   OutboundListItem,
@@ -229,6 +230,264 @@ function OutboundStatusBanner({
   return null;
 }
 
+// ─── [FIX TC-1A] WaitingStockKeeperPanel ────────────────────────────────
+// 3 trạng thái:
+// 1. Còn incident SHORTAGE OPEN → khoá hoàn toàn, chờ Manager xử lý
+// 2. Incident RESOLVED nhưng tồn vẫn thiếu → khoá, hiện SKU chưa đủ hàng
+// 3. Incident RESOLVED + tồn đủ → mở AllocatePanel
+function WaitingStockKeeperPanel({
+  item,
+  orderDetail,
+  onAllocateDone,
+  onReportShortageSuccess,
+}: {
+  item: OutboundListItem;
+  orderDetail: any;
+  onAllocateDone: () => void;
+  onReportShortageSuccess: () => void;
+}) {
+  const [incidents, setIncidents] = React.useState<any[] | null>(null);
+
+  React.useEffect(() => {
+    fetchIncidentsBySoId(item.documentId)
+      .then(list => setIncidents(list.filter((i: any) => i.incidentType === 'SHORTAGE' && i.status === 'OPEN')))
+      .catch(() => setIncidents([]));
+  }, [item.documentId]);
+
+  if (incidents === null) return (
+    <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 flex items-center gap-2">
+      <span className="w-4 h-4 border-2 border-amber-400/40 border-t-amber-500 rounded-full animate-spin flex-shrink-0" />
+      <p className="text-xs text-amber-700">Đang kiểm tra trạng thái xử lý...</p>
+    </div>
+  );
+
+  // CASE 1: Còn incident OPEN → khoá hoàn toàn
+  if (incidents.length > 0) {
+    const inc = incidents[0];
+    return (
+      <div className="rounded-xl border border-amber-300 overflow-hidden">
+        <div className="px-4 py-3 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
+          <span className="material-symbols-outlined text-amber-500 text-[18px]">lock_clock</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-amber-800">Đơn đang chờ Manager xử lý thiếu hàng</p>
+            <p className="text-[10px] text-amber-600 mt-0.5">Bạn không thắ thao tác cho đến khi Manager giải quyết</p>
+          </div>
+        </div>
+        <div className="px-4 py-3 bg-white space-y-2">
+          <div className="flex items-center justify-between py-2 px-3 bg-amber-50 rounded-lg border border-amber-100">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-amber-500 text-[15px]">description</span>
+              <div>
+                <p className="text-xs font-bold text-gray-800">{inc.incidentCode}</p>
+                <p className="text-[10px] text-gray-400">Incident thiếu hàng — đang chờ xử lý</p>
+              </div>
+            </div>
+            <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200">OPEN</span>
+          </div>
+          <p className="text-xs text-gray-500 leading-relaxed px-1">
+            Manager sẽ chọn <strong>Chốt thiếu</strong> (cắt qty, Allocate lại ngay) hoặc{" "}
+            <strong>Chờ hàng bụ</strong> (chờ nhập thêm). Sau khi xử lý xong, bạn quay lại đ​y để tiếp tục.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // CASE 2: Incident RESOLVED nhưng tồn vẫn thiếu
+  const insufficientItems = (orderDetail?.items ?? []).filter((it: any) => it.insufficientStock);
+  if (insufficientItems.length > 0) {
+    return (
+      <div className="rounded-xl border border-orange-200 overflow-hidden">
+        <div className="px-4 py-3 bg-orange-50 border-b border-orange-200 flex items-center gap-2">
+          <span className="material-symbols-outlined text-orange-500 text-[18px]">hourglass_empty</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-orange-800">Chờ hàng bụ nhập kho</p>
+            <p className="text-[10px] text-orange-600 mt-0.5">Tồn kho chưa đủ — Allocate sẽ mở tự động khi hàng được nhập đủ</p>
+          </div>
+        </div>
+        <div className="divide-y divide-orange-50 bg-white">
+          {insufficientItems.map((it: any) => (
+            <div key={it.skuCode} className="flex items-center justify-between px-4 py-2.5">
+              <div>
+                <p className="text-xs font-bold text-gray-800">{it.skuCode}</p>
+                <p className="text-[10px] text-gray-400">{it.skuName}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-gray-500">Yêu cầu: <span className="font-bold text-gray-800">{it.requestedQty}</span></p>
+                <p className="text-xs text-orange-600 font-bold">
+                  Có sẵn: {it.availableQty}
+                  <span className="ml-1 text-[10px] font-semibold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full border border-red-200">
+                    Thiếu {(parseFloat(it.requestedQty) - parseFloat(it.availableQty)).toFixed(0)}
+                  </span>
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="px-4 py-3 bg-orange-50 border-t border-orange-100">
+          <p className="text-[10px] text-orange-600 leading-relaxed">
+            Khi nhà cung cấp giao bụ và Keeper nhập kho xong, tải lại trang để kiểm tra.
+            Nút <strong>Phân bổ tồn kho</strong> sẽ xuất hiện khi tồn đủ.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // CASE 3: Tồn đủ → mở AllocatePanel
+  return (
+    <AllocatePanel
+      item={item}
+      onDone={onAllocateDone}
+      onReportShortageSuccess={onReportShortageSuccess}
+    />
+  );
+}
+
+// ─── [FIX TC-1A] Shortage Resolution Panel — flow phụ chỉ hiện khi thiếu hàng ──
+// Render trong WAITING_STOCK (Manager) và trong AllocatePanel khi báo thiếu thành công.
+// Manager chọn CLOSE_SHORT hoặc WAIT_BACKORDER, không cần mở IncidentDetailModal riêng.
+function ShortageResolutionPanel({
+  soId,
+  onResolved,
+}: {
+  soId: number;
+  onResolved: (action: 'CLOSE_SHORT' | 'WAIT_BACKORDER') => void;
+}) {
+  const [incidents, setIncidents] = React.useState<any[]>([]);
+  const [loadingInc, setLoadingInc] = React.useState(true);
+  const [selectedAction, setSelectedAction] = React.useState<'CLOSE_SHORT' | 'WAIT_BACKORDER'>('CLOSE_SHORT');
+  const [note, setNote] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
+
+  React.useEffect(() => {
+    fetchIncidentsBySoId(soId)
+      .then(list => {
+        // Chỉ lấy SHORTAGE incident đang OPEN
+        setIncidents(list.filter((i: any) => i.incidentType === 'SHORTAGE' && i.status === 'OPEN'));
+      })
+      .catch(() => {})
+      .finally(() => setLoadingInc(false));
+  }, [soId]);
+
+  const shortageInc = incidents[0]; // thường chỉ có 1
+
+  const handleResolve = async () => {
+    if (!shortageInc) return;
+    setSubmitting(true);
+    try {
+      await resolveOutboundShortage(shortageInc.incidentId, {
+        action: selectedAction,
+        note: note || undefined,
+      });
+      toast.success(
+        selectedAction === 'CLOSE_SHORT'
+          ? '✅ Chốt thiếu — đơn về APPROVED, Keeper có thể Allocate lại ngay'
+          : '✅ Chờ hàng bù — đơn giữ trạng thái WAITING_STOCK'
+      );
+      onResolved(selectedAction);
+    } catch (e: any) {
+      if (!e?._toastedByInterceptor)
+        toast.error(e?.response?.data?.message ?? 'Xử lý thất bại');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loadingInc) return (
+    <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 flex items-center gap-2">
+      <span className="w-4 h-4 border-2 border-amber-400/40 border-t-amber-500 rounded-full animate-spin flex-shrink-0" />
+      <p className="text-xs text-amber-700">Đang tải thông tin thiếu hàng...</p>
+    </div>
+  );
+
+  if (!shortageInc) return null; // không có incident SHORTAGE OPEN → không render
+
+  const shortageItems: any[] = shortageInc.items ?? [];
+
+  return (
+    <div className="rounded-xl border border-red-200 overflow-hidden">
+      {/* Header */}
+      <div className="px-4 py-3 bg-red-50 border-b border-red-200 flex items-center gap-2">
+        <span className="material-symbols-outlined text-red-500 text-[18px]">inventory</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-red-800">Thiếu hàng — Cần xử lý</p>
+          <p className="text-[10px] text-red-500 mt-0.5">{shortageInc.incidentCode}</p>
+        </div>
+        <span className="text-[10px] font-semibold text-red-600 bg-red-100 px-2 py-0.5 rounded-full border border-red-200">
+          {shortageItems.length} SKU thiếu
+        </span>
+      </div>
+
+      {/* SKU list thiếu */}
+      {shortageItems.length > 0 && (
+        <div className="divide-y divide-red-50 bg-white max-h-36 overflow-y-auto">
+          {shortageItems.map((si: any, idx: number) => (
+            <div key={idx} className="flex items-center justify-between px-4 py-2.5">
+              <div>
+                <p className="text-xs font-bold text-gray-800">{si.skuCode ?? si.skuName ?? `SKU #${si.skuId}`}</p>
+                <p className="text-[10px] text-gray-400">
+                  Yêu cầu: {si.expectedQty ?? si.requestedQty ?? '—'} · Có sẵn: {si.actualQty ?? si.availableQty ?? '—'}
+                </p>
+              </div>
+              <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+                Thiếu {si.damagedQty ?? Math.abs((si.expectedQty ?? 0) - (si.actualQty ?? 0))}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Action picker */}
+      <div className="px-4 py-3 bg-gray-50 border-t border-red-100 space-y-3">
+        <p className="text-xs font-bold text-gray-700">Manager — Chọn phương án xử lý:</p>
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            { value: 'CLOSE_SHORT',    label: 'Chốt thiếu',         sub: 'Cắt qty về tồn thực, Allocate lại ngay',  icon: 'content_cut',    ring: 'ring-blue-500',   bg: 'bg-blue-600 hover:bg-blue-700' },
+            { value: 'WAIT_BACKORDER', label: 'Chờ hàng bù',        sub: 'Giữ đơn, nhập bù rồi Allocate lại',       icon: 'hourglass_empty', ring: 'ring-amber-500',  bg: 'bg-amber-500 hover:bg-amber-600' },
+          ] as const).map(a => (
+            <button key={a.value} type="button" onClick={() => setSelectedAction(a.value)}
+              className={`text-left px-3 py-2.5 rounded-xl border-2 transition-all ${
+                selectedAction === a.value
+                  ? `border-gray-900 bg-gray-900 text-white ring-2 ${a.ring}`
+                  : 'border-gray-200 bg-white text-gray-700 hover:border-gray-400'
+              }`}>
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <span className={`material-symbols-outlined text-[14px] ${selectedAction === a.value ? 'text-white' : 'text-gray-500'}`}>{a.icon}</span>
+                <p className="text-xs font-bold">{a.label}</p>
+              </div>
+              <p className={`text-[10px] leading-tight ${selectedAction === a.value ? 'text-gray-300' : 'text-gray-400'}`}>{a.sub}</p>
+            </button>
+          ))}
+        </div>
+
+        {/* Consequence info */}
+        <div className={`p-2.5 rounded-lg text-xs leading-relaxed ${
+          selectedAction === 'CLOSE_SHORT' ? 'bg-blue-50 border border-blue-100 text-blue-700' : 'bg-amber-50 border border-amber-100 text-amber-700'
+        }`}>
+          {selectedAction === 'CLOSE_SHORT'
+            ? '📌 Số lượng đặt hàng sẽ bị cắt về số lượng thực có trong kho. Đơn → APPROVED — Keeper Allocate lại ngay.'
+            : '📌 Đơn giữ trạng thái WAITING_STOCK. Khi nhà cung cấp giao bù và Keeper nhập kho xong, quay lại bấm Allocate.'}
+        </div>
+
+        {/* Note */}
+        <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
+          placeholder="Ghi chú của Manager (tuỳ chọn)..."
+          className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-200" />
+
+        {/* Submit */}
+        <button type="button" onClick={handleResolve} disabled={submitting}
+          className={`w-full py-2.5 text-sm font-semibold text-white rounded-xl flex items-center justify-center gap-2 disabled:opacity-60 ${
+            selectedAction === 'CLOSE_SHORT' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-500 hover:bg-amber-600'
+          }`}>
+          {submitting && <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+          {submitting ? 'Đang xử lý...' : (selectedAction === 'CLOSE_SHORT' ? '✂️ Xác nhận Chốt thiếu' : '⏳ Xác nhận Chờ hàng bù')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Step 1: Allocate Panel ─────────────────────────────────────────────────────
 function AllocatePanel({ item, onDone, onReportShortageSuccess }: { item: OutboundListItem; onDone: () => void; onReportShortageSuccess?: () => void }) {
   const [loading, setLoading] = useState(false);
@@ -236,6 +495,8 @@ function AllocatePanel({ item, onDone, onReportShortageSuccess }: { item: Outbou
   const [result, setResult] = useState<any>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showShortageConfirm, setShowShortageConfirm] = useState(false);
+  // [FIX TC-1A] Sau khi Keeper báo thiếu thành công → hiện ShortageResolutionPanel inline
+  const [shortageReported, setShortageReported] = useState(false);
 
   const allocatingRef = React.useRef(false);
   const handle = async () => {
@@ -307,6 +568,7 @@ function AllocatePanel({ item, onDone, onReportShortageSuccess }: { item: Outbou
     // onRefresh() trigger re-render làm catch của lần gọi khác fire nhầm.
     if (succeeded) {
       toast.success('✅ Đã gửi báo cáo thiếu hàng lên Manager!');
+      setShortageReported(true); // [FIX TC-1A] hiện ShortageResolutionPanel inline cho Manager
       // [BUG-FIX] setLocalStatus thuộc scope của OutboundDetailModal (component cha),
       // không tồn tại trong AllocatePanel → ReferenceError. Dùng callback prop thay thế.
       onReportShortageSuccess?.();
@@ -469,17 +731,45 @@ function AllocatePanel({ item, onDone, onReportShortageSuccess }: { item: Outbou
             <p className="text-xs text-red-700 font-semibold mb-1">⛔ Không thể tạo Pick List khi thiếu hàng</p>
             <p className="text-xs text-red-600">Cần báo Manager để bổ sung tồn kho hoặc điều chỉnh đơn hàng.</p>
           </div>
-          <button onClick={() => setShowShortageConfirm(true)} disabled={reporting}
-            className="w-full py-2.5 text-sm font-semibold text-white bg-red-600 rounded-xl hover:bg-red-700 flex items-center justify-center gap-2 disabled:opacity-60">
-            {reporting && <Spin />}
-            {reporting ? 'Đang gửi báo cáo...' : 'Báo thiếu hàng lên Manager'}
-          </button>
-          {/* [BUG-FIX] Note: nút này sẽ bị ẩn khi SO chuyển sang ON_HOLD sau khi báo thiếu thành công.
-              Guard BE cũng chặn duplicate nếu FE vẫn hiển thị nút (ví dụ tab cũ chưa reload). */}
-          <ConfirmModal open={showShortageConfirm} icon="report" iconColor="text-red-500"
-            title="Xác nhận báo thiếu hàng?" confirmLabel="Báo thiếu hàng" confirmColor="bg-red-600 hover:bg-red-700"
-            description="Hệ thống sẽ tạo Incident báo cáo danh sách SKU thiếu. Manager sẽ nhận thông báo và xử lý."
-            loading={reporting} onConfirm={handleReportShortage} onCancel={() => setShowShortageConfirm(false)} />
+
+          {/* [FIX TC-1A] Nếu đã báo thiếu → hiện ShortageResolutionPanel ngay inline.
+              Manager xem đơn cùng lúc có thể xử lý CLOSE_SHORT / WAIT_BACKORDER ngay tại đây
+              mà không cần mở IncidentDetailModal riêng. */}
+          {shortageReported ? (
+            <div className="space-y-2">
+              <div className="p-3 bg-green-50 rounded-xl border border-green-200 flex items-center gap-2">
+                <span className="material-symbols-outlined text-green-500 text-[16px]">check_circle</span>
+                <p className="text-xs text-green-700 font-semibold">Đã báo thiếu hàng — Chờ Manager xử lý bên dưới</p>
+              </div>
+              <ShortageResolutionPanel
+                soId={item.documentId}
+                onResolved={(action) => {
+                  if (action === 'CLOSE_SHORT') {
+                    // CLOSE_SHORT → SO về APPROVED → Keeper có thể Allocate lại ngay
+                    // Reset result để AllocatePanel quay về trạng thái ban đầu
+                    onReportShortageSuccess?.();
+                  } else {
+                    // WAIT_BACKORDER → SO vào WAITING_STOCK, panel này tự ẩn
+                    onReportShortageSuccess?.();
+                  }
+                }}
+              />
+            </div>
+          ) : (
+            <>
+              <button onClick={() => setShowShortageConfirm(true)} disabled={reporting}
+                className="w-full py-2.5 text-sm font-semibold text-white bg-red-600 rounded-xl hover:bg-red-700 flex items-center justify-center gap-2 disabled:opacity-60">
+                {reporting && <Spin />}
+                {reporting ? 'Đang gửi báo cáo...' : 'Báo thiếu hàng lên Manager'}
+              </button>
+              {/* [BUG-FIX] Note: nút này sẽ bị ẩn khi SO chuyển sang ON_HOLD sau khi báo thiếu thành công.
+                  Guard BE cũng chặn duplicate nếu FE vẫn hiển thị nút (ví dụ tab cũ chưa reload). */}
+              <ConfirmModal open={showShortageConfirm} icon="report" iconColor="text-red-500"
+                title="Xác nhận báo thiếu hàng?" confirmLabel="Báo thiếu hàng" confirmColor="bg-red-600 hover:bg-red-700"
+                description="Hệ thống sẽ tạo Incident báo cáo danh sách SKU thiếu. Manager sẽ nhận thông báo và xử lý."
+                loading={reporting} onConfirm={handleReportShortage} onCancel={() => setShowShortageConfirm(false)} />
+            </>
+          )}
         </div>
       )}
       </>)}
@@ -838,7 +1128,7 @@ function PickingPanel({ item, taskId: initTaskId, onDone }: {
 }
 
 // ─── Step 4: QC Scan Panel ─────────────────────────────────────────────────────
-function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { taskId: number; onAllScanned: () => void; onAlreadyDone?: () => void; viewerRole?: string }) {
+function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole, isExternallyFinalized, externalFailCount }: { taskId: number; onAllScanned: (failCount?: number) => void; onAlreadyDone?: (failCount?: number) => void; viewerRole?: string; isExternallyFinalized?: boolean; externalFailCount?: number }) {
   const [qcSummary, setQcSummary]   = useState<QcSummaryResponse | null>(null);
   const [pickItems, setPickItems]   = useState<PickListItem[]>([]);
   const [summaryLoading, setSummaryLoading] = useState(true);
@@ -881,9 +1171,10 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
       const done  = (s.pendingCount ?? 0) === 0 && total > 0;
       if (done && !isFinalizedRef.current) {
         isFinalizedRef.current = true;
-        setIsFinalized(true);
         stopPolling();
-        setTimeout(() => { if (mountedRef.current) onAllScannedRef.current(); }, 600);
+        // [FIX] Truyền failCount+holdCount vào callback để component cha biết ngay
+        const fc = (s.failCount ?? 0) + (s.holdCount ?? 0);
+        setTimeout(() => { if (mountedRef.current) (onAllScannedRef.current as any)(fc); }, 600);
       }
     } catch {}
   }, [taskId]);
@@ -903,9 +1194,10 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
         const done  = (s.pendingCount ?? 0) === 0 && total > 0;
         if (done) {
           isFinalizedRef.current = true;
-          setIsFinalized(true);
           stopPolling();
-          setTimeout(() => { if (mountedRef.current) (onAlreadyDoneRef.current ?? onAllScannedRef.current)?.(); }, 300);
+          // [FIX] Truyền failCount vào callback
+          const fc = (s.failCount ?? 0) + (s.holdCount ?? 0);
+          setTimeout(() => { if (mountedRef.current) ((onAlreadyDoneRef.current ?? onAllScannedRef.current) as any)?.(fc); }, 300);
         } else {
           startPolling();
         }
@@ -1006,17 +1298,59 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole }: { task
         </>
       ) : null}
 
-      {isFinalized ? (
-        <div className="p-4 bg-emerald-50 border-2 border-emerald-200 rounded-xl">
-          <div className="flex items-center gap-3 mb-1">
-            <span className="material-symbols-outlined text-emerald-600 text-2xl">check_circle</span>
-            <p className="text-sm font-bold text-emerald-800">QC hoàn tất!</p>
+      {(isFinalized || isExternallyFinalized) ? (
+        // [BUG-FIX] Chỉ show "QC hoàn tất / xuất kho" khi pass sạch (externalFailCount=0)
+        // Nếu có FAIL → show banner đỏ cảnh báo thay thế
+        (externalFailCount ?? 0) > 0 ? (
+          <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-red-500 text-2xl">warning</span>
+              <p className="text-sm font-bold text-red-800">⚠️ Có {externalFailCount} item FAIL — Đơn bị tạm giữ</p>
+            </div>
+            <p className="text-xs text-red-600 ml-8">Mã QR đã khoá. Manager đã nhận báo cáo và đang xử lý.</p>
           </div>
-          <p className="text-xs text-emerald-600 ml-9">Toàn bộ mặt hàng đã được kiểm tra. Có thể tiến hành xuất kho.</p>
-          <p className="text-[11px] text-emerald-500 mt-1.5 ml-9 flex items-center gap-1">
-            <span className="material-symbols-outlined text-[13px]">lock</span>
-            Mã QR đã bị khoá — không thể scan thêm
-          </p>
+        ) : (
+          <div className="p-4 bg-emerald-50 border-2 border-emerald-200 rounded-xl">
+            <div className="flex items-center gap-3 mb-1">
+              <span className="material-symbols-outlined text-emerald-600 text-2xl">check_circle</span>
+              <p className="text-sm font-bold text-emerald-800">QC hoàn tất!</p>
+            </div>
+            <p className="text-xs text-emerald-600 ml-9">Toàn bộ mặt hàng đã được kiểm tra. Có thể tiến hành xuất kho.</p>
+            <p className="text-[11px] text-emerald-500 mt-1.5 ml-9 flex items-center gap-1">
+              <span className="material-symbols-outlined text-[13px]">lock</span>
+              Mã QR đã bị khoá — không thể scan thêm
+            </p>
+          </div>
+        )
+      ) : qcSummary && (qcSummary.passCount + qcSummary.failCount + qcSummary.holdCount) > 0 && qcSummary.pendingCount === 0 ? (
+        // [BUG-FIX] Scan xong nhưng chưa finalizeQc — hiện trạng thái thực tế (có thể có FAIL)
+        <div className={`p-4 rounded-xl border-2 ${
+          (qcSummary.failCount ?? 0) > 0 || (qcSummary.holdCount ?? 0) > 0
+            ? 'bg-red-50 border-red-200'
+            : 'bg-amber-50 border-amber-200'
+        }`}>
+          <div className="flex items-center gap-2">
+            <span className={`material-symbols-outlined text-xl ${
+              (qcSummary.failCount ?? 0) > 0 || (qcSummary.holdCount ?? 0) > 0
+                ? 'text-red-500' : 'text-amber-500'
+            }`}>
+              {(qcSummary.failCount ?? 0) > 0 || (qcSummary.holdCount ?? 0) > 0 ? 'warning' : 'pending'}
+            </span>
+            <p className={`text-sm font-bold ${
+              (qcSummary.failCount ?? 0) > 0 ? 'text-red-800' : 'text-amber-800'
+            }`}>
+              {(qcSummary.failCount ?? 0) > 0
+                ? `⚠️ Đã scan xong — có ${qcSummary.failCount} item FAIL`
+                : (qcSummary.holdCount ?? 0) > 0
+                  ? `⏸ Đã scan xong — có ${qcSummary.holdCount} item HOLD`
+                  : '✅ Đã scan xong — đang chờ xử lý kết quả'}
+            </p>
+          </div>
+          {(qcSummary.failCount ?? 0) > 0 && (
+            <p className="text-xs text-red-600 mt-1 ml-7">
+              Đang xử lý kết quả — đơn sẽ chuyển ON_HOLD và Manager sẽ nhận báo cáo.
+            </p>
+          )}
         </div>
       ) : viewerRole === 'KEEPER' ? (
         <div className="p-3 bg-purple-50 rounded-xl border border-purple-100 flex items-center gap-2.5">
@@ -1144,7 +1478,7 @@ function QcFinalizeOrDispatch({
   taskId: number;
   item: OutboundListItem;
   onDispatched: () => void;
-  onOnHold: () => void;
+  onOnHold: (failCount?: number) => void; // [BUG-FIX] pass failCount so caller can track
 }) {
   const [state, setState] = React.useState<'finalizing' | 'dispatch' | 'on_hold' | 'error'>('finalizing');
   const [failCount, setFailCount] = React.useState(0);
@@ -1157,17 +1491,19 @@ function QcFinalizeOrDispatch({
       try {
         const summary = await finalizeQc(taskId);
         const fails = summary.failCount ?? 0;
+        const holds = summary.holdCount ?? 0;
         setFailCount(fails);
-        if (fails > 0) {
+        if (fails > 0 || holds > 0) {
           // BE đã set SO → ON_HOLD và tạo DAMAGE incident
           setState('on_hold');
           toast.error(
-            `⚠️ Có ${fails} item FAIL — Đơn bị tạm giữ. Manager cần xử lý trước khi xuất kho.`,
+            `⚠️ Có ${fails} item FAIL${holds > 0 ? `, ${holds} HOLD` : ''} — Đơn bị tạm giữ. Manager cần xử lý trước khi xuất kho.`,
             { duration: 8000 }
           );
-          onOnHold();
+          onOnHold(fails);
         } else {
           setState('dispatch');
+          toast.success('✅ QC hoàn tất — tất cả hàng PASS. Có thể xuất kho!', { duration: 5000 });
         }
       } catch (err: any) {
         // Nếu lỗi (vd đã finalize rồi) → thử lấy summary để biết trạng thái thực
@@ -1176,7 +1512,7 @@ function QcFinalizeOrDispatch({
           const s = await getSum(taskId);
           if ((s.failCount ?? 0) > 0) {
             setState('on_hold');
-            onOnHold();
+            onOnHold(s.failCount ?? 1);
           } else {
             setState('dispatch');
           }
@@ -1317,7 +1653,67 @@ const STEPS = [
   { status: 'DISPATCHED',       label: 'Xuất kho',  icon: 'local_shipping' },
 ];
 
-function FlowProgress({ current }: { current: string }) {
+// [FIX TC-1A] Flow thiếu hàng: DRAFT → Báo thiếu → Chờ Manager → Xử lý → Tiếp tục
+const SHORTAGE_STEPS = [
+  { status: 'DRAFT',         label: 'Nháp',          icon: 'draft' },
+  { status: 'WAITING_STOCK', label: 'Báo thiếu',     icon: 'report' },
+  { status: '_MANAGER',      label: 'Manager xử lý', icon: 'manage_accounts' },
+  { status: 'APPROVED',      label: 'Allocate lại',  icon: 'inventory' },
+  { status: 'PICKING',       label: 'Lấy hàng',      icon: 'forklift' },
+  { status: 'QC_SCAN',       label: 'QC Scan',       icon: 'qr_code_scanner' },
+  { status: 'DISPATCHED',    label: 'Xuất kho',      icon: 'local_shipping' },
+];
+
+function FlowProgress({ current, isShortageFlow, hasQcFail }: { current: string; isShortageFlow?: boolean; hasQcFail?: boolean }) {
+  // Shortage flow: DRAFT có thiếu hàng (hasStockShortage) hoặc đang WAITING_STOCK
+  if (isShortageFlow) {
+    // Map current status → shortage step index
+    const shortageIdx = (() => {
+      if (current === 'DRAFT')         return 0;
+      if (current === 'WAITING_STOCK') return 1; // Báo thiếu — chờ Manager
+      if (current === 'APPROVED')      return 3; // Manager xử lý xong → Allocate lại
+      if (current === 'ALLOCATED')     return 3;
+      if (current === 'PICKING')       return 4;
+      if (current === 'QC_SCAN' || current === 'ON_HOLD') return 5;
+      if (current === 'DISPATCHED')    return 6;
+      return 0;
+    })();
+    // Khi WAITING_STOCK: bước "_MANAGER" đang active (idx=2), "Báo thiếu" đã done (idx=1)
+    const displayIdx = current === 'WAITING_STOCK' ? 2 : shortageIdx;
+
+    return (
+      <div className="flex items-center overflow-x-auto pb-0.5 mt-2">
+        {SHORTAGE_STEPS.map((step, i) => {
+          const done = i < displayIdx, active = i === displayIdx;
+          return (
+            <div key={step.status} className="flex items-center flex-shrink-0">
+              <div className={`flex flex-col items-center gap-0.5 ${done ? 'opacity-70' : !active ? 'opacity-25' : ''}`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                  done   ? 'bg-emerald-100 text-emerald-600' :
+                  active ? 'bg-red-500 text-white shadow-sm' :
+                  'bg-gray-100 text-gray-400'
+                }`}>
+                  {done
+                    ? <span className="material-symbols-outlined text-[12px]">check</span>
+                    : <span className="material-symbols-outlined text-[12px]">{step.icon}</span>}
+                </div>
+                <span className={`text-[9px] font-semibold whitespace-nowrap ${
+                  active ? 'text-red-500' : 'text-gray-400'
+                }`}>
+                  {step.label}
+                </span>
+              </div>
+              {i < SHORTAGE_STEPS.length - 1 && (
+                <div className={`w-6 h-px mx-0.5 flex-shrink-0 ${i < displayIdx ? 'bg-emerald-300' : 'bg-gray-200'}`} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Flow bình thường (happy case)
   const displayStatus = current === 'ON_HOLD' ? 'QC_SCAN' : current === 'WAITING_STOCK' ? 'APPROVED' : current;
   const idx = STEPS.findIndex(s => s.status === displayStatus);
   if (idx < 0 || current === 'REJECTED' || current === 'CANCELLED') return null;
@@ -1330,15 +1726,21 @@ function FlowProgress({ current }: { current: string }) {
             <div className={`flex flex-col items-center gap-0.5 ${done ? 'opacity-70' : !active ? 'opacity-25' : ''}`}>
               <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
                 done ? 'bg-emerald-100 text-emerald-600' :
+                active && hasQcFail ? 'bg-red-500 text-white shadow-sm' :
                 active ? 'bg-indigo-600 text-white shadow-sm' :
                 'bg-gray-100 text-gray-400'
               }`}>
                 {done
                   ? <span className="material-symbols-outlined text-[12px]">check</span>
-                  : <span className="material-symbols-outlined text-[12px]">{step.icon}</span>}
+                  : active && hasQcFail
+                    ? <span className="material-symbols-outlined text-[12px]">warning</span>
+                    : <span className="material-symbols-outlined text-[12px]">{step.icon}</span>}
               </div>
-              <span className={`text-[9px] font-semibold whitespace-nowrap ${active ? 'text-indigo-600' : 'text-gray-400'}`}>
-                {step.label}
+              <span className={`text-[9px] font-semibold whitespace-nowrap ${
+                active && hasQcFail ? 'text-red-500' :
+                active ? 'text-indigo-600' : 'text-gray-400'
+              }`}>
+                {active && hasQcFail ? 'QC Fail ⚠️' : step.label}
               </span>
             </div>
             {i < STEPS.length - 1 && (
@@ -1369,6 +1771,7 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
   const [actionLoading, setActionLoading] = useState(false);
   const [taskId, setTaskId] = useState<number | null>(null);
   const [qcDone, setQcDone] = useState(false);
+  const [qcFinalizeFailCount, setQcFinalizeFailCount] = useState(0); // [BUG-FIX] track fail count from finalizeQc
   const [orderDetail, setOrderDetail] = useState<any>(null);
   const role = getUserRole();
 
@@ -1381,7 +1784,11 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
     fetchQcSummary(taskId)
       .then(s => {
         const total = (s.passCount ?? 0) + (s.failCount ?? 0) + (s.holdCount ?? 0) + (s.pendingCount ?? 0);
-        if ((s.pendingCount ?? 0) === 0 && total > 0) setQcDone(true);
+        if ((s.pendingCount ?? 0) === 0 && total > 0) {
+          // [FIX] Lấy failCount ngay từ summary — không chờ finalizeQc để set externalFailCount
+          setQcFinalizeFailCount((s.failCount ?? 0) + (s.holdCount ?? 0));
+          setQcDone(true);
+        }
       })
       .catch(() => {});
   }, [taskId, localStatus, qcDone]);
@@ -1402,7 +1809,7 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
       }
       return prev;
     });
-    if (isNewDocument) { setTaskId(null); setQcDone(false); }
+    if (isNewDocument) { setTaskId(null); setQcDone(false); setQcFinalizeFailCount(0); }
   }, [item?.documentId, item?.status]);
 
   useEffect(() => {
@@ -1431,6 +1838,25 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
   const badge = OUTBOUND_STATUS_BADGE[localStatus as keyof typeof OUTBOUND_STATUS_BADGE]
     ?? { label: localStatus, className: 'bg-gray-100 text-gray-500' };
   const dispatchPdfUrl: string | null = orderDetail?.dispatchPdfUrl ?? null;
+
+  // [FIX TC-1A] Keeper báo thiếu hàng ngay từ đơn DRAFT (không cần gửi duyệt)
+  // BE: reportShortage → SO DRAFT → WAITING_STOCK + tạo Incident SHORTAGE OPEN
+  const handleDraftReportShortage = async () => {
+    setShowSubmitConfirm(false);
+    try {
+      setActionLoading(true);
+      await reportShortage(item.documentId, item.orderType);
+      toast.success('✅ Đã báo thiếu hàng lên Manager — đơn chuyển sang Chờ hàng bù');
+      setLocalStatus('WAITING_STOCK');
+      onRefresh();
+    } catch (err: any) {
+      if (!err?._toastedByInterceptor) {
+        toast.error(err?.response?.data?.message ?? 'Gửi báo cáo thiếu hàng thất bại.');
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const handleSubmit = async () => {
     setShowSubmitConfirm(false);
@@ -1513,11 +1939,31 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
             onIncidentClick={(inc) => { setSelectedIncident(inc); setShowIncidentModal(true); }}
           />
           {role === 'KEEPER' && (
-            <AllocatePanel item={item} onDone={() => { setLocalStatus('ALLOCATED'); onRefresh(); }} onReportShortageSuccess={() => { setLocalStatus('ON_HOLD'); onRefresh(); }} />
+            <WaitingStockKeeperPanel
+              item={item}
+              orderDetail={orderDetail}
+              onAllocateDone={() => { setLocalStatus('ALLOCATED'); onRefresh(); }}
+              onReportShortageSuccess={() => { setLocalStatus('ON_HOLD'); onRefresh(); }}
+            />
           )}
           {role === 'MANAGER' && (
-            <div className="p-4 bg-amber-50 rounded-xl border border-amber-100">
-              <p className="text-sm text-amber-700 font-medium">Chờ Keeper Allocate lại sau khi hàng bù đã nhập kho.</p>
+            <div className="space-y-3">
+              {/* [FIX TC-1A] Inline shortage resolution — Manager xử lý ngay trong modal */}
+              <ShortageResolutionPanel
+                soId={item.documentId}
+                onResolved={(action) => {
+                  if (action === 'CLOSE_SHORT') {
+                    setLocalStatus('APPROVED');
+                  }
+                  // WAIT_BACKORDER giữ WAITING_STOCK — chỉ refresh để reload incident list
+                  onRefresh();
+                }}
+              />
+              <div className="p-3 bg-amber-50 rounded-xl border border-amber-100">
+                <p className="text-xs text-amber-700 font-medium">
+                  Sau khi chọn <strong>Chờ hàng bù</strong>: nhà cung cấp giao bù → Keeper nhập kho → Keeper quay lại đây Allocate lại.
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -1525,34 +1971,117 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
     }
 
     if (localStatus === 'DRAFT') {
+      // [FIX TC-1A] Đọc hasStockShortage từ item (BE tính sẵn trong list response).
+      // Không dùng orderDetail vì nó load async — khi render lần đầu orderDetail=null
+      // → hasDraftShortage=false → sai flow. item.hasStockShortage có ngay từ đầu.
+      // orderDetail?.stockWarnings dùng để hiện chi tiết SKU (sau khi detail load xong).
+      const hasDraftShortage = !!(item as any).hasStockShortage;
+      const draftWarnings: any[] = (orderDetail?.stockWarnings ?? []).filter(
+        (w: any) => w.availableQty !== undefined && w.requestedQty !== undefined
+          && parseFloat(w.availableQty) < parseFloat(w.requestedQty)
+      );
+
       if (role === 'KEEPER') return (
         <>
-        <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
-          <p className="text-sm text-gray-600">{isSO ? 'Submit để gửi Manager duyệt.' : 'Submit → tự động APPROVED (không cần Manager).'}</p>
-          <button onClick={() => setShowSubmitConfirm(true)} disabled={actionLoading || deleting}
-            className="w-full py-2.5 text-sm font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 flex items-center justify-center gap-2 disabled:opacity-60">
-            {actionLoading && <Spin />}
-            {actionLoading ? 'Đang gửi...' : 'Gửi duyệt'}
-          </button>
-          <div className="flex gap-2">
-            <button onClick={() => setShowEditModal(true)} disabled={actionLoading || deleting}
-              className="flex-1 py-2 text-sm font-semibold text-indigo-600 bg-white border border-indigo-200 rounded-xl hover:bg-indigo-50 flex items-center justify-center gap-1.5 disabled:opacity-60">
-              <span className="material-symbols-outlined text-[15px]">edit</span>
-              Sửa
-            </button>
-            <button onClick={() => setShowDeleteConfirm(true)} disabled={actionLoading || deleting}
-              className="flex-1 py-2 text-sm font-semibold text-red-600 bg-white border border-red-200 rounded-xl hover:bg-red-50 flex items-center justify-center gap-1.5 disabled:opacity-60">
-              {deleting ? <Spin /> : <span className="material-symbols-outlined text-[15px]">delete</span>}
-              {deleting ? 'Đang xoá...' : 'Xoá'}
-            </button>
+        {/* ── CASE A: Thiếu hàng — flow phụ, bypass gửi duyệt ── */}
+        {hasDraftShortage ? (
+          <div className="space-y-3">
+            {/* Banner cảnh báo đỏ */}
+            <div className="rounded-xl border border-red-200 overflow-hidden">
+              <div className="px-4 py-3 bg-red-50 border-b border-red-200 flex items-center gap-2">
+                <span className="material-symbols-outlined text-red-500 text-[18px]">warning</span>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-red-800">Thiếu tồn kho — Không thể gửi duyệt</p>
+                  <p className="text-[10px] text-red-500 mt-0.5">Báo Manager xử lý trước khi đơn được tiếp tục</p>
+                </div>
+              </div>
+              <div className="divide-y divide-red-50 bg-white">
+                {draftWarnings.map((w: any) => (
+                  <div key={w.skuCode} className="flex items-center justify-between px-4 py-2.5">
+                    <div>
+                      <p className="text-xs font-bold text-gray-800">{w.skuCode}</p>
+                      <p className="text-[10px] text-gray-400">Yêu cầu: {w.requestedQty}</p>
+                    </div>
+                    <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+                      Có sẵn: {w.availableQty}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Đơn có SKU thiếu tồn kho. Báo Manager để xử lý (chốt thiếu hoặc chờ nhập bù).
+                Bạn cũng có thể <strong>Sửa đơn</strong> để điều chỉnh số lượng.
+              </p>
+              {/* Nút chính: Báo thiếu hàng → gọi reportShortage → SO → WAITING_STOCK */}
+              <button
+                onClick={() => setShowSubmitConfirm(true)}
+                disabled={actionLoading || deleting}
+                className="w-full py-2.5 text-sm font-semibold text-white bg-red-600 rounded-xl hover:bg-red-700 flex items-center justify-center gap-2 disabled:opacity-60">
+                {actionLoading && <Spin />}
+                {actionLoading ? 'Đang gửi...' : '⚠️ Báo thiếu hàng lên Manager'}
+              </button>
+              <div className="flex gap-2">
+                <button onClick={() => setShowEditModal(true)} disabled={actionLoading || deleting}
+                  className="flex-1 py-2 text-sm font-semibold text-indigo-600 bg-white border border-indigo-200 rounded-xl hover:bg-indigo-50 flex items-center justify-center gap-1.5 disabled:opacity-60">
+                  <span className="material-symbols-outlined text-[15px]">edit</span>
+                  Sửa đơn
+                </button>
+                <button onClick={() => setShowDeleteConfirm(true)} disabled={actionLoading || deleting}
+                  className="flex-1 py-2 text-sm font-semibold text-red-600 bg-white border border-red-200 rounded-xl hover:bg-red-50 flex items-center justify-center gap-1.5 disabled:opacity-60">
+                  {deleting ? <Spin /> : <span className="material-symbols-outlined text-[15px]">delete</span>}
+                  {deleting ? 'Đang xoá...' : 'Xoá'}
+                </button>
+              </div>
+            </div>
+
+            {/* ConfirmModal cho "Báo thiếu" — reuse showSubmitConfirm state */}
+            <ConfirmModal
+              open={showSubmitConfirm} icon="report" iconColor="text-red-500"
+              title="Báo thiếu hàng lên Manager?"
+              confirmLabel="Báo thiếu hàng" confirmColor="bg-red-600 hover:bg-red-700"
+              description="Hệ thống sẽ tạo Incident SHORTAGE và gửi lên Manager. Đơn sẽ chuyển sang trạng thái Chờ hàng bù cho đến khi Manager xử lý."
+              loading={actionLoading} onConfirm={handleDraftReportShortage} onCancel={() => setShowSubmitConfirm(false)} />
             <ConfirmModal
               open={showDeleteConfirm} icon="delete_forever" iconColor="text-red-500"
               title="Xoá lệnh xuất kho?" confirmLabel="Xoá" confirmColor="bg-red-600 hover:bg-red-700"
               description={`Bạn chắc chắn muốn xoá lệnh "${item.documentCode}"? Thao tác này không thể hoàn tác.`}
-              loading={deleting} onConfirm={handleDelete} onCancel={() => setShowDeleteConfirm(false)}
-            />
+              loading={deleting} onConfirm={handleDelete} onCancel={() => setShowDeleteConfirm(false)} />
           </div>
-        </div>
+        ) : (
+          /* ── CASE B: Đủ hàng — flow bình thường, gửi duyệt ── */
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
+            <p className="text-sm text-gray-600">
+              {isSO ? 'Submit để gửi Manager duyệt.' : 'Submit → tự động APPROVED (không cần Manager).'}
+            </p>
+            <button onClick={() => setShowSubmitConfirm(true)} disabled={actionLoading || deleting}
+              className="w-full py-2.5 text-sm font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 flex items-center justify-center gap-2 disabled:opacity-60">
+              {actionLoading && <Spin />}
+              {actionLoading ? 'Đang gửi...' : 'Gửi duyệt'}
+            </button>
+            <div className="flex gap-2">
+              <button onClick={() => setShowEditModal(true)} disabled={actionLoading || deleting}
+                className="flex-1 py-2 text-sm font-semibold text-indigo-600 bg-white border border-indigo-200 rounded-xl hover:bg-indigo-50 flex items-center justify-center gap-1.5 disabled:opacity-60">
+                <span className="material-symbols-outlined text-[15px]">edit</span>
+                Sửa
+              </button>
+              <button onClick={() => setShowDeleteConfirm(true)} disabled={actionLoading || deleting}
+                className="flex-1 py-2 text-sm font-semibold text-red-600 bg-white border border-red-200 rounded-xl hover:bg-red-50 flex items-center justify-center gap-1.5 disabled:opacity-60">
+                {deleting ? <Spin /> : <span className="material-symbols-outlined text-[15px]">delete</span>}
+                {deleting ? 'Đang xoá...' : 'Xoá'}
+              </button>
+              <ConfirmModal
+                open={showDeleteConfirm} icon="delete_forever" iconColor="text-red-500"
+                title="Xoá lệnh xuất kho?" confirmLabel="Xoá" confirmColor="bg-red-600 hover:bg-red-700"
+                description={`Bạn chắc chắn muốn xoá lệnh "${item.documentCode}"? Thao tác này không thể hoàn tác.`}
+                loading={deleting} onConfirm={handleDelete} onCancel={() => setShowDeleteConfirm(false)} />
+            </div>
+          </div>
+        )}
+
         {showEditModal && (
           <CreateOutboundModal
             open={showEditModal}
@@ -1561,6 +2090,14 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
             editItem={orderDetail ?? null}
           />
         )}
+        <ConfirmModal
+          open={!hasDraftShortage && showSubmitConfirm} icon="send" iconColor="text-indigo-500"
+          title={isSO ? 'Xác nhận gửi duyệt?' : 'Xác nhận submit Transfer?'}
+          confirmLabel="Gửi duyệt" confirmColor="bg-indigo-600 hover:bg-indigo-700"
+          description={isSO
+            ? 'Lệnh xuất sẽ được gửi lên Manager để phê duyệt. Sau khi submit, đơn sẽ bị khoá chỉnh sửa.'
+            : 'Transfer sẽ tự động APPROVED và sẵn sàng Allocate.'}
+          loading={actionLoading} onConfirm={handleSubmit} onCancel={() => setShowSubmitConfirm(false)} />
         </>
       );
       if (role === 'MANAGER') return (
@@ -1572,9 +2109,39 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
     }
 
     if (localStatus === 'PENDING_APPROVAL') {
+      // [FIX TC-1A] Tính warnings cho Manager xem khi duyệt — dùng stockWarnings từ orderDetail
+      const pendingWarnings: any[] = (orderDetail?.stockWarnings ?? []).filter(
+        (w: any) => w.availableQty !== undefined && w.requestedQty !== undefined
+          && parseFloat(w.availableQty) < parseFloat(w.requestedQty)
+      );
+      const hasPendingShortage = pendingWarnings.length > 0;
+
       if (role === 'MANAGER') return (
         <div className="p-4 bg-orange-50 rounded-xl border border-orange-100 space-y-3">
           <p className="text-sm text-orange-800 font-medium">Lệnh xuất đang chờ Manager duyệt.</p>
+
+          {/* [FIX TC-1A] Hiển thị cảnh báo tồn kho cho Manager trước khi duyệt */}
+          {hasPendingShortage && (
+            <div className="p-3 bg-red-50 rounded-xl border border-red-200 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-red-500 text-[15px]">warning</span>
+                <p className="text-xs font-bold text-red-700">Cảnh báo tồn kho — Keeper đã báo thiếu hàng</p>
+              </div>
+              {pendingWarnings.map((w: any) => (
+                <div key={w.skuCode}
+                  className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5 border border-red-100">
+                  <p className="text-xs font-bold text-gray-800">{w.skuCode}</p>
+                  <span className="text-xs text-red-600 font-semibold">
+                    Có sẵn: {w.availableQty} / Yêu cầu: {w.requestedQty}
+                  </span>
+                </div>
+              ))}
+              <p className="text-[10px] text-red-500 italic">
+                Nếu duyệt, hệ thống sẽ Allocate sau — Keeper có thể báo thiếu hàng ở bước Allocate.
+              </p>
+            </div>
+          )}
+
           <div className="flex gap-3">
             <button onClick={() => setShowApproveConfirm(true)} disabled={actionLoading}
               className="flex-1 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 flex items-center justify-center gap-2 disabled:opacity-60">
@@ -1641,27 +2208,31 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
             <QcScanPanel
               taskId={taskId}
               viewerRole={role}
-              onAllScanned={() => {
+              isExternallyFinalized={qcDone}
+              externalFailCount={qcFinalizeFailCount}
+              onAllScanned={(fc?: number) => {
+                // [FIX] Nhận failCount từ polling — set ngay để banner hiển thị đúng màu
+                setQcFinalizeFailCount(fc ?? 0);
                 setQcDone(true);
-                toast.success('✅ QC hoàn tất! Toàn bộ hàng đã được kiểm tra — có thể xuất kho.', { duration: 5000 });
                 onRefresh();
               }}
-              onAlreadyDone={() => {
+              onAlreadyDone={(fc?: number) => {
+                setQcFinalizeFailCount(fc ?? 0);
                 setQcDone(true);
                 onRefresh();
               }}
             />
-            {/* [BUG-FIX GAP 4] Khi QC xong (qcDone), phải gọi finalizeQc trước.
+            {/* [BUG-FIX GAP 4] Khi QC xong (qcDone), gọi finalizeQc trước khi xuất kho.
                  finalizeQc: auto-PASS items còn pending, tạo DAMAGE incident nếu có FAIL,
-                 set SO → ON_HOLD. Sau đó reload localStatus từ server.
-                 - Nếu fail=0 → show DispatchPanel
-                 - Nếu fail>0 → SO đã ON_HOLD, onRefresh() sẽ cập nhật localStatus → ON_HOLD banner hiện */}
+                 set SO → ON_HOLD nếu fail>0, hoặc QC_SCAN nếu pass sạch.
+                 - fail=0 → show DispatchPanel
+                 - fail>0 → SO ON_HOLD, localStatus → ON_HOLD, banner hiện */}
             {qcDone && role === 'KEEPER' && isSO && (
               <QcFinalizeOrDispatch
                 taskId={taskId}
                 item={item}
-                onDispatched={() => { setLocalStatus('DISPATCHED'); onRefresh(); }}
-                onOnHold={() => { setLocalStatus('ON_HOLD'); onRefresh(); }}
+                onDispatched={() => { setQcFinalizeFailCount(0); setLocalStatus('DISPATCHED'); onRefresh(); }}
+                onOnHold={(fails) => { setQcFinalizeFailCount(fails ?? 1); setLocalStatus('ON_HOLD'); onRefresh(); }}
               />
             )}
             {!qcDone && role === 'KEEPER' && isSO && (
@@ -1826,7 +2397,14 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
                 Tạo {new Date(item.createdAt).toLocaleDateString('vi-VN')}
                 {(item as any).createdByName ? ` · ${(item as any).createdByName}` : ''}
               </p>
-              <FlowProgress current={localStatus} />
+              <FlowProgress
+                current={localStatus}
+                isShortageFlow={
+                  localStatus === 'WAITING_STOCK' ||
+                  (localStatus === 'DRAFT' && !!(item as any).hasStockShortage)
+                }
+                hasQcFail={qcFinalizeFailCount > 0}
+              />
             </div>
             <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 flex-shrink-0">
               <span className="material-symbols-outlined text-lg">close</span>
@@ -1906,7 +2484,7 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
         </div>
       </div>
 
-      <ConfirmModal open={showSubmitConfirm} icon="send" iconColor="text-indigo-500"
+      <ConfirmModal open={showSubmitConfirm && localStatus !== 'DRAFT'} icon="send" iconColor="text-indigo-500"
         title={isSO ? 'Xác nhận gửi duyệt?' : 'Xác nhận submit Transfer?'}
         description={isSO
           ? 'Lệnh xuất sẽ được gửi lên Manager để phê duyệt. Sau khi submit, đơn sẽ bị khoá chỉnh sửa.'

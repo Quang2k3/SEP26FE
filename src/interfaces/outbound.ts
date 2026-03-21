@@ -86,6 +86,8 @@ export interface OutboundListItem {
   canSubmit?: boolean;
   canApprove?: boolean;
   canConfirm?: boolean;
+  // [FIX TC-1A] BE tính sẵn khi build list — FE đọc ngay không cần chờ GET detail
+  hasStockShortage?: boolean;
 }
 
 export interface OutboundPagePayload {
