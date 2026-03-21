@@ -236,11 +236,10 @@ const EMPTY_ROW = (): ItemRow => ({
 
 export default function CreateOutboundModal({ open, onClose, onCreated, editItem }: Props) {
   const isEdit = !!editItem;
-  const [orderType, setOrderType] = useState<OutboundType>('SALES_ORDER');
+  const orderType: OutboundType = 'SALES_ORDER'; // Chỉ còn Sales Order
   const [customerCode, setCustomerCode] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
-  const [destWarehouseCode, setDestWarehouseCode] = useState('');
   const [items, setItems] = useState<ItemRow[]>([EMPTY_ROW()]);
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
@@ -257,7 +256,6 @@ export default function CreateOutboundModal({ open, onClose, onCreated, editItem
     if (!open) return;
     if (editItem) {
       // Edit mode: pre-fill đầy đủ từ đơn hiện tại
-      setOrderType(editItem.orderType);
       // customerCode + customerName từ BE (đã thêm vào OutboundResponse)
       setCustomerCode(editItem.customerCode ?? '');
       setCustomerName(editItem.customerName ?? '');
@@ -268,7 +266,6 @@ export default function CreateOutboundModal({ open, onClose, onCreated, editItem
           : ''
       );
       // destinationWarehouseCode từ BE
-      setDestWarehouseCode(editItem.destinationWarehouseCode ?? '');
       setNote(editItem.note ?? '');
       setItems(
         editItem.items?.length
@@ -283,9 +280,9 @@ export default function CreateOutboundModal({ open, onClose, onCreated, editItem
           : [EMPTY_ROW()]
       );
     } else {
-      setOrderType('SALES_ORDER');
+      ('SALES_ORDER');
       setCustomerCode(''); setCustomerName('');
-      setDeliveryDate(''); setDestWarehouseCode('');
+      setDeliveryDate('');
       setItems([EMPTY_ROW()]); setNote('');
     }
     setShowCreateCustomer(false);
@@ -332,13 +329,12 @@ export default function CreateOutboundModal({ open, onClose, onCreated, editItem
       if (isEdit && editItem) {
         // Edit mode: gọi update API
         const payload = {
-          customerCode: orderType === 'SALES_ORDER' ? customerCode || undefined : undefined,
-          deliveryDate: orderType === 'SALES_ORDER' && deliveryDate ? deliveryDate : undefined,
-          destinationWarehouseCode: orderType === 'INTERNAL_TRANSFER' ? destWarehouseCode || undefined : undefined,
+          customerCode: customerCode || undefined,
+          deliveryDate: deliveryDate ? deliveryDate : undefined,
           items: parsedItems,
           note: note || undefined,
         };
-        if (orderType === 'SALES_ORDER') {
+        if (true) {
           await updateSalesOrder(editItem.documentId, payload);
         } else {
           await updateTransfer(editItem.documentId, payload);
@@ -347,9 +343,8 @@ export default function CreateOutboundModal({ open, onClose, onCreated, editItem
       } else {
         const result = await createOutbound({
           orderType,
-          customerCode: orderType === 'SALES_ORDER' ? customerCode : undefined,
-          deliveryDate: orderType === 'SALES_ORDER' && deliveryDate ? deliveryDate : undefined,
-          destinationWarehouseCode: orderType === 'INTERNAL_TRANSFER' ? destWarehouseCode : undefined,
+          customerCode: customerCode,
+          deliveryDate: deliveryDate ? deliveryDate : undefined,
           items: parsedItems,
           note: note || undefined,
         });
@@ -362,8 +357,13 @@ export default function CreateOutboundModal({ open, onClose, onCreated, editItem
       }
       onCreated(); onClose();
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.message ?? (err as any)?.message ?? 'Thao tác thất bại.';
-      toast.error(msg, { duration: 6000 });
+      // Interceptor đã toast lỗi 4xx/5xx — chỉ toast nếu chưa được xử lý
+      if (!(err as any)?._toastedByInterceptor) {
+        const msg = (err as any)?.response?.data?.message ?? (err as any)?.message ?? 'Thao tác thất bại.';
+        if (!(err as any)?._toastedByInterceptor) {
+        toast.error(msg, { duration: 6000 });
+        }
+      }
     } finally { setLoading(false); }
   };
 
@@ -393,22 +393,8 @@ export default function CreateOutboundModal({ open, onClose, onCreated, editItem
           {/* Body */}
           <form id="create-ob-form" onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
 
-            {/* Order type toggle */}
-            <div className="flex gap-2 p-1 bg-gray-100 rounded-xl w-fit">
-              {(['SALES_ORDER', 'INTERNAL_TRANSFER'] as OutboundType[]).map(t => (
-                <button key={t} type="button"
-                  onClick={() => !isEdit && setOrderType(t)}
-                  disabled={isEdit}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    orderType === t ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  } ${isEdit ? 'cursor-not-allowed opacity-60' : ''}`}>
-                  {t === 'SALES_ORDER' ? '🛒 Sales Order' : '🔄 Chuyển kho'}
-                </button>
-              ))}
-            </div>
-
+            
             {/* Customer / Warehouse */}
-            {orderType === 'SALES_ORDER' ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-gray-600">
@@ -447,23 +433,7 @@ export default function CreateOutboundModal({ open, onClose, onCreated, editItem
                     className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                 </div>
               </div>
-            ) : (
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-gray-600">Kho đích <span className="text-red-500">*</span></label>
-                <Combobox<Warehouse>
-                  value={destWarehouseCode}
-                  displayText={`${warehouses.find(w => w.warehouseCode === destWarehouseCode)?.warehouseName ?? ''} (${destWarehouseCode})`}
-                  placeholder="Tìm tên hoặc mã kho..."
-                  icon="warehouse"
-                  items={warehouses}
-                  getKey={w => w.warehouseCode}
-                  getLabel={w => w.warehouseName}
-                  getSublabel={w => w.warehouseCode}
-                  onSelect={w => setDestWarehouseCode(w.warehouseCode)}
-                  onClear={() => setDestWarehouseCode('')}
-                />
-              </div>
-            )}
+            
 
             {/* SKU list */}
             <div>

@@ -7,6 +7,12 @@ export interface SkuOption {
   skuName: string;
   unit: string | null;
   barcode: string | null;
+  /** Hạn sử dụng tính theo ngày — dùng để tự tính HSD = SX + shelfLifeDays trên FE */
+  shelfLifeDays: number | null;
+  /** Trọng lượng 1 thùng (kg) */
+  weightPerCartonKg: number | null;
+  /** Số đơn vị lẻ trong 1 thùng */
+  unitsPerCarton: number | null;
 }
 
 export interface SkuDetail extends SkuOption {
@@ -17,7 +23,6 @@ export interface SkuDetail extends SkuOption {
   weightG: number | null;
   originCountry: string | null;
   imageUrl: string | null;
-  shelfLifeDays: number | null;
   active: boolean;
 }
 
