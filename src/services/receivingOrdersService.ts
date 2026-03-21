@@ -97,3 +97,4 @@ export async function generateGrn(id: number): Promise<void> {
 export async function deleteReceivingOrder(id: number): Promise<void> {
   await api.delete(`/receiving-orders/${id}`);
 }
+

@@ -2,30 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { DataTable } from "@/components/ui/Table";
-import {
-  fetchIncidents,
-  approveIncident,
-  rejectIncident,
-} from "@/services/incidentService";
+import { fetchIncidents } from "@/services/incidentService";
 import { getIncidentColumns } from "./components/column";
 import IncidentFilter from "./components/IncidentFilter";
 import IncidentDetailModal from "./components/IncidentDetailModal";
 import type { Incident, IncidentPagePayload } from "@/interfaces/incident";
-import { Modal, Input } from "antd";
 import toast from "react-hot-toast";
 import { getStoredSession } from "@/services/authService";
 
 type IncidentStatus = "OPEN" | "APPROVED" | "REJECTED" | "RESOLVED" | "ALL";
 
 export default function IncidentListPage() {
-  const [incidentPage, setIncidentPage] = useState<IncidentPagePayload | null>(
-    null,
-  );
-
+  const [incidentPage, setIncidentPage] = useState<IncidentPagePayload | null>(null);
   const [page, setPage] = useState(0);
   const [pageSize] = useState(10);
   const [loading, setLoading] = useState(false);
-
   const [statusFilter, setStatusFilter] = useState<IncidentStatus>("OPEN");
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
 
@@ -36,14 +27,11 @@ export default function IncidentListPage() {
   async function loadIncidents() {
     try {
       setLoading(true);
-
       const params =
         statusFilter === "ALL"
           ? { page, size: pageSize }
           : { status: statusFilter, page, size: pageSize };
-
       const data = await fetchIncidents(params);
-
       setIncidentPage(data);
     } catch {
       toast.error("Không tải được danh sách Incident");
@@ -63,42 +51,8 @@ export default function IncidentListPage() {
   const handleChangePage = (newPage: number) => {
     if (!incidentPage) return;
     if (newPage < 0 || newPage >= incidentPage.totalPages) return;
-
     setPage(newPage);
   };
-
-  async function handleApprove(incident: Incident) {
-    try {
-      await approveIncident(incident.incidentId);
-      toast.success("Duyệt sự cố thành công");
-      loadIncidents();
-    } catch {
-      toast.error("Duyệt sự cố thất bại");
-    }
-  }
-
-  function handleReject(incident: Incident) {
-    let reason = "";
-
-    Modal.confirm({
-      title: "Từ chối Incident",
-      content: (
-        <Input
-          placeholder="Nhập lý do từ chối"
-          onChange={(e) => (reason = e.target.value)}
-        />
-      ),
-      async onOk() {
-        try {
-          await rejectIncident(incident.incidentId, reason);
-          toast.success("Đã từ chối sự cố");
-          loadIncidents();
-        } catch {
-          toast.error("Từ chối sự cố thất bại");
-        }
-      },
-    });
-  }
 
   function handleDetail(incident: Incident) {
     setSelectedIncident(incident);
@@ -118,7 +72,7 @@ export default function IncidentListPage() {
 
       <DataTable
         data={incidentPage?.content ?? []}
-        columns={getIncidentColumns(handleDetail, handleApprove, handleReject, isManager)}
+        columns={getIncidentColumns(handleDetail)}
         loading={loading}
         page={page}
         pageSize={incidentPage?.pageSize ?? 10}

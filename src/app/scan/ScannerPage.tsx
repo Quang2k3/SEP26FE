@@ -228,7 +228,18 @@ function KeeperInboundScanner({ token, receivingId }: { token: string; receiving
       if (d?.success) {
         const orderStatus = d.data?.status;
         const apiMsg = d.message ?? '';
-        if (orderStatus === 'PENDING_INCIDENT') {
+        if (apiMsg.includes('khớp QC') && apiMsg.includes('tự xử lý')) {
+          if (orderStatus === 'PENDING_INCIDENT') {
+            toast('✅ Khớp QC! Phát hiện sai lệch — đã tạo Incident');
+            lockUI('Khớp QC ✓ — Incident gửi Manager duyệt');
+          } else {
+            toast('✅ Khớp QC! Hàng đã duyệt');
+            lockUI('Khớp QC ✓ — QC Approved');
+          }
+        } else if (apiMsg.includes('vẫn lệch QC')) {
+          toast('⚠️ Vẫn lệch với QC — chờ QC quét lại');
+          lockUI('⚠️ Lệch QC — chờ QC kiểm đếm lại');
+        } else if (orderStatus === 'PENDING_INCIDENT') {
           const hasUnexpected = apiMsg.includes('ngoài phiếu');
           const hasMismatch = apiMsg.includes('chênh lệch');
           let toastMsg = '⚠️ ';
@@ -411,7 +422,15 @@ function QCInboundScanner({ token, receivingId }: { token: string; receivingId: 
     const cond = conditionRef.current;
     setStatus(`Gửi: ${barcode} [${cond}]`);
     try {
-      const body: Record<string, unknown> = { barcode, qty: 1, condition: toApiCondition(cond), receivingId };
+      // QC scan inbound: KHÔNG gửi receivingId trong body → chỉ lưu vào Redis session.
+      // Nếu gửi receivingId, ScanEventService sẽ cộng vào receivedQty trong DB ngay lập tức
+      // → gây lệch số khi qcSubmitSession so sánh kết quả QC vs Keeper scan.
+      // receivingId chỉ được dùng để gọi qc-submit-session ở bước finalize.
+      const body: Record<string, unknown> = {
+        barcode,
+        qty: 1,
+        condition: toApiCondition(cond),
+      };
       if (cond === 'HOLD') body.reasonCode = 'HOLD';
       const r = await fetch(`${API_BASE}/v1/scan-events`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -445,7 +464,7 @@ function QCInboundScanner({ token, receivingId }: { token: string; receivingId: 
     inflightRef.current = true;
     try {
       const apiCond = toApiCondition(cond);
-      const params  = new URLSearchParams({ sessionId, skuId: String(skuId), condition: apiCond, qty: '1', receivingId: String(receivingId) });
+      const params  = new URLSearchParams({ sessionId, skuId: String(skuId), condition: apiCond, qty: '1' });
       const r = await fetch(`${API_BASE}/v1/scan-events?${params}`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
       });
@@ -477,7 +496,20 @@ function QCInboundScanner({ token, receivingId }: { token: string; receivingId: 
         { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
       );
       const d = await r.json();
-      if (d?.success) { toast('✅ QC hoàn tất!'); lockUI('QC đã xác nhận — phiếu chuyển duyệt'); }
+      if (d?.success) {
+        const resData = d.data;
+        if (resData?.matched === false && resData?.status === 'KEEPER_RESCAN') {
+          const mismatchCount = resData.mismatchCount ?? 0;
+          toast(`⚠️ Lệch ${mismatchCount} SKU với Keeper — yêu cầu Keeper quét lại`);
+          lockUI(`⚠️ Lệch ${mismatchCount} SKU — chờ Keeper quét lại`);
+        } else if (resData?.status === 'PENDING_INCIDENT') {
+          toast('⚠️ QC phát hiện sai lệch — Incident gửi Manager');
+          lockUI('⚠️ Đã tạo Incident — chờ Manager duyệt');
+        } else {
+          toast('✅ QC hoàn tất!');
+          lockUI('QC đã xác nhận — phiếu chuyển duyệt');
+        }
+      }
       else toast(d?.message ?? 'Lỗi', true);
     } catch { toast('Lỗi kết nối', true); }
     finally { setSubmitting(false); }
@@ -916,7 +948,6 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
                   setPendingFailBarcode(null);
                   setPendingFailTarget(null);
                 }
-                // reset input để có thể chọn lại
                 if (photoInputRef.current) photoInputRef.current.value = '';
               }}
             />

@@ -32,8 +32,9 @@ export default function GateCheckFilter({
       options={[
         { value: "ALL",              label: "Tất cả" },
         { value: "DRAFT",            label: "Nháp" },
-        { value: "PENDING_COUNT",    label: "Chờ kiểm đếm" },
         { value: "SUBMITTED",        label: "Đang nhận hàng" },
+        { value: "KEEPER_RESCAN",    label: "Yêu cầu quét lại" },
+        { value: "PENDING_COUNT",    label: "Chờ kiểm đếm" },
         { value: "PENDING_INCIDENT", label: "Có sự cố" },
         { value: "QC_APPROVED",      label: "QC đạt" },
         { value: "GRN_CREATED",      label: "Đã tạo GRN" },
