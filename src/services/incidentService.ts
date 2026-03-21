@@ -53,7 +53,7 @@ export const approveIncident = async (id: number): Promise<Incident> => {
 
 export const resolveDiscrepancy = async (
   id: number,
-  items: { incidentItemId: number; action: string }[],
+  items: { incidentItemId: number; action: string; damageAction?: string }[],
   note?: string,
 ): Promise<Incident> => {
   const res = await api.post<ApiResponse<Incident>>(

@@ -16,7 +16,6 @@ interface Props {
 }
 
 // ─── Inbound incident actions (SHORTAGE/OVERAGE/DAMAGE — Gate Check flow) ───
-// [develop] Đổi tên thành ACTIONS_BY_REASON, thêm DAMAGE, "Trả NCC" → "Hoàn hàng"
 const ACTIONS_BY_REASON: Record<string, { value: string; label: string }[]> = {
   SHORTAGE: [
     { value: "CLOSE_SHORT",    label: "Chốt thiếu" },
@@ -35,6 +34,12 @@ const ACTIONS_BY_REASON: Record<string, { value: string; label: string }[]> = {
     { value: "SCRAP",  label: "Huỷ bỏ" },
     { value: "ACCEPT", label: "Chấp nhận" },
   ],
+  DISCREPANCY: [
+    { value: "ACCEPT", label: "Nhập kho" },
+    { value: "RETURN", label: "Hoàn hàng" },
+    { value: "CLOSE_SHORT", label: "Chốt thiếu" },
+    { value: "SCRAP",  label: "Huỷ bỏ" },
+  ],
 };
 
 // ─── [V20] Outbound damage actions ──────────────────────────────────────────
@@ -49,7 +54,7 @@ const OUTBOUND_SHORTAGE_ACTIONS = [
   { value: "CLOSE_SHORT",    label: "Chốt thiếu + Re-Allocate ngay", color: "bg-blue-600 hover:bg-blue-700" },
 ];
 
-// ─── [develop] Helpers ───────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 function computeOverShort(item: IncidentItem) {
   const diff = item.actualQty - item.expectedQty;
   return { over: diff > 0 ? diff : 0, short: diff < 0 ? Math.abs(diff) : 0 };
@@ -58,6 +63,22 @@ function computeOverShort(item: IncidentItem) {
 function hasIssue(item: IncidentItem) {
   const { over, short } = computeOverShort(item);
   return over > 0 || short > 0 || item.damagedQty > 0;
+}
+
+/** Derive available actions from actual item situation when reasonCode has no match */
+function getActionsForItem(item: IncidentItem) {
+  const mapped = ACTIONS_BY_REASON[item.reasonCode];
+  if (mapped && mapped.length > 0) return mapped;
+
+  // Fallback: derive from actual situation
+  const { over, short } = computeOverShort(item);
+  const acts: { value: string; label: string }[] = [];
+  if (over > 0)              { acts.push({ value: "ACCEPT", label: "Nhập kho" }, { value: "RETURN", label: "Hoàn hàng" }); }
+  if (short > 0)             { acts.push({ value: "CLOSE_SHORT", label: "Chốt thiếu" }, { value: "WAIT_BACKORDER", label: "Chờ giao bù" }); }
+  if (item.damagedQty > 0)   { acts.push({ value: "RETURN", label: "Hoàn hàng" }, { value: "SCRAP", label: "Huỷ bỏ" }, { value: "ACCEPT", label: "Chấp nhận" }); }
+  // Deduplicate by value
+  const seen = new Set<string>();
+  return acts.filter(a => { if (seen.has(a.value)) return false; seen.add(a.value); return true; });
 }
 
 function getRowBorderClass(item: IncidentItem) {
@@ -75,6 +96,7 @@ export default function IncidentDetailModal({ incident, isManager, onClose, onRe
   const [loading, setLoading]       = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [actions, setActions]       = useState<Record<number, string>>({});
+  const [damageActions, setDamageActions] = useState<Record<number, string>>({});
   const [note, setNote]             = useState("");
 
   // [V20] outbound single-action state
@@ -89,16 +111,24 @@ export default function IncidentDetailModal({ incident, isManager, onClose, onRe
       try {
         const d = await getIncidentDetail(incident.incidentId);
         setDetail(d);
-        // [hoangthdev1] Phân tách default action cho inbound vs outbound
+
         if (!isOutboundIncident) {
+          // Inbound: dùng getActionsForItem (hỗ trợ DISCREPANCY + fallback)
           const defaults: Record<number, string> = {};
+          const dmgDefaults: Record<number, string> = {};
           for (const item of d.items ?? []) {
-            const available = ACTIONS_BY_REASON[item.reasonCode];
+            const available = getActionsForItem(item);
             if (available?.[0]) defaults[item.incidentItemId] = available[0].value;
+            // Default damage action for items with both qty issue AND damage
+            const { over, short } = computeOverShort(item);
+            if ((over > 0 || short > 0) && item.damagedQty > 0) {
+              dmgDefaults[item.incidentItemId] = "RETURN";
+            }
           }
           setActions(defaults);
+          setDamageActions(dmgDefaults);
         } else {
-          // default outbound action
+          // Outbound: default outbound action
           if (isOutboundDamage)   setOutboundAction("RETURN_SCRAP");
           if (isOutboundShortage) setOutboundAction("CLOSE_SHORT");
         }
@@ -108,7 +138,7 @@ export default function IncidentDetailModal({ incident, isManager, onClose, onRe
         setLoading(false);
       }
     })();
-  }, [incident.incidentId]);
+  }, [incident.incidentId]); // eslint-disable-line
 
   const isResolved = detail?.status === "RESOLVED";
   const canResolve = isManager && detail?.status === "OPEN";
@@ -119,6 +149,7 @@ export default function IncidentDetailModal({ incident, isManager, onClose, onRe
     const itemResolutions = detail.items.map((item) => ({
       incidentItemId: item.incidentItemId,
       action: actions[item.incidentItemId] ?? "",
+      damageAction: damageActions[item.incidentItemId] || undefined,
     }));
     if (itemResolutions.some((r) => !r.action)) {
       toast.error("Vui lòng chọn hành động cho tất cả SKU");
@@ -176,7 +207,7 @@ export default function IncidentDetailModal({ incident, isManager, onClose, onRe
     } finally { setSubmitting(false); }
   };
 
-  // ─── [develop] split items ────────────────────────────────────────────────────
+  // ─── split items ──────────────────────────────────────────────────────────────
   const allItems        = detail?.items ?? [];
   const orderItems      = allItems.filter((i) => i.reasonCode !== "UNEXPECTED_ITEM");
   const unexpectedItems = allItems.filter((i) => i.reasonCode === "UNEXPECTED_ITEM");
@@ -247,7 +278,6 @@ export default function IncidentDetailModal({ incident, isManager, onClose, onRe
                           <th className="px-4 py-2.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">SL thực tế</th>
                           <th className="px-4 py-2.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">Thừa</th>
                           <th className="px-4 py-2.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">Thiếu</th>
-                          {/* Ẩn cột Hàng hỏng với SHORTAGE incident — không liên quan */}
                           {detail?.incidentType !== 'SHORTAGE' && (
                             <th className="px-4 py-2.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">Hàng hỏng</th>
                           )}
@@ -260,7 +290,8 @@ export default function IncidentDetailModal({ incident, isManager, onClose, onRe
                         {orderItems.map((item) => {
                           const { over, short }    = computeOverShort(item);
                           const itemHasIssue        = hasIssue(item);
-                          const availableActions    = ACTIONS_BY_REASON[item.reasonCode] ?? [];
+                          const availableActions    = getActionsForItem(item);
+
                           return (
                             <tr key={item.incidentItemId}
                               className={`hover:bg-gray-50/50 transition-colors ${getRowBorderClass(item)}`}>
@@ -280,7 +311,6 @@ export default function IncidentDetailModal({ incident, isManager, onClose, onRe
                                         className="text-[10px] text-blue-500 underline flex items-center gap-1">
                                         📷 Xem ảnh bằng chứng
                                       </a>
-                                      {/* Thumbnail preview */}
                                       <a href={url} target="_blank" rel="noreferrer">
                                         <img
                                           src={url}
@@ -307,7 +337,6 @@ export default function IncidentDetailModal({ incident, isManager, onClose, onRe
                                   ? <span className="font-bold text-orange-600">{short}</span>
                                   : <span className="text-gray-300">—</span>}
                               </td>
-                              {/* Ẩn ô Hàng hỏng với SHORTAGE incident */}
                               {detail?.incidentType !== 'SHORTAGE' && (
                                 <td className="px-4 py-3 text-center text-xs tabular-nums">
                                   {item.damagedQty > 0
@@ -317,24 +346,72 @@ export default function IncidentDetailModal({ incident, isManager, onClose, onRe
                               )}
                               {canResolve && !isOutboundIncident && (
                                 <td className="px-4 py-3 text-center">
-                                  {itemHasIssue && availableActions.length > 0 ? (
-                                    <select
-                                      value={actions[item.incidentItemId] ?? ""}
-                                      onChange={(e) =>
-                                        setActions((prev) => ({ ...prev, [item.incidentItemId]: e.target.value }))
-                                      }
-                                      className="text-[11px] font-medium px-2 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer"
-                                    >
-                                      {availableActions.map((a) => (
-                                        <option key={a.value} value={a.value}>{a.label}</option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <span className="text-[11px] font-semibold text-green-600 flex items-center justify-center gap-1">
-                                      <span className="material-symbols-outlined text-[13px]">check_circle</span>
-                                      Khớp
-                                    </span>
-                                  )}
+                                  {(() => {
+                                    const { over, short: sh } = computeOverShort(item);
+                                    const hasBothIssues = (over > 0 || sh > 0) && item.damagedQty > 0;
+
+                                    if (!itemHasIssue) {
+                                      return (
+                                        <span className="text-[11px] font-semibold text-green-600 flex items-center justify-center gap-1">
+                                          <span className="material-symbols-outlined text-[13px]">check_circle</span>
+                                          Khớp
+                                        </span>
+                                      );
+                                    }
+
+                                    if (hasBothIssues) {
+                                      const qtyActions = over > 0
+                                        ? [{ value: "ACCEPT", label: "Nhập thừa" }, { value: "RETURN", label: "Hoàn thừa" }]
+                                        : [{ value: "CLOSE_SHORT", label: "Chốt thiếu" }, { value: "WAIT_BACKORDER", label: "Chờ bù" }];
+                                      const dmgActs = [
+                                        { value: "RETURN", label: "Hoàn hỏng" },
+                                        { value: "SCRAP", label: "Huỷ hỏng" },
+                                        { value: "ACCEPT", label: "Nhận hỏng" },
+                                      ];
+                                      return (
+                                        <div className="flex flex-col gap-1.5">
+                                          <select
+                                            value={actions[item.incidentItemId] ?? ""}
+                                            onChange={(e) => setActions((prev) => ({ ...prev, [item.incidentItemId]: e.target.value }))}
+                                            className="text-[11px] font-medium px-2 py-1.5 border border-blue-200 rounded-lg bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer"
+                                            title="Xử lý số lượng"
+                                          >
+                                            {qtyActions.map((a) => (
+                                              <option key={a.value} value={a.value}>{a.label}</option>
+                                            ))}
+                                          </select>
+                                          <select
+                                            value={damageActions[item.incidentItemId] ?? "RETURN"}
+                                            onChange={(e) => setDamageActions((prev) => ({ ...prev, [item.incidentItemId]: e.target.value }))}
+                                            className="text-[11px] font-medium px-2 py-1.5 border border-red-200 rounded-lg bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200 cursor-pointer"
+                                            title="Xử lý hàng hỏng"
+                                          >
+                                            {dmgActs.map((a) => (
+                                              <option key={a.value} value={a.value}>{a.label}</option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                      );
+                                    }
+
+                                    // Single action dropdown
+                                    return availableActions.length > 0 ? (
+                                      <select
+                                        value={actions[item.incidentItemId] ?? ""}
+                                        onChange={(e) => setActions((prev) => ({ ...prev, [item.incidentItemId]: e.target.value }))}
+                                        className="text-[11px] font-medium px-2 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer"
+                                      >
+                                        {availableActions.map((a) => (
+                                          <option key={a.value} value={a.value}>{a.label}</option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <span className="text-[11px] font-semibold text-green-600 flex items-center justify-center gap-1">
+                                        <span className="material-symbols-outlined text-[13px]">check_circle</span>
+                                        Khớp
+                                      </span>
+                                    );
+                                  })()}
                                 </td>
                               )}
                             </tr>
