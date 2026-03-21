@@ -19,6 +19,12 @@ interface ItemRow {
   expectedQty: string;
   manufactureDate: string;
   expiryDate: string;
+  /** Trọng lượng 1 thùng kg — tự điền khi chọn SKU */
+  weightPerCartonKg: number | null;
+  /** Số đơn vị/thùng — hiển thị gợi ý */
+  unitsPerCarton: number | null;
+  /** Hạn sử dụng tính theo ngày — tự tính HSD = SX + shelfLifeDays */
+  shelfLifeDays: number | null;
   // validation
   mfgError?: string;
   expError?: string;
@@ -210,7 +216,9 @@ function SkuCombobox({ value, onSelect }: {
 // ─── Main Modal ───────────────────────────────────────────────────────────────
 
 function makeItem(id?: string): ItemRow {
-  return { id: id ?? Date.now().toString(), skuId: null, skuCode: '', skuName: '', expectedQty: '', manufactureDate: '', expiryDate: '' };
+  return { id: id ?? Date.now().toString(), skuId: null, skuCode: '', skuName: '',
+           expectedQty: '', manufactureDate: '', expiryDate: '',
+           weightPerCartonKg: null, unitsPerCarton: null, shelfLifeDays: null };
 }
 
 export default function CreateReceivingOrderModal({ open, onClose, onCreated }: Props) {
@@ -260,11 +268,24 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
   const updateItem = useCallback((id: string, field: keyof ItemRow, val: string | number | null) => {
     setItems(p => p.map(i => {
       if (i.id !== id) return i;
-      const updated = { ...i, [field]: val };
+      let updated = { ...i, [field]: val };
+
+      // Auto-tính HSD khi nhập ngày SX
+      // shelfLifeDays từ SKU, nếu null dùng fallback 1095 ngày (3 năm)
+      if (field === 'manufactureDate' && val) {
+        const days = i.shelfLifeDays ?? 1095;
+        const mfgDate = new Date(String(val));
+        if (!isNaN(mfgDate.getTime())) {
+          const expiryDate = new Date(mfgDate);
+          expiryDate.setDate(expiryDate.getDate() + days);
+          updated = { ...updated, expiryDate: expiryDate.toISOString().split('T')[0] };
+        }
+      }
+
       // Re-validate dates
       if (field === 'manufactureDate' || field === 'expiryDate') {
         const mfg = field === 'manufactureDate' ? String(val ?? '') : i.manufactureDate;
-        const exp = field === 'expiryDate'      ? String(val ?? '') : i.expiryDate;
+        const exp = updated.expiryDate; // dùng updated vì có thể vừa auto-calc
         const { mfgError, expError } = validateDates(mfg, exp);
         return { ...updated, mfgError, expError };
       }
@@ -332,10 +353,17 @@ export default function CreateReceivingOrderModal({ open, onClose, onCreated }: 
 
   const handleSelectSku = useCallback((id: string, sku: SkuOption | null) => {
     setItems(p => p.map(i => i.id === id
-      ? { ...i, skuCode: sku?.skuCode ?? '', skuName: sku?.skuName ?? '', skuId: sku?.skuId ?? null }
+      ? {
+          ...i,
+          skuCode: sku?.skuCode ?? '',
+          skuName: sku?.skuName ?? '',
+          skuId: sku?.skuId ?? null,
+          weightPerCartonKg: sku?.weightPerCartonKg ?? null,
+          unitsPerCarton: sku?.unitsPerCarton ?? null,
+          shelfLifeDays: sku?.shelfLifeDays ?? null,
+        }
       : i
     ));
-
   }, []);
 
   // Bước 1: validate
@@ -608,11 +636,36 @@ Bạn có chắc muốn tiếp tục tạo phiếu mới với số chứng từ
                   <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
                     Danh sách sản phẩm <span className="text-red-400 normal-case font-normal">*</span>
                   </label>
-                  {validCount > 0 && (
-                    <span className="ml-2 text-[11px] text-indigo-500 font-medium">
-                      {validCount} SKU · {totalQty} thùng
-                    </span>
-                  )}
+                  {validCount > 0 && (() => {
+                    // Tính tổng kg và gợi ý số BIN cần thiết
+                    const totalKg = items
+                      .filter(i => i.skuCode && i.weightPerCartonKg)
+                      .reduce((s, i) => s + Number(i.expectedQty || 0) * (i.weightPerCartonKg ?? 0), 0);
+                    // BIN T1 = 512kg, gợi ý theo tầng nặng nhất
+                    const binsNeeded = totalKg > 0 ? Math.ceil(totalKg / 512) : null;
+                    return (
+                      <span className="ml-2 text-[11px] text-indigo-500 font-medium flex items-center gap-2">
+                        {validCount} SKU · {totalQty} thùng
+                        {totalKg > 0 && (
+                          <>
+                            <span className="text-gray-300">·</span>
+                            <span className="font-bold text-indigo-600">
+                              ≈ {totalKg % 1 === 0 ? totalKg : totalKg.toFixed(1)} kg tổng
+                            </span>
+                            {binsNeeded && (
+                              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                binsNeeded <= 1 ? 'bg-green-100 text-green-700' :
+                                binsNeeded <= 3 ? 'bg-amber-100 text-amber-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>
+                                ~{binsNeeded} BIN T1
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <button type="button" onClick={() => setItems(p => [...p, makeItem()])}
                   className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-xl transition-colors">
@@ -623,9 +676,10 @@ Bạn có chắc muốn tiếp tục tạo phiếu mới với số chứng từ
 
               {/* Column headers */}
               <div className="grid gap-2 px-3 mb-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest"
-                style={{ gridTemplateColumns: '2.8fr 0.8fr 1.2fr 1.4fr 28px' }}>
+                style={{ gridTemplateColumns: '2.4fr 0.7fr 0.8fr 1.1fr 1.3fr 28px' }}>
                 <div>SKU</div>
                 <div className="text-center">SL *</div>
+                <div className="text-center text-indigo-400">≈ KG</div>
                 <div>Ngày SX</div>
                 <div>Hạn dùng *</div>
                 <div />
@@ -656,7 +710,7 @@ Bạn có chắc muốn tiếp tục tạo phiếu mới với số chứng từ
                     )}
 
                     <div className="grid gap-2 items-center px-3 py-3"
-                      style={{ gridTemplateColumns: '2.8fr 0.8fr 1.2fr 1.4fr 28px' }}>
+                      style={{ gridTemplateColumns: '2.4fr 0.7fr 0.8fr 1.1fr 1.3fr 28px' }}>
 
                     {/* SKU combobox */}
                     <SkuCombobox
@@ -672,6 +726,33 @@ Bạn có chắc muốn tiếp tục tạo phiếu mới với số chứng từ
                         item.skuCode && (!item.expectedQty || Number(item.expectedQty) <= 0)
                           ? 'border-red-300 bg-red-50 text-red-700' : 'border-gray-200 bg-white'}`}
                     />
+
+                    {/* KG tự tính = SL × weight_per_carton_kg */}
+                    {(() => {
+                      const qty = Number(item.expectedQty) || 0;
+                      const w   = item.weightPerCartonKg;
+                      if (!w || qty <= 0) return (
+                        <div className="text-center text-[10px] text-gray-300">—</div>
+                      );
+                      const totalKg = qty * w;
+                      // BIN T1 chứa max 512kg → cảnh báo nếu vượt
+                      const binWarning = totalKg > 512;
+                      return (
+                        <div className="text-center">
+                          <p className={`text-xs font-bold tabular-nums ${binWarning ? 'text-orange-600' : 'text-indigo-600'}`}>
+                            {totalKg % 1 === 0 ? totalKg : totalKg.toFixed(1)} kg
+                          </p>
+                          {item.unitsPerCarton && (
+                            <p className="text-[9px] text-gray-400 leading-tight">
+                              {item.unitsPerCarton} {item.unit ?? 'đv'}/thùng
+                            </p>
+                          )}
+                          {binWarning && (
+                            <p className="text-[9px] text-orange-500 leading-tight">vượt 1 BIN</p>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Manufacture date */}
                     <div>

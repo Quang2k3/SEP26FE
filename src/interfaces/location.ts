@@ -9,10 +9,18 @@ export interface Location {
   locationType: LocationType;
   parentLocationId: number | null;
   parentLocationCode: string | null;
-  maxWeightKg: number;
-  maxVolumeM3: number;
+  maxWeightKg: number | null;
+  maxVolumeM3: number | null;
   isPickingFace: boolean;
   isStaging: boolean;
+  /** Khu hàng lỗi — FEFO allocation bỏ qua BIN này */
+  isDefect: boolean;
+  /** Tầng BIN: 1=dưới/512kg, 2=giữa/448kg, 3=trên/400kg. Null nếu AISLE/RACK. */
+  binFloor: number | null;
+  /** Cột BIN: 1=trái, 2=giữa, 3=phải. Kết hợp binFloor×binColumn = 1 ô duy nhất trong rack. */
+  binColumn: number | null;
+  /** Số thùng tối đa ước tính (max_weight_kg ÷ 16kg chuẩn). */
+  maxBoxCount: number | null;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -46,8 +54,13 @@ export interface CreateLocationRequest {
   maxWeightKg?: number;
   maxVolumeM3?: number;
 
+  /** Tầng BIN (1=dưới/512kg · 2=giữa/448kg · 3=trên/400kg). Bắt buộc khi locationType = BIN. */
+  binFloor?: number;
+  /** Cột BIN (1=trái · 2=giữa · 3=phải). Bắt buộc khi locationType = BIN. */
+  binColumn?: number;
   isPickingFace?: boolean;
   isStaging?: boolean;
+  isDefect?: boolean;
 }
 
 export interface UpdateLocationRequest {

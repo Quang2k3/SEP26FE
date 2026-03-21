@@ -104,6 +104,9 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    // Đánh dấu để catch block trong component KHÔNG toast lại
+    (error as any)._toastedByInterceptor = false;
+
     if (status === 403) {
       dedupToast('error', serverMessage || 'Bạn không có quyền thực hiện thao tác này.');
       (error as any)._toastedByInterceptor = true;
@@ -111,6 +114,7 @@ api.interceptors.response.use(
       // 404 cho session đã bị xóa — silent
       if (url.includes('/receiving-sessions/')) return Promise.reject(error);
       dedupToast('error', serverMessage || 'Không tìm thấy tài nguyên yêu cầu.');
+      (error as any)._toastedByInterceptor = true;
     } else if (status === 500) {
       // 500 từ SSE disconnect khi đóng session — bỏ qua
       if (url.includes('/stream') || url.includes('/receiving-sessions/')) {
@@ -120,10 +124,9 @@ api.interceptors.response.use(
       const isSilentServerError = SILENT_SERVER_ERROR_ENDPOINTS.some(p => url?.includes(p));
       if (isSilentServerError) return Promise.reject(error);
       dedupToast('error', serverMessage || 'Lỗi hệ thống. Vui lòng thử lại sau.');
+      (error as any)._toastedByInterceptor = true;
     } else if (status && status >= 400 && message) {
       dedupToast('error', message);
-      // [BUG-FIX] Đánh dấu error đã được toast bởi interceptor.
-      // Để catch block ở component KHÔNG toast lại → tránh double toast.
       (error as any)._toastedByInterceptor = true;
     }
 
