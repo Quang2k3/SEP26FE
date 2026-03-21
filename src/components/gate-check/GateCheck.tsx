@@ -547,12 +547,19 @@ function ItemsPreview({ items }: { items: ReceivingOrder["items"] }) {
 }
 
 function NoteBox({ note }: { note: string }) {
+  // Lọc bỏ các dòng log hệ thống nội bộ
+  const userNote = note
+    .split('\n')
+    .filter(line => !/^\[(?:Keeper|QC|QC vs)/.test(line.trim()))
+    .join('\n')
+    .trim();
+  if (!userNote) return null;
   return (
     <div className="flex items-start gap-2 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg">
       <span className="material-symbols-outlined text-gray-400 text-[15px] mt-0.5 flex-shrink-0">
         sticky_note_2
       </span>
-      <p className="text-xs text-gray-600">{note}</p>
+      <p className="text-xs text-gray-600">{userNote}</p>
     </div>
   );
 }
