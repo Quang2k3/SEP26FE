@@ -769,6 +769,19 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
     }
   }, [taskId, token, toast, lockUI]);
 
+  // [FIX QC] processNextFail — tách ra ngoài render, sau sendQcApiCall để tránh TDZ
+  const processNextFail = useCallback(async (url: string | null) => {
+    const queue = failQueueRef.current;
+    if (queue.length === 0) return;
+    const cur = queue[0];
+    await sendQcApiCall(cur.barcode, cur.target, url);
+    const remaining = queue.slice(1);
+    failQueueRef.current = remaining;
+    setFailQueue([...remaining]);
+    setShowPhotoPrompt(remaining.length > 0);
+    if (photoInputRef.current) photoInputRef.current.value = '';
+  }, [sendQcApiCall]);
+
   const sendBarcode = useCallback(async (barcode: string) => {
     if (locked || inflightRef.current) return;
 
@@ -880,8 +893,11 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
   const pickAllDone   = pickItems.length > 0 && pickItems.every((it, i) => { const key = it.taskItemId ? String(it.taskItemId) : `${it.skuCode}_${i}`; return (scannedQty[key] ?? 0) >= it.requiredQty; });
   const totalScanned  = Object.values(scannedQty).reduce((s, v) => s + v, 0);
   const totalRequired = pickItems.reduce((s, it) => s + it.requiredQty, 0);
-  const qcTotalScanned  = Object.values(qcScannedQty).reduce((s, v) => s + v, 0);
+  const qcTotalScanned  = Object.values(qcScannedQty).reduce((s: number, v: unknown) => s + (v as number), 0);
   const qcTotalRequired = pickItems.reduce((s, it) => s + it.requiredQty, 0);
+  // [FIX] Đếm FAIL/HOLD từ qcItemCondition để hiện nút đúng màu
+  const totalFail = Object.values(qcItemCondition).filter((c: unknown) => c === 'FAIL').length;
+  const totalHold = Object.values(qcItemCondition).filter((c: unknown) => c === 'HOLD').length;
   const condClr       = qcCondition === 'PASS' ? '#10b981' : qcCondition === 'FAIL' ? '#ef4444' : '#f59e0b';
   const headerBg      = mode === 'outbound_qc' ? 'linear-gradient(135deg,#7c3aed,#6d28d9)' : 'linear-gradient(135deg,#1e40af,#1d4ed8)';
   const modeLabel     = mode === 'outbound_picking' ? '📦 Picking' : '🔍 QC Xuất kho';
@@ -939,69 +955,49 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
           onManualScan={() => { manualCode.trim() && sendBarcode(manualCode.trim().toUpperCase()); setManualCode(''); }}
           accentColor={mode === 'outbound_qc' ? condClr : '#3b82f6'} />
 
-        {/* [FIX QC] Photo prompt dùng queue — xử lý từng FAIL scan một, không mất scan */}
-        {showPhotoPrompt && mode === 'outbound_qc' && failQueue.length > 0 && (() => {
-          const current = failQueue[0]; // Luôn xử lý item đầu queue
-          const processNext = async (url: string | null) => {
-            // Gửi API cho item hiện tại
-            await sendQcApiCall(current.barcode, current.target, url);
-            // Xoá item đầu khỏi queue
-            const remaining = failQueueRef.current.slice(1);
-            failQueueRef.current = remaining;
-            setFailQueue([...remaining]);
-            if (remaining.length > 0) {
-              // Còn item khác → tiếp tục show prompt
-              setShowPhotoPrompt(true);
-              toast(`📷 ${remaining[0].target.item.skuCode} FAIL (${remaining.length} còn lại) — chụp ảnh?`);
-            } else {
-              setShowPhotoPrompt(false);
-            }
-            if (photoInputRef.current) photoInputRef.current.value = '';
-          };
-
-          return (
-            <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8, border: '1px solid #ef4444' }}>
-              <p style={{ fontSize: 12, color: '#fca5a5', fontWeight: 700, margin: '0 0 4px' }}>
-                📷 Chụp ảnh hàng hỏng (tùy chọn — làm bằng chứng cho Incident)
+        {/* [FIX QC] Photo prompt dùng queue — xử lý từng FAIL scan một */}
+        {showPhotoPrompt && mode === 'outbound_qc' && failQueue.length > 0 && (
+          <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8, border: '1px solid #ef4444' }}>
+            <p style={{ fontSize: 12, color: '#fca5a5', fontWeight: 700, margin: '0 0 4px' }}>
+              📷 Chụp ảnh hàng hỏng (tùy chọn — làm bằng chứng cho Incident)
+            </p>
+            {failQueue.length > 1 && (
+              <p style={{ fontSize: 11, color: '#f87171', margin: '0 0 10px' }}>
+                {failQueue[0].target.item.skuCode} — còn {failQueue.length - 1} FAIL khác chờ xử lý
               </p>
-              {failQueue.length > 1 && (
-                <p style={{ fontSize: 11, color: '#f87171', margin: '0 0 10px' }}>
-                  {current.target.item.skuCode} — còn {failQueue.length - 1} FAIL khác chờ xử lý
-                </p>
-              )}
-              <input
-                ref={photoInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                style={{ display: 'none' }}
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  let url: string | null = null;
-                  if (file) {
-                    toast('Đang upload ảnh...');
-                    url = await uploadDamagePhoto(file);
-                    if (url) toast('✅ Đã upload ảnh hàng hỏng');
-                    else toast('Upload ảnh thất bại — gửi không kèm ảnh', true);
-                  }
-                  await processNext(url);
-                }}
-              />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={() => photoInputRef.current?.click()}
-                  style={{ flex: 1, padding: '12px', border: 'none', borderRadius: 8, background: '#ef4444', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
-                  📷 Chụp ảnh
-                </button>
-                <button
-                  onClick={async () => { await processNext(null); }}
-                  style={{ flex: 1, padding: '12px', border: '1px solid #475569', borderRadius: 8, background: 'transparent', color: '#94a3b8', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
-                  Bỏ qua
-                </button>
-              </div>
+            )}
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                let url: string | null = null;
+                if (file) {
+                  toast('Đang upload ảnh...');
+                  url = await uploadDamagePhoto(file);
+                  if (url) toast('✅ Đã upload ảnh hàng hỏng');
+                  else toast('Upload ảnh thất bại — gửi không kèm ảnh', true);
+                }
+                await processNextFail(url);
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                style={{ flex: 1, padding: '12px', border: 'none', borderRadius: 8, background: '#ef4444', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                📷 Chụp ảnh
+              </button>
+              <button
+                onClick={async () => { await processNextFail(null); }}
+                style={{ flex: 1, padding: '12px', border: '1px solid #475569', borderRadius: 8, background: 'transparent', color: '#94a3b8', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                Bỏ qua
+              </button>
             </div>
-          );
-        })()}
+          </div>
+        )}
 
         {mode === 'outbound_picking' && pickItems.length > 0 && (
           <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8 }}>

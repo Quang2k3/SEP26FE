@@ -247,7 +247,10 @@ export default function IncidentDetailModal({ incident, isManager, onClose, onRe
                           <th className="px-4 py-2.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">SL thực tế</th>
                           <th className="px-4 py-2.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">Thừa</th>
                           <th className="px-4 py-2.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">Thiếu</th>
-                          <th className="px-4 py-2.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">Hàng hỏng</th>
+                          {/* Ẩn cột Hàng hỏng với SHORTAGE incident — không liên quan */}
+                          {detail?.incidentType !== 'SHORTAGE' && (
+                            <th className="px-4 py-2.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">Hàng hỏng</th>
+                          )}
                           {canResolve && !isOutboundIncident && (
                             <th className="px-4 py-2.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">Hành động</th>
                           )}
@@ -266,12 +269,29 @@ export default function IncidentDetailModal({ incident, isManager, onClose, onRe
                               </td>
                               <td className="px-4 py-3">
                                 <p className="text-xs text-gray-600 truncate max-w-[160px]">{item.skuName}</p>
-                                {item.note?.includes("photo:") && (
-                                  <a href={item.note.split("photo:")[1].trim()} target="_blank" rel="noreferrer"
-                                    className="text-[10px] text-blue-500 underline mt-0.5 block">
-                                    📷 Xem ảnh hàng hỏng
-                                  </a>
-                                )}
+                                {/* [FIX QC] Dùng attachmentUrl field thay vì parse note string */}
+                                {(item.attachmentUrl || item.note?.includes("photo:")) && (() => {
+                                  const url = item.attachmentUrl
+                                    || item.note.split("photo:")[1]?.trim();
+                                  if (!url) return null;
+                                  return (
+                                    <div className="mt-1.5 space-y-1">
+                                      <a href={url} target="_blank" rel="noreferrer"
+                                        className="text-[10px] text-blue-500 underline flex items-center gap-1">
+                                        📷 Xem ảnh bằng chứng
+                                      </a>
+                                      {/* Thumbnail preview */}
+                                      <a href={url} target="_blank" rel="noreferrer">
+                                        <img
+                                          src={url}
+                                          alt="Ảnh hàng hỏng"
+                                          className="w-16 h-16 object-cover rounded-lg border border-red-200 hover:border-red-400 transition-colors"
+                                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                        />
+                                      </a>
+                                    </div>
+                                  );
+                                })()}
                               </td>
                               <td className="px-4 py-3 text-center text-xs text-gray-500 tabular-nums">{item.expectedQty}</td>
                               <td className={`px-4 py-3 text-center text-xs font-bold tabular-nums ${
@@ -287,11 +307,14 @@ export default function IncidentDetailModal({ incident, isManager, onClose, onRe
                                   ? <span className="font-bold text-orange-600">{short}</span>
                                   : <span className="text-gray-300">—</span>}
                               </td>
-                              <td className="px-4 py-3 text-center text-xs tabular-nums">
-                                {item.damagedQty > 0
-                                  ? <span className="font-bold text-red-600">{item.damagedQty}</span>
-                                  : <span className="text-gray-300">—</span>}
-                              </td>
+                              {/* Ẩn ô Hàng hỏng với SHORTAGE incident */}
+                              {detail?.incidentType !== 'SHORTAGE' && (
+                                <td className="px-4 py-3 text-center text-xs tabular-nums">
+                                  {item.damagedQty > 0
+                                    ? <span className="font-bold text-red-600">{item.damagedQty}</span>
+                                    : <span className="text-gray-300">—</span>}
+                                </td>
+                              )}
                               {canResolve && !isOutboundIncident && (
                                 <td className="px-4 py-3 text-center">
                                   {itemHasIssue && availableActions.length > 0 ? (
