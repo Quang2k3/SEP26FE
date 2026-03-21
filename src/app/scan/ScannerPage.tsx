@@ -646,9 +646,10 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
   const [qcItemCondition, setQcItemCondition] = useState<Record<string, QcCondition>>({});
 
   // [V20] Photo upload state
-  const [pendingFailBarcode, setPendingFailBarcode] = useState<string | null>(null);
-  const [pendingFailTarget, setPendingFailTarget] = useState<{ item: PickItem; key: string; req: number; curVal: number } | null>(null);
+  // [FIX QC] Dùng queue thay vì single state — tránh mất scan khi FAIL liên tiếp nhanh
+  const [failQueue, setFailQueue] = useState<Array<{ barcode: string; target: { item: PickItem; key: string; req: number; curVal: number } }>>([]);
   const [showPhotoPrompt, setShowPhotoPrompt] = useState(false);
+  const failQueueRef = useRef<Array<{ barcode: string; target: { item: PickItem; key: string; req: number; curVal: number } }>>([]);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const inflightRef  = useRef(false);
@@ -722,6 +723,8 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
         condition: conditionRef.current,
         mode: 'outbound_qc',
         taskId,
+        // [FIX QC] Gửi pickingTaskItemId để BE dùng trực tiếp — tránh nhầm row cùng SKU
+        ...(target.item.taskItemId ? { pickingTaskItemId: target.item.taskItemId } : {}),
         ...(attachmentUrl ? { attachmentUrl } : {}),
       };
       const r = await fetch(`${API_BASE}/v1/scan-events`, {
@@ -731,13 +734,25 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
       });
       const d = await r.json();
       if (d?.success) {
+        // [FIX QC] Cập nhật scanLines theo skuCode + condition riêng biệt
         setScanLines(prev => {
           const lineKey = `${d.data.skuCode}_${conditionRef.current}`;
           const ex = prev[lineKey];
           return { ...prev, [lineKey]: { ...d.data, qty: (ex?.qty ?? 0) + target.req, condition: conditionRef.current } };
         });
         toast(`✓ ${d.data?.skuCode} ×${target.req} [${conditionRef.current}] — Ghi nhận!`);
-        if (d.data?.allScanned) { lockUI('✅ QC hoàn tất — tất cả đã kiểm tra!'); toast('✅ QC hoàn tất!'); }
+        if (d.data?.allScanned) {
+          // [FIX QC] Phân biệt FAIL/PASS khi lock — không hiện "hoàn tất" khi có FAIL
+          const fc = d.data?.failCount ?? 0;
+          const hc = d.data?.holdCount ?? 0;
+          if (fc > 0 || hc > 0) {
+            lockUI(`⚠️ QC xong — có ${fc} FAIL${hc > 0 ? `, ${hc} HOLD` : ''}. Bấm Kết thúc Scan để báo Manager.`);
+            toast(`⚠️ QC xong — ${fc} FAIL!`);
+          } else {
+            lockUI('✅ QC hoàn tất — tất cả PASS. Keeper có thể xuất kho!');
+            toast('✅ QC hoàn tất — tất cả PASS!');
+          }
+        }
       } else {
         qcScannedRef.current = { ...qcScannedRef.current, [target.key]: target.curVal };
         setQcScannedQty({ ...qcScannedRef.current });
@@ -820,11 +835,11 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
       const newQcQty = { ...curQcQty, [target.key]: newVal };
       qcScannedRef.current = newQcQty;
       setQcScannedQty({ ...newQcQty });
-      if (!qcItemCondRef.current[target.key]) {
-        const newCond = { ...qcItemCondRef.current, [target.key]: conditionRef.current };
-        qcItemCondRef.current = newCond;
-        setQcItemCondition({ ...newCond });
-      }
+      // [FIX QC] Luôn cập nhật condition — bỏ guard !qcItemCondRef.current[target.key]
+      // Guard cũ chỉ set lần đầu → nếu scan lại với condition khác (PASS/FAIL) không cập nhật
+      const newCond = { ...qcItemCondRef.current, [target.key]: conditionRef.current };
+      qcItemCondRef.current = newCond;
+      setQcItemCondition({ ...newCond });
 
       if (rem > 0) {
         toast(`${target.item.skuCode} [${conditionRef.current}] ${newVal}/${target.req} — còn ${rem} cái`);
@@ -833,11 +848,14 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
         return;
       }
 
-      // [V20] Đủ qty + FAIL → hiện photo prompt trước khi gửi API
+      // [V20] Đủ qty + FAIL → enqueue photo prompt
       if (conditionRef.current === 'FAIL') {
-        setPendingFailBarcode(barcode);
-        setPendingFailTarget(target);
-        setShowPhotoPrompt(true);
+        const newEntry = { barcode, target };
+        const newQueue = [...failQueueRef.current, newEntry];
+        failQueueRef.current = newQueue;
+        setFailQueue([...newQueue]);
+        // Chỉ show prompt nếu chưa đang hiện (queue trước đó rỗng)
+        if (newQueue.length === 1) setShowPhotoPrompt(true);
         toast(`📷 ${target.item.skuCode} FAIL — chụp ảnh hàng hỏng (bỏ qua được)`);
         if (navigator.vibrate) navigator.vibrate([80, 30, 80]);
         return;
@@ -921,57 +939,69 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
           onManualScan={() => { manualCode.trim() && sendBarcode(manualCode.trim().toUpperCase()); setManualCode(''); }}
           accentColor={mode === 'outbound_qc' ? condClr : '#3b82f6'} />
 
-        {/* [V20] Photo prompt khi FAIL */}
-        {showPhotoPrompt && mode === 'outbound_qc' && (
-          <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8, border: '1px solid #ef4444' }}>
-            <p style={{ fontSize: 12, color: '#fca5a5', fontWeight: 700, margin: '0 0 10px' }}>
-              📷 Chụp ảnh hàng hỏng (tùy chọn — làm bằng chứng cho Incident)
-            </p>
-            <input
-              ref={photoInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              style={{ display: 'none' }}
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                let url: string | null = null;
-                if (file) {
-                  toast('Đang upload ảnh...');
-                  url = await uploadDamagePhoto(file);
-                  if (url) toast('✅ Đã upload ảnh hàng hỏng');
-                  else toast('Upload ảnh thất bại — gửi không kèm ảnh', true);
-                }
-                setShowPhotoPrompt(false);
-                if (pendingFailBarcode && pendingFailTarget) {
-                  await sendQcApiCall(pendingFailBarcode, pendingFailTarget, url);
-                  setPendingFailBarcode(null);
-                  setPendingFailTarget(null);
-                }
-                if (photoInputRef.current) photoInputRef.current.value = '';
-              }}
-            />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={() => photoInputRef.current?.click()}
-                style={{ flex: 1, padding: '12px', border: 'none', borderRadius: 8, background: '#ef4444', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
-                📷 Chụp ảnh
-              </button>
-              <button
-                onClick={async () => {
-                  setShowPhotoPrompt(false);
-                  if (pendingFailBarcode && pendingFailTarget) {
-                    await sendQcApiCall(pendingFailBarcode, pendingFailTarget, null);
-                    setPendingFailBarcode(null);
-                    setPendingFailTarget(null);
+        {/* [FIX QC] Photo prompt dùng queue — xử lý từng FAIL scan một, không mất scan */}
+        {showPhotoPrompt && mode === 'outbound_qc' && failQueue.length > 0 && (() => {
+          const current = failQueue[0]; // Luôn xử lý item đầu queue
+          const processNext = async (url: string | null) => {
+            // Gửi API cho item hiện tại
+            await sendQcApiCall(current.barcode, current.target, url);
+            // Xoá item đầu khỏi queue
+            const remaining = failQueueRef.current.slice(1);
+            failQueueRef.current = remaining;
+            setFailQueue([...remaining]);
+            if (remaining.length > 0) {
+              // Còn item khác → tiếp tục show prompt
+              setShowPhotoPrompt(true);
+              toast(`📷 ${remaining[0].target.item.skuCode} FAIL (${remaining.length} còn lại) — chụp ảnh?`);
+            } else {
+              setShowPhotoPrompt(false);
+            }
+            if (photoInputRef.current) photoInputRef.current.value = '';
+          };
+
+          return (
+            <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8, border: '1px solid #ef4444' }}>
+              <p style={{ fontSize: 12, color: '#fca5a5', fontWeight: 700, margin: '0 0 4px' }}>
+                📷 Chụp ảnh hàng hỏng (tùy chọn — làm bằng chứng cho Incident)
+              </p>
+              {failQueue.length > 1 && (
+                <p style={{ fontSize: 11, color: '#f87171', margin: '0 0 10px' }}>
+                  {current.target.item.skuCode} — còn {failQueue.length - 1} FAIL khác chờ xử lý
+                </p>
+              )}
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{ display: 'none' }}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  let url: string | null = null;
+                  if (file) {
+                    toast('Đang upload ảnh...');
+                    url = await uploadDamagePhoto(file);
+                    if (url) toast('✅ Đã upload ảnh hàng hỏng');
+                    else toast('Upload ảnh thất bại — gửi không kèm ảnh', true);
                   }
+                  await processNext(url);
                 }}
-                style={{ flex: 1, padding: '12px', border: '1px solid #475569', borderRadius: 8, background: 'transparent', color: '#94a3b8', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
-                Bỏ qua
-              </button>
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => photoInputRef.current?.click()}
+                  style={{ flex: 1, padding: '12px', border: 'none', borderRadius: 8, background: '#ef4444', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                  📷 Chụp ảnh
+                </button>
+                <button
+                  onClick={async () => { await processNext(null); }}
+                  style={{ flex: 1, padding: '12px', border: '1px solid #475569', borderRadius: 8, background: 'transparent', color: '#94a3b8', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                  Bỏ qua
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {mode === 'outbound_picking' && pickItems.length > 0 && (
           <div style={{ background: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8 }}>
@@ -1066,10 +1096,27 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
         {!locked && (
           <div style={{ marginBottom: 8 }}>
             {mode === 'outbound_picking' && <button onClick={confirmPicked} disabled={!pickAllDone || submitting} style={{ width: '100%', padding: '14px 18px', border: 'none', borderRadius: 10, fontSize: 17, fontWeight: 800, cursor: 'pointer', background: 'linear-gradient(135deg,#22c55e,#16a34a)', color: '#fff', marginBottom: 8, opacity: (!pickAllDone || submitting) ? 0.5 : 1 }}>{submitting ? 'Đang gửi...' : 'Gửi sang QC — Đã lấy đủ hàng'}</button>}
-            {mode === 'outbound_qc' && <>
-              <button onClick={() => finalizeQc(true)} disabled={submitting} style={{ width: '100%', padding: '14px 18px', border: 'none', borderRadius: 10, fontSize: 17, fontWeight: 800, cursor: 'pointer', background: 'linear-gradient(135deg,#22c55e,#16a34a)', color: '#fff', marginBottom: 8, opacity: submitting ? 0.6 : 1 }}>{submitting ? 'Đang gửi...' : '✅ Tất cả PASS — Cho xuất kho'}</button>
-              <button onClick={() => finalizeQc(false)} disabled={submitting} style={{ width: '100%', padding: '14px 18px', border: 'none', borderRadius: 10, fontSize: 17, fontWeight: 800, cursor: 'pointer', background: '#dc2626', color: '#fff', marginBottom: 8, opacity: submitting ? 0.6 : 1 }}>Báo có hàng FAIL / HOLD</button>
-            </>}
+            {mode === 'outbound_qc' && (() => {
+              const allQcDone = qcTotalScanned >= qcTotalRequired && qcTotalRequired > 0;
+              const hasFailItems = Object.values(qcItemCondition).some(c => c === 'FAIL' || c === 'HOLD');
+              return (
+                <>
+                  {!allQcDone && (
+                    <div style={{ padding: '10px 14px', background: 'rgba(167,139,250,.08)', border: '1px solid rgba(167,139,250,.2)', borderRadius: 8, marginBottom: 8 }}>
+                      <p style={{ color: '#a78bfa', fontSize: 12, margin: 0, fontWeight: 600 }}>
+                        ⏳ Còn {qcTotalRequired - qcTotalScanned} mặt hàng chưa quét
+                      </p>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => finalizeQc(!hasFailItems)}
+                    disabled={submitting || !allQcDone}
+                    style={{ width: '100%', padding: '14px 18px', border: 'none', borderRadius: 10, fontSize: 17, fontWeight: 800, cursor: allQcDone ? 'pointer' : 'not-allowed', background: !allQcDone ? '#1e293b' : hasFailItems ? 'linear-gradient(135deg,#dc2626,#b91c1c)' : 'linear-gradient(135deg,#22c55e,#16a34a)', color: allQcDone ? '#fff' : '#475569', marginBottom: 8, opacity: submitting ? 0.6 : 1 }}>
+                    {submitting ? 'Đang gửi...' : !allQcDone ? `Chờ quét đủ (${qcTotalScanned}/${qcTotalRequired})` : hasFailItems ? `🔍 Xác nhận QC — ${totalFail} FAIL` : '✅ Tất cả PASS — Gửi duyệt'}
+                  </button>
+                </>
+              );
+            })()}
           </div>
         )}
         {locked && <LockedOverlay msg={lockedMsg} />}
