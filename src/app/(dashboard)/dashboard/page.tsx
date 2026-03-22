@@ -11,6 +11,7 @@ import { fetchPutawayTasks } from '@/services/putawayService';
 import { fetchGrns } from '@/services/grnService';
 import { getStoredSession } from '@/services/authService';
 import { fetchThroughput, type ThroughputPoint, type ThroughputRange } from '@/services/dashboardService';
+import { api } from '@/config/axios';
 
 // ─── Grouped Bar Chart ────────────────────────────────────────────────────────
 
@@ -370,17 +371,11 @@ export default function DashboardPage() {
       }
       // Load stock chart for Keeper & QC
       if (isKeeper || isQC) {
-        try {
-          setLoadingChart(true);
-          const session = getStoredSession();
-          const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
-          const resp = await fetch(`${base}/v1/skus/stock-summary`, {
-            headers: { Authorization: `Bearer ${session?.token ?? ''}` }
-          });
-          const json = await resp.json();
-          setSkuStockData(json.data ?? []);
-        } catch { /* silent */ }
-        finally { setLoadingChart(false); }
+        setLoadingChart(true);
+        api.get('/skus/stock-summary')
+          .then(res => setSkuStockData(res.data?.data ?? []))
+          .catch(() => {})
+          .finally(() => setLoadingChart(false));
       }
     } catch { /* silent */ }
     finally { setLoadingStats(false); }
