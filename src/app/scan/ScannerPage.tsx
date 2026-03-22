@@ -5,7 +5,7 @@ import Script from 'next/script';
 import { useSearchParams } from 'next/navigation';
 
 type ScanMode = 'inbound' | 'outbound_picking' | 'outbound_qc';
-type QcCondition = 'PASS' | 'FAIL' | 'HOLD';
+type QcCondition = 'PASS' | 'FAIL' | 'HOLD'; // HOLD chỉ dùng cho Inbound
 
 interface InboundExpectedItem {
   receivingItemId: number;
@@ -849,8 +849,7 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
       const prevCond = qcItemCondRef.current[key];
       const thisCond = conditionRef.current;
       // Worst-case: FAIL > HOLD > PASS
-      const newCondVal = (prevCond === 'FAIL' || thisCond === 'FAIL') ? 'FAIL'
-                       : (prevCond === 'HOLD' || thisCond === 'HOLD') ? 'HOLD' : 'PASS';
+      const newCondVal: QcCondition = (prevCond === 'FAIL' || thisCond === 'FAIL') ? 'FAIL' : 'PASS';
       const newCond = { ...qcItemCondRef.current, [key]: newCondVal };
       qcItemCondRef.current = newCond;
       setQcItemCondition({ ...newCond });
@@ -895,8 +894,8 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
   const qcTotalRequired = pickItems.reduce((s, it) => s + it.requiredQty, 0);
   // [FIX] Đếm FAIL/HOLD — mỗi unit scan là 1 key _sN riêng
   const totalFail = Object.values(qcItemCondition).filter((c: unknown) => c === 'FAIL').length;
-  const totalHold = Object.values(qcItemCondition).filter((c: unknown) => c === 'HOLD').length;
-  const condClr       = qcCondition === 'PASS' ? '#10b981' : qcCondition === 'FAIL' ? '#ef4444' : '#f59e0b';
+  const totalHold = 0; // [FIX] Outbound QC không có HOLD
+  const condClr       = qcCondition === 'PASS' ? '#10b981' : '#ef4444'; // OutboundQC: no HOLD
   const headerBg      = mode === 'outbound_qc' ? 'linear-gradient(135deg,#7c3aed,#6d28d9)' : 'linear-gradient(135deg,#1e40af,#1d4ed8)';
   const modeLabel     = mode === 'outbound_picking' ? '📦 Picking' : '🔍 QC Xuất kho';
 
@@ -967,9 +966,9 @@ function OutboundScanner({ token, mode, taskId }: { token: string; mode: 'outbou
       <div style={{ padding: 12, maxWidth: 520, margin: '0 auto' }}>
         {mode === 'outbound_qc' && !locked && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-            {(['PASS', 'FAIL', 'HOLD'] as QcCondition[]).map(c => {
-              const clr = c === 'PASS' ? '#10b981' : c === 'FAIL' ? '#ef4444' : '#f59e0b'; const active = qcCondition === c;
-              return <button key={c} onClick={() => setQcCondition(c)} style={{ flex: 1, padding: '8px 4px', borderRadius: 6, border: `2px solid ${active ? clr : '#334155'}`, background: active ? `rgba(${c==='PASS'?'16,185,129':c==='FAIL'?'239,68,68':'245,158,11'},.1)` : 'transparent', color: active ? clr : '#94a3b8', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>{c}</button>;
+            {(['PASS', 'FAIL'] as QcCondition[]).map(c => {
+              const clr = c === 'PASS' ? '#10b981' : '#ef4444'; const active = qcCondition === c;
+              return <button key={c} onClick={() => setQcCondition(c)} style={{ flex: 1, padding: '8px 4px', borderRadius: 6, border: `2px solid ${active ? clr : '#334155'}`, background: active ? `rgba(${c==='PASS'?'16,185,129':'239,68,68'},.1)` : 'transparent', color: active ? clr : '#94a3b8', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>{c}</button>;
             })}
           </div>
         )}
