@@ -18,6 +18,7 @@ interface BinInventoryItem {
   expiryDate: string | null;
   quantity: number;
   reservedQty: number;
+  weightPerCartonKg?: number | null; // [FIX] kg/thung de tinh % tai trong
 }
 
 interface BinDetail {
@@ -36,6 +37,7 @@ interface BinDetail {
   /** Cột BIN: 1=trái · 2=giữa · 3=phải */
   binColumn: number | null;
   occupiedQty: number;
+  occupiedWeightKg?: number | null; // [FIX] tong trong luong thuc (kg)
   reservedQty: number;
   availableQty: number | null;
   occupancyStatus: 'EMPTY' | 'PARTIAL' | 'FULL';
@@ -63,9 +65,13 @@ async function fetchBinDetail(locationId: number): Promise<BinDetail | null> {
 
 // ─── Occupancy helpers ────────────────────────────────────────────────────────
 
-function pct(occupied: number, reserved: number, max: number | null): number {
+// [FIX] pct tinh theo kg thuc te (occupiedWeightKg) neu co, fallback qty
+function pct(occupied: number, reserved: number, max: number | null,
+             occupiedWeightKg?: number | null): number {
   if (!max || max === 0) return occupied > 0 ? 60 : 0;
-  return Math.min(100, Math.round(((occupied + reserved) / max) * 100));
+  // Dung weight neu co — so sanh dung don vi kg vs maxWeightKg
+  const usedKg = occupiedWeightKg != null ? occupiedWeightKg : occupied;
+  return Math.min(100, Math.round((usedKg / max) * 100));
 }
 
 const STATUS_CONFIG = {
@@ -124,7 +130,7 @@ function BinCell({ bin, selected, onClick }: {
   onClick: () => void;
 }) {
   const cfg   = STATUS_CONFIG[bin.occupancyStatus];
-  const usage = pct(bin.occupiedQty, bin.reservedQty, bin.maxWeightKg);
+  const usage = pct(bin.occupiedQty, bin.reservedQty, bin.maxWeightKg, bin.occupiedWeightKg);
 
   return (
     <button
@@ -287,7 +293,7 @@ function RackBlock({ rackCode, bins, selectedBinId, onSelectBin, rackLocationId,
                   }
 
                   const cfg   = STATUS_CONFIG[bin.occupancyStatus];
-                  const usage = pct(bin.occupiedQty, bin.reservedQty, bin.maxWeightKg);
+                  const usage = pct(bin.occupiedQty, bin.reservedQty, bin.maxWeightKg, bin.occupiedWeightKg);
                   const selected = selectedBinId === bin.locationId;
 
                   // Lấy tên BIN ngắn gọn để hiển thị trong ô
@@ -508,7 +514,7 @@ function BinDetailPanel({ bin, onClose }: { bin: BinDetail; onClose: () => void 
   }, [bin.locationId]);
 
   const cfg   = STATUS_CONFIG[bin.occupancyStatus];
-  const usage = pct(bin.occupiedQty, bin.reservedQty, bin.maxWeightKg);
+  const usage = pct(bin.occupiedQty, bin.reservedQty, bin.maxWeightKg, bin.occupiedWeightKg);
   const items = detail?.inventoryItems ?? [];
 
   return (
@@ -574,7 +580,9 @@ function BinDetailPanel({ bin, onClose }: { bin: BinDetail; onClose: () => void 
         <div className="grid grid-cols-3 gap-2">
           {[
             { label: 'Tải trọng', val: bin.maxWeightKg ? `${bin.maxWeightKg}kg` : '∞' },
-            { label: 'Đã dùng',   val: Number(bin.occupiedQty).toFixed(0) },
+            { label: 'Đã dùng', val: bin.occupiedWeightKg != null
+                ? `${Number(bin.occupiedWeightKg).toFixed(1)}kg`  // [FIX] hien kg thuc
+                : Number(bin.occupiedQty).toFixed(0) },
             { label: 'Giữ chỗ',   val: Number(bin.reservedQty).toFixed(0) },
           ].map(({ label, val }) => (
             <div key={label} className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-center">
@@ -634,8 +642,12 @@ function BinDetailPanel({ bin, onClose }: { bin: BinDetail; onClose: () => void 
                 {items.length} SKU · {items.reduce((s, i) => s + Number(i.quantity), 0).toFixed(0)} thùng tổng
               </p>
               {items.map((inv, i) => {
-                const pctInBin = bin.maxWeightKg
-                  ? Math.min(100, Math.round((Number(inv.quantity) / bin.maxWeightKg) * 100))
+                // [FIX] pctInBin tinh theo kg thuc = qty * weightPerCartonKg / maxWeightKg
+              const itemWeightKg = inv.weightPerCartonKg != null
+                ? Number(inv.quantity) * Number(inv.weightPerCartonKg)
+                : Number(inv.quantity); // fallback: qty neu khong co weight
+              const pctInBin = bin.maxWeightKg
+                  ? Math.min(100, Math.round((itemWeightKg / bin.maxWeightKg) * 100))
                   : 0;
                 const available = Number(inv.quantity) - Number(inv.reservedQty);
                 return (
