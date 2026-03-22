@@ -1128,7 +1128,7 @@ function PickingPanel({ item, taskId: initTaskId, onDone }: {
 }
 
 // ─── Step 4: QC Scan Panel ─────────────────────────────────────────────────────
-function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole, isExternallyFinalized, externalFailCount }: { taskId: number; onAllScanned: (failCount?: number) => void; onAlreadyDone?: (failCount?: number) => void; viewerRole?: string; isExternallyFinalized?: boolean; externalFailCount?: number }) {
+function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole, isExternallyFinalized }: { taskId: number; onAllScanned: () => void; onAlreadyDone?: () => void; viewerRole?: string; isExternallyFinalized?: boolean }) {
   const [qcSummary, setQcSummary]   = useState<QcSummaryResponse | null>(null);
   const [pickItems, setPickItems]   = useState<PickListItem[]>([]);
   const [summaryLoading, setSummaryLoading] = useState(true);
@@ -1167,14 +1167,15 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole, isExtern
       if (!mountedRef.current) return;
       setQcSummary(s);
       setPickItems(pl.items ?? []);
-      const total = (s.passCount ?? 0) + (s.failCount ?? 0) + (s.holdCount ?? 0) + (s.pendingCount ?? 0);
+      const total = (s.passCount ?? 0) + (s.failCount ?? 0) + (s.pendingCount ?? 0);
+      // [BUG-FIX] done chỉ khi pendingCount=0 VÀ total>0 — không trigger sớm khi scan vài item
       const done  = (s.pendingCount ?? 0) === 0 && total > 0;
       if (done && !isFinalizedRef.current) {
         isFinalizedRef.current = true;
+        // [BUG-FIX] KHÔNG set isFinalized=true ở đây — isFinalized chỉ set sau khi finalizeQc thành công
+        // Dừng polling và gọi onAllScanned để trigger QcFinalizeOrDispatch
         stopPolling();
-        // [FIX] Truyền failCount+holdCount vào callback để component cha biết ngay
-        const fc = (s.failCount ?? 0) + (s.holdCount ?? 0);
-        setTimeout(() => { if (mountedRef.current) (onAllScannedRef.current as any)(fc); }, 600);
+        setTimeout(() => { if (mountedRef.current) onAllScannedRef.current(); }, 600);
       }
     } catch {}
   }, [taskId]);
@@ -1187,17 +1188,16 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole, isExtern
         if (!mountedRef.current) return;
         setQcSummary(s);
         setPickItems(pl.items ?? []);
-        if (s.passCount > 0 || s.failCount > 0 || s.holdCount > 0 || s.allScanned) {
+        if (s.passCount > 0 || s.failCount > 0 || s.allScanned) {
           setSessionStarted(true);
         }
-        const total = (s.passCount ?? 0) + (s.failCount ?? 0) + (s.holdCount ?? 0) + (s.pendingCount ?? 0);
+        const total = (s.passCount ?? 0) + (s.failCount ?? 0) + (s.pendingCount ?? 0);
         const done  = (s.pendingCount ?? 0) === 0 && total > 0;
         if (done) {
           isFinalizedRef.current = true;
+          // [BUG-FIX] Không set isFinalized ở đây — để QcFinalizeOrDispatch xử lý sau finalizeQc
           stopPolling();
-          // [FIX] Truyền failCount vào callback
-          const fc = (s.failCount ?? 0) + (s.holdCount ?? 0);
-          setTimeout(() => { if (mountedRef.current) ((onAlreadyDoneRef.current ?? onAllScannedRef.current) as any)?.(fc); }, 300);
+          setTimeout(() => { if (mountedRef.current) (onAlreadyDoneRef.current ?? onAllScannedRef.current)?.(); }, 300);
         } else {
           startPolling();
         }
@@ -1244,8 +1244,8 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole, isExtern
 
   const pending = pickItems.filter(i => !i.qcResult);
   const scanned = pickItems.filter(i => !!i.qcResult);
-  const summaryTotal   = qcSummary ? (qcSummary.passCount + qcSummary.failCount + qcSummary.holdCount + qcSummary.pendingCount) : pickItems.length;
-  const summaryScanned = qcSummary ? (qcSummary.passCount + qcSummary.failCount + qcSummary.holdCount) : scanned.length;
+  const summaryTotal   = qcSummary ? (qcSummary.passCount + qcSummary.failCount + qcSummary.pendingCount) : pickItems.length;
+  const summaryScanned = qcSummary ? (qcSummary.passCount + qcSummary.failCount) : scanned.length;
   const total = summaryTotal;
   const pct   = total > 0 ? Math.round((summaryScanned / total) * 100) : 0;
 
@@ -1259,7 +1259,7 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole, isExtern
             <p className="text-xs text-purple-600 mt-0.5">
               {viewerRole === 'KEEPER'
                 ? <>Đang chờ QC kiểm tra hàng. Màn hình tự cập nhật mỗi 3 giây.</>
-                : <>Tạo QR → Dùng điện thoại quét từng barcode → Chọn <strong>PASS / FAIL / HOLD</strong> trên điện thoại. Màn hình tự cập nhật mỗi 3 giây.</>
+                : <>Tạo QR → Dùng điện thoại quét từng barcode → Chọn <strong>PASS / FAIL</strong> trên điện thoại. Màn hình tự cập nhật mỗi 3 giây.</>
               }
             </p>
           </div>
@@ -1273,11 +1273,10 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole, isExtern
         </div>
       ) : qcSummary ? (
         <>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {([
               ['PASS', qcSummary.passCount,    'text-emerald-600 bg-emerald-50 border-emerald-100'],
               ['FAIL', qcSummary.failCount,    'text-red-600 bg-red-50 border-red-100'],
-              ['HOLD', qcSummary.holdCount,    'text-amber-600 bg-amber-50 border-amber-100'],
               ['Chờ',  qcSummary.pendingCount, 'text-gray-600 bg-gray-50 border-gray-100'],
             ] as [string, number, string][]).map(([lbl, val, cls]) => (
               <div key={lbl} className={`rounded-xl p-3 text-center border ${cls}`}>
@@ -1299,51 +1298,36 @@ function QcScanPanel({ taskId, onAllScanned, onAlreadyDone, viewerRole, isExtern
       ) : null}
 
       {(isFinalized || isExternallyFinalized) ? (
-        // [BUG-FIX] Chỉ show "QC hoàn tất / xuất kho" khi pass sạch (externalFailCount=0)
-        // Nếu có FAIL → show banner đỏ cảnh báo thay thế
-        (externalFailCount ?? 0) > 0 ? (
-          <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-red-500 text-2xl">warning</span>
-              <p className="text-sm font-bold text-red-800">⚠️ Có {externalFailCount} item FAIL — Đơn bị tạm giữ</p>
-            </div>
-            <p className="text-xs text-red-600 ml-8">Mã QR đã khoá. Manager đã nhận báo cáo và đang xử lý.</p>
+        // [BUG-FIX] Banner này chỉ hiển thị sau khi QcFinalizeOrDispatch đã gọi finalizeQc
+        // và set isFinalized=true từ ngoài vào. Không tự set ở đây.
+        <div className="p-4 bg-emerald-50 border-2 border-emerald-200 rounded-xl">
+          <div className="flex items-center gap-3 mb-1">
+            <span className="material-symbols-outlined text-emerald-600 text-2xl">check_circle</span>
+            <p className="text-sm font-bold text-emerald-800">QC hoàn tất!</p>
           </div>
-        ) : (
-          <div className="p-4 bg-emerald-50 border-2 border-emerald-200 rounded-xl">
-            <div className="flex items-center gap-3 mb-1">
-              <span className="material-symbols-outlined text-emerald-600 text-2xl">check_circle</span>
-              <p className="text-sm font-bold text-emerald-800">QC hoàn tất!</p>
-            </div>
-            <p className="text-xs text-emerald-600 ml-9">Toàn bộ mặt hàng đã được kiểm tra. Có thể tiến hành xuất kho.</p>
-            <p className="text-[11px] text-emerald-500 mt-1.5 ml-9 flex items-center gap-1">
-              <span className="material-symbols-outlined text-[13px]">lock</span>
-              Mã QR đã bị khoá — không thể scan thêm
-            </p>
-          </div>
-        )
-      ) : qcSummary && (qcSummary.passCount + qcSummary.failCount + qcSummary.holdCount) > 0 && qcSummary.pendingCount === 0 ? (
+          <p className="text-xs text-emerald-600 ml-9">Toàn bộ mặt hàng đã được kiểm tra. Có thể tiến hành xuất kho.</p>
+          <p className="text-[11px] text-emerald-500 mt-1.5 ml-9 flex items-center gap-1">
+            <span className="material-symbols-outlined text-[13px]">lock</span>
+            Mã QR đã bị khoá — không thể scan thêm
+          </p>
+        </div>
+      ) : qcSummary && (qcSummary.passCount + qcSummary.failCount) > 0 && qcSummary.pendingCount === 0 ? (
         // [BUG-FIX] Scan xong nhưng chưa finalizeQc — hiện trạng thái thực tế (có thể có FAIL)
         <div className={`p-4 rounded-xl border-2 ${
-          (qcSummary.failCount ?? 0) > 0 || (qcSummary.holdCount ?? 0) > 0
-            ? 'bg-red-50 border-red-200'
-            : 'bg-amber-50 border-amber-200'
+          (qcSummary.failCount ?? 0) > 0 ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'
         }`}>
           <div className="flex items-center gap-2">
             <span className={`material-symbols-outlined text-xl ${
-              (qcSummary.failCount ?? 0) > 0 || (qcSummary.holdCount ?? 0) > 0
-                ? 'text-red-500' : 'text-amber-500'
+              (qcSummary.failCount ?? 0) > 0 ? 'text-red-500' : 'text-amber-500'
             }`}>
-              {(qcSummary.failCount ?? 0) > 0 || (qcSummary.holdCount ?? 0) > 0 ? 'warning' : 'pending'}
+              {(qcSummary.failCount ?? 0) > 0 ? 'warning' : 'pending'}
             </span>
             <p className={`text-sm font-bold ${
               (qcSummary.failCount ?? 0) > 0 ? 'text-red-800' : 'text-amber-800'
             }`}>
               {(qcSummary.failCount ?? 0) > 0
                 ? `⚠️ Đã scan xong — có ${qcSummary.failCount} item FAIL`
-                : (qcSummary.holdCount ?? 0) > 0
-                  ? `⏸ Đã scan xong — có ${qcSummary.holdCount} item HOLD`
-                  : '✅ Đã scan xong — đang chờ xử lý kết quả'}
+                : '✅ Đã scan xong — đang chờ xử lý kết quả'}
             </p>
           </div>
           {(qcSummary.failCount ?? 0) > 0 && (
@@ -1478,7 +1462,7 @@ function QcFinalizeOrDispatch({
   taskId: number;
   item: OutboundListItem;
   onDispatched: () => void;
-  onOnHold: (failCount?: number) => void; // [BUG-FIX] pass failCount so caller can track
+  onOnHold: () => void;
 }) {
   const [state, setState] = React.useState<'finalizing' | 'dispatch' | 'on_hold' | 'error'>('finalizing');
   const [failCount, setFailCount] = React.useState(0);
@@ -1491,16 +1475,15 @@ function QcFinalizeOrDispatch({
       try {
         const summary = await finalizeQc(taskId);
         const fails = summary.failCount ?? 0;
-        const holds = summary.holdCount ?? 0;
         setFailCount(fails);
         if (fails > 0 || holds > 0) {
           // BE đã set SO → ON_HOLD và tạo DAMAGE incident
           setState('on_hold');
           toast.error(
-            `⚠️ Có ${fails} item FAIL${holds > 0 ? `, ${holds} HOLD` : ''} — Đơn bị tạm giữ. Manager cần xử lý trước khi xuất kho.`,
+            `⚠️ Có ${fails} item FAIL — Đơn bị tạm giữ. Manager cần xử lý trước khi xuất kho.`,
             { duration: 8000 }
           );
-          onOnHold(fails);
+          onOnHold();
         } else {
           setState('dispatch');
           toast.success('✅ QC hoàn tất — tất cả hàng PASS. Có thể xuất kho!', { duration: 5000 });
@@ -1512,7 +1495,7 @@ function QcFinalizeOrDispatch({
           const s = await getSum(taskId);
           if ((s.failCount ?? 0) > 0) {
             setState('on_hold');
-            onOnHold(s.failCount ?? 1);
+            onOnHold();
           } else {
             setState('dispatch');
           }
@@ -1664,7 +1647,7 @@ const SHORTAGE_STEPS = [
   { status: 'DISPATCHED',    label: 'Xuất kho',      icon: 'local_shipping' },
 ];
 
-function FlowProgress({ current, isShortageFlow, hasQcFail }: { current: string; isShortageFlow?: boolean; hasQcFail?: boolean }) {
+function FlowProgress({ current, isShortageFlow }: { current: string; isShortageFlow?: boolean }) {
   // Shortage flow: DRAFT có thiếu hàng (hasStockShortage) hoặc đang WAITING_STOCK
   if (isShortageFlow) {
     // Map current status → shortage step index
@@ -1726,21 +1709,15 @@ function FlowProgress({ current, isShortageFlow, hasQcFail }: { current: string;
             <div className={`flex flex-col items-center gap-0.5 ${done ? 'opacity-70' : !active ? 'opacity-25' : ''}`}>
               <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
                 done ? 'bg-emerald-100 text-emerald-600' :
-                active && hasQcFail ? 'bg-red-500 text-white shadow-sm' :
                 active ? 'bg-indigo-600 text-white shadow-sm' :
                 'bg-gray-100 text-gray-400'
               }`}>
                 {done
                   ? <span className="material-symbols-outlined text-[12px]">check</span>
-                  : active && hasQcFail
-                    ? <span className="material-symbols-outlined text-[12px]">warning</span>
-                    : <span className="material-symbols-outlined text-[12px]">{step.icon}</span>}
+                  : <span className="material-symbols-outlined text-[12px]">{step.icon}</span>}
               </div>
-              <span className={`text-[9px] font-semibold whitespace-nowrap ${
-                active && hasQcFail ? 'text-red-500' :
-                active ? 'text-indigo-600' : 'text-gray-400'
-              }`}>
-                {active && hasQcFail ? 'QC Fail ⚠️' : step.label}
+              <span className={`text-[9px] font-semibold whitespace-nowrap ${active ? 'text-indigo-600' : 'text-gray-400'}`}>
+                {step.label}
               </span>
             </div>
             {i < STEPS.length - 1 && (
@@ -1771,7 +1748,6 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
   const [actionLoading, setActionLoading] = useState(false);
   const [taskId, setTaskId] = useState<number | null>(null);
   const [qcDone, setQcDone] = useState(false);
-  const [qcFinalizeFailCount, setQcFinalizeFailCount] = useState(0); // [BUG-FIX] track fail count from finalizeQc
   const [orderDetail, setOrderDetail] = useState<any>(null);
   const role = getUserRole();
 
@@ -1783,12 +1759,8 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
     if (!taskId || localStatus !== 'QC_SCAN' || qcDone) return;
     fetchQcSummary(taskId)
       .then(s => {
-        const total = (s.passCount ?? 0) + (s.failCount ?? 0) + (s.holdCount ?? 0) + (s.pendingCount ?? 0);
-        if ((s.pendingCount ?? 0) === 0 && total > 0) {
-          // [FIX] Lấy failCount ngay từ summary — không chờ finalizeQc để set externalFailCount
-          setQcFinalizeFailCount((s.failCount ?? 0) + (s.holdCount ?? 0));
-          setQcDone(true);
-        }
+        const total = (s.passCount ?? 0) + (s.failCount ?? 0) + (s.pendingCount ?? 0);
+        if ((s.pendingCount ?? 0) === 0 && total > 0) setQcDone(true);
       })
       .catch(() => {});
   }, [taskId, localStatus, qcDone]);
@@ -1809,7 +1781,7 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
       }
       return prev;
     });
-    if (isNewDocument) { setTaskId(null); setQcDone(false); setQcFinalizeFailCount(0); }
+    if (isNewDocument) { setTaskId(null); setQcDone(false); }
   }, [item?.documentId, item?.status]);
 
   useEffect(() => {
@@ -2209,15 +2181,13 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
               taskId={taskId}
               viewerRole={role}
               isExternallyFinalized={qcDone}
-              externalFailCount={qcFinalizeFailCount}
-              onAllScanned={(fc?: number) => {
-                // [FIX] Nhận failCount từ polling — set ngay để banner hiển thị đúng màu
-                setQcFinalizeFailCount(fc ?? 0);
+              onAllScanned={() => {
+                // [BUG-FIX] KHÔNG toast "QC hoàn tất" ở đây — chưa biết có FAIL hay không.
+                // QcFinalizeOrDispatch sẽ gọi finalizeQc → biết FAIL/PASS → toast đúng.
                 setQcDone(true);
                 onRefresh();
               }}
-              onAlreadyDone={(fc?: number) => {
-                setQcFinalizeFailCount(fc ?? 0);
+              onAlreadyDone={() => {
                 setQcDone(true);
                 onRefresh();
               }}
@@ -2231,8 +2201,8 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
               <QcFinalizeOrDispatch
                 taskId={taskId}
                 item={item}
-                onDispatched={() => { setQcFinalizeFailCount(0); setLocalStatus('DISPATCHED'); onRefresh(); }}
-                onOnHold={(fails) => { setQcFinalizeFailCount(fails ?? 1); setLocalStatus('ON_HOLD'); onRefresh(); }}
+                onDispatched={() => { setLocalStatus('DISPATCHED'); onRefresh(); }}
+                onOnHold={() => { setLocalStatus('ON_HOLD'); onRefresh(); }}
               />
             )}
             {!qcDone && role === 'KEEPER' && isSO && (
@@ -2400,10 +2370,10 @@ export default function OutboundDetailModal({ item, onClose, onRefresh }: Props)
               <FlowProgress
                 current={localStatus}
                 isShortageFlow={
+                  // Shortage flow khi: đang WAITING_STOCK, hoặc DRAFT có hasStockShortage
                   localStatus === 'WAITING_STOCK' ||
                   (localStatus === 'DRAFT' && !!(item as any).hasStockShortage)
                 }
-                hasQcFail={qcFinalizeFailCount > 0}
               />
             </div>
             <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 flex-shrink-0">
