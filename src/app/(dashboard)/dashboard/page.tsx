@@ -280,6 +280,9 @@ export default function DashboardPage() {
 
   const [warehouses, setWarehouses]     = useState<Warehouse[]>([]);
   const [loadingStats, setLoadingStats] = useState(true);
+  // [FIX] Stock chart state cho Keeper & QC
+  const [skuStockData, setSkuStockData] = useState<{skuCode:string;skuName:string;totalQty:number;reservedQty:number;availableQty:number}[]>([]);
+  const [loadingChart, setLoadingChart] = useState(false);
 
   // Throughput chart
   const [throughputData,    setThroughputData]    = useState<ThroughputPoint[]>([]);
@@ -365,6 +368,20 @@ export default function DashboardPage() {
           totalInspected:    inspected.totalElements ?? 0,
         });
       }
+      // Load stock chart for Keeper & QC
+      if (isKeeper || isQC) {
+        try {
+          setLoadingChart(true);
+          const session = getStoredSession();
+          const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
+          const resp = await fetch(`${base}/v1/skus/stock-summary`, {
+            headers: { Authorization: `Bearer ${session?.token ?? ''}` }
+          });
+          const json = await resp.json();
+          setSkuStockData(json.data ?? []);
+        } catch { /* silent */ }
+        finally { setLoadingChart(false); }
+      }
     } catch { /* silent */ }
     finally { setLoadingStats(false); }
   }, [isManager, isKeeper, isQC]);
@@ -394,20 +411,11 @@ export default function DashboardPage() {
             {' '}Tổng quan kho hàng theo thời gian thực
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <select
-            className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 shadow-sm">
-            <option>Tất cả kho</option>
-            {warehouses.map(w => (
-              <option key={w.warehouseId} value={String(w.warehouseId)}>{w.warehouseName}</option>
-            ))}
-          </select>
-          <button onClick={loadStats}
-            className="flex items-center gap-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50 transition-all shadow-sm">
-            <span className="material-symbols-outlined text-[16px]">refresh</span>
-            Làm mới
-          </button>
-        </div>
+        <button onClick={loadStats}
+          className="flex items-center gap-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50 transition-all shadow-sm">
+          <span className="material-symbols-outlined text-[16px]">refresh</span>
+          Làm mới
+        </button>
       </div>
 
       {/* ════════ MANAGER VIEW ════════ */}
@@ -538,6 +546,52 @@ export default function DashboardPage() {
             <QuickCard label="Đang cất hàng"   value={String(keeperStats.inProgressPutaway)} sub="Đang xử lý"                        icon="shelves"        iconBg="bg-violet-50"  iconColor="text-violet-600"  subColor="text-violet-600"  accent="#8b5cf6" loading={loadingStats} />
             <QuickCard label="Hoàn thành"       value={String(keeperStats.donePutaway)}        sub="Task đã xong"                     icon="check_circle"   iconBg="bg-emerald-50" iconColor="text-emerald-600" subColor="text-emerald-600" accent="#10b981" loading={loadingStats} />
           </div>
+
+          {/* ── Biểu đồ tồn kho theo SKU ── */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-sm font-bold text-gray-800">📦 Tồn kho theo SKU</p>
+                <p className="text-xs text-gray-400 mt-0.5">Top SKU — khả dụng / đã giữ chỗ / tổng</p>
+              </div>
+              {loadingChart && <span className="text-xs text-indigo-400 animate-pulse">Đang tải...</span>}
+            </div>
+            {skuStockData.length === 0 && !loadingChart ? (
+              <p className="text-xs text-gray-400 text-center py-6">Chưa có dữ liệu tồn kho</p>
+            ) : (
+              <div className="space-y-2.5">
+                {skuStockData.slice(0, 10).map((sku) => {
+                  const total = sku.totalQty || 1;
+                  const availPct = Math.round((sku.availableQty / total) * 100);
+                  const resPct   = Math.round((sku.reservedQty  / total) * 100);
+                  return (
+                    <div key={sku.skuCode}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded shrink-0">{sku.skuCode}</span>
+                          <span className="text-[11px] text-gray-500 truncate">{sku.skuName}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                          <span className="text-[10px] text-emerald-600 font-semibold">{sku.availableQty} khả dụng</span>
+                          {sku.reservedQty > 0 && <span className="text-[10px] text-amber-500">{sku.reservedQty} giữ</span>}
+                          <span className="text-[10px] text-gray-400">/ {sku.totalQty}</span>
+                        </div>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden flex">
+                        <div className="h-full bg-emerald-400 transition-all duration-500" style={{ width: `${availPct}%` }} />
+                        <div className="h-full bg-amber-300 transition-all duration-500" style={{ width: `${resPct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="flex items-center gap-4 pt-2 border-t border-gray-50">
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-400"/><span className="text-[10px] text-gray-500">Khả dụng</span></div>
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-amber-300"/><span className="text-[10px] text-gray-500">Đã giữ chỗ</span></div>
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-gray-100"/><span className="text-[10px] text-gray-500">Trống</span></div>
+                </div>
+              </div>
+            )}
+          </div>
         </>
       )}
 
@@ -573,6 +627,52 @@ export default function DashboardPage() {
           </Link>
 
           <AlertsList />
+
+          {/* ── Biểu đồ tồn kho theo SKU ── */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-sm font-bold text-gray-800">📦 Tồn kho theo SKU</p>
+                <p className="text-xs text-gray-400 mt-0.5">Top SKU — khả dụng / đã giữ chỗ / tổng</p>
+              </div>
+              {loadingChart && <span className="text-xs text-indigo-400 animate-pulse">Đang tải...</span>}
+            </div>
+            {skuStockData.length === 0 && !loadingChart ? (
+              <p className="text-xs text-gray-400 text-center py-6">Chưa có dữ liệu tồn kho</p>
+            ) : (
+              <div className="space-y-2.5">
+                {skuStockData.slice(0, 10).map((sku) => {
+                  const total = sku.totalQty || 1;
+                  const availPct = Math.round((sku.availableQty / total) * 100);
+                  const resPct   = Math.round((sku.reservedQty  / total) * 100);
+                  return (
+                    <div key={sku.skuCode}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded shrink-0">{sku.skuCode}</span>
+                          <span className="text-[11px] text-gray-500 truncate">{sku.skuName}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                          <span className="text-[10px] text-emerald-600 font-semibold">{sku.availableQty} khả dụng</span>
+                          {sku.reservedQty > 0 && <span className="text-[10px] text-amber-500">{sku.reservedQty} giữ</span>}
+                          <span className="text-[10px] text-gray-400">/ {sku.totalQty}</span>
+                        </div>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden flex">
+                        <div className="h-full bg-emerald-400 transition-all duration-500" style={{ width: `${availPct}%` }} />
+                        <div className="h-full bg-amber-300 transition-all duration-500" style={{ width: `${resPct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="flex items-center gap-4 pt-2 border-t border-gray-50">
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-400"/><span className="text-[10px] text-gray-500">Khả dụng</span></div>
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-amber-300"/><span className="text-[10px] text-gray-500">Đã giữ chỗ</span></div>
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-gray-100"/><span className="text-[10px] text-gray-500">Trống</span></div>
+                </div>
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>
