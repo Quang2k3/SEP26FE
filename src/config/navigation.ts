@@ -14,8 +14,6 @@ export const CATEGORY_ACTIONS: NavAction[] = [
 
 export const MANAGER_DASHBOARD: NavAction[] = [
   { label: 'Duyệt nhập kho',   path: '/manager-dashboard/grn' },
-  { label: 'Sự cố',            path: '/manager-dashboard/incident' },
-  { label: 'Báo cáo QC',       path: '/manager-dashboard/qc-report' },
 ];
 
 export const OUTBOUND_MANAGER_ACTIONS: NavAction[] = [
@@ -99,12 +97,13 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
     roles: ['MANAGER'],
   },
   {
-    key: 'qc-inspections',
-    name: 'Kiểm định QC',
-    icon: 'verified',
-    path: '/qc-inspections',
+    key: 'incidents-manager',
+    name: 'Sự cố',
+    icon: 'report_problem',
+    path: '/manager-dashboard/incident',
     roles: ['MANAGER'],
   },
+
   {
     key: 'sku-manager',
     name: 'Quản lý SKU',
@@ -193,13 +192,7 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
     children: QC_OUTBOUND_ACTIONS,
     roles: ['QC'],
   },
-  {
-    key: 'qc-inspections-qc',
-    name: 'Kiểm định QC',
-    icon: 'verified',
-    path: '/qc-inspections',
-    roles: ['QC'],
-  },
+  
   {
     key: 'incidents-qc',
     name: 'Sự cố',
