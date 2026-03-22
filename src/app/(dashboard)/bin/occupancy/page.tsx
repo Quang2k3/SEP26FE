@@ -102,7 +102,9 @@ function BinDetailSidebar({
           <div className="grid grid-cols-3 gap-1.5 pt-0.5">
             {[
               { label: 'Tối đa', val: bin.maxWeightKg ? `${Number(bin.maxWeightKg)}` : '∞' },
-              { label: 'Đã dùng', val: Number(bin.occupiedQty).toFixed(0) },
+              { label: 'Đã dùng', val: (bin as any).occupiedWeightKg != null
+                ? `${Number((bin as any).occupiedWeightKg).toFixed(1)}kg`
+                : Number(bin.occupiedQty).toFixed(0) },
               { label: 'Còn lại', val: bin.availableQty != null ? Number(bin.availableQty).toFixed(0) : '—' },
             ].map(({ label, val }) => (
               <div key={label} className="bg-white rounded-lg p-2 text-center border border-gray-100">
